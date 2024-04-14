@@ -19,7 +19,6 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortOrder;
 
-import javax.json.*;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,11 +33,9 @@ import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
 
 class NewsList {
   List<News> news;
-
   public List<News> getNews() {
     return news;
   }
-
   public void setNews(List<News> news) {
     this.news = news;
   }
