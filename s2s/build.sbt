@@ -7,7 +7,7 @@ resolvers += "Unidata" at "https://artifacts.unidata.ucar.edu/repository/unidata
 
 lazy val s2s = (project in file("."))
   .settings(
-    name := "vlp/s2s",
+    name := "s2s",
     libraryDependencies ++= Seq(
       "edu.ucar" % "cdm-core" % "5.5.2",
       "org.apache.spark" %% "spark-core" % sparkVersion,

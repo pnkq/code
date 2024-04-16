@@ -1,5 +1,3 @@
-package vlp
-
 import com.intel.analytics.bigdl.mkl.MKL
 
 object CheckMKL {

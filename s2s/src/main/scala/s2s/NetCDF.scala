@@ -1,4 +1,4 @@
-package vlp.s2s
+package s2s
 
 import ucar.nc2.NetcdfFiles
 import ucar.nc2.write.Ncdump
