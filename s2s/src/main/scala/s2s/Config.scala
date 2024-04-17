@@ -3,7 +3,7 @@ package s2s
 case class Config(
   driverMemory: String = "4g",
   executorMemory: String = "4g",
-  mode: String = "train",
+  mode: String = "eval",
   modelType: String = "lstm",
   lookback: Int = 7,
   horizon: Int = 3,

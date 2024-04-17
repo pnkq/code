@@ -21,6 +21,14 @@ import org.apache.spark.SparkConf
 import org.apache.spark.ml.feature.StandardScaler
 import scopt.OptionParser
 
+import com.cibo.evilplot.displayPlot
+import com.cibo.evilplot.plot._
+import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
+import com.cibo.evilplot.numeric.Point
+import org.apache.spark.ml.linalg.Vector
+import com.cibo.evilplot.colors._
+import com.cibo.evilplot.plot.renderers.PathRenderer
+
 /**
  * An implementation of time series predictor using LSTM.
  */
@@ -139,6 +147,17 @@ object Forecaster {
             vf.show(10)
             val bigdl = Models.loadModel[Float](s"bin/${config.modelType}.bigdl")
             bigdl.summary()
+            val prediction = bigdl.predict(vf, featureCols = Array("features"), predictionCol = "prediction")
+            prediction.select("label", "prediction").show(false)
+            import spark.implicits._
+            val ys = prediction.select("label").map(row => row.getAs[Vector](0).toDense.toArray.head).take(365)
+            val zs = prediction.select("prediction").map(row => row.getAs[Seq[Float]](0).head).take(365)
+            val dataY = ys.zipWithIndex.map(pair => Point(pair._2, pair._1))
+            val dataZ = zs.zipWithIndex.map(pair => Point(pair._2, pair._1))
+            displayPlot(Overlay(
+              LinePlot(dataY, Some(PathRenderer.default[Point](strokeWidth = Some(1.0), color = Some(HTMLNamedColors.gray)))),
+              LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.0), color = Some(HTMLNamedColors.blue))))
+            ).xLabel("day").yLabel("rainfall").xAxis().yAxis().yGrid().render())
         }
         spark.stop()
       case None => println("Invalid options!")
