@@ -55,9 +55,9 @@ object Forecaster {
     af
   }
 
-  private def createModel(config: Config): Sequential[Float] = {
+  private def createModel(config: Config, extraFeatureSize: Int): Sequential[Float] = {
     val model = Sequential()
-    model.add(Reshape(targetShape = Array(1, config.lookback + 3), inputShape = Shape(config.lookback + 3)).setName("reshape"))
+    model.add(Reshape(targetShape = Array(1, config.lookback + 1 + extraFeatureSize), inputShape = Shape(config.lookback + 1 + extraFeatureSize)).setName("reshape"))
     for (j <- 0 until config.numLayers - 1) {
       model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
     }
@@ -91,6 +91,39 @@ object Forecaster {
     displayPlot(Overlay(overlayPlots: _*).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend().render())
   }
 
+  private def readSimple(spark: SparkSession, path: String) = {
+    val df = spark.read.options(Map("delimiter" -> "\t", "inferSchema" -> "true")).csv(path)
+    val stationCol = "_c8"
+    val ef = df.select("_c0", "_c1", "_c2", stationCol)
+    val prependZero = udf((x: Int) => if (x < 10) "0" + x.toString else x.toString)
+    val ff = ef.withColumn("year", col("_c0"))
+      .withColumn("yearSt", col("_c0").cast("string"))
+      .withColumn("monthSt", prependZero(col("_c1")))
+      .withColumn("daySt", prependZero(col("_c2")))
+      .withColumn("dateSt", concat_ws("/", col("yearSt"), col("monthSt"), col("daySt")))
+      .withColumn("date", to_date(col("dateSt"), "yyy/MM/dd"))
+      .withColumnRenamed(stationCol, "y_0")
+    (ff, Array("_c1", "_c2")) // Array(month, day)
+  }
+  /**
+   * Reads a complex CSV file containing more than hundred of columns. The label (rainfall) column is named "y".
+   * @param spark
+   * @param path
+   * @return a data frame and an array of extra input columns
+   */
+  private def readComplex(spark: SparkSession, path: String) = {
+    val df = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
+    val ef = df.withColumnRenamed("y", "y_0")
+      .withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
+      .withColumn("year", year(col("date")))
+      .withColumn("month", month(col("date")))
+      .withColumn("dayOfMonth", dayofmonth(col("date")))
+      .withColumn("dayOfYear", dayofyear(col("date")))
+    val ff = ef.filter("year < 2020")
+    val extraInputCols = for (i <- 0 to 13; j <- 0 to 8) yield s"extra_${i}_${j}"
+    (ff, extraInputCols.toArray ++ Array("month", "dayOfMonth", "dayOfYear"))
+  }
+
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[Config](getClass().getName()) {
       head(getClass().getName(), "1.0")
@@ -113,26 +146,17 @@ object Forecaster {
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
 
+        val (ff, extraInputCols) = config.data match {
+          case "complex" => readComplex(spark, "dat/lnq/vinh-yen.csv")
+          case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
+        }
         config.mode match {
           case "train" =>
-            val df = spark.read.options(Map("delimiter" -> "\t", "inferSchema" -> "true")).csv("dat/lnq/y.80-19.tsv")
-            val stationCol = "_c8"
-            val ef = df.select("_c0", "_c1", "_c2", stationCol)
-            val prependZero = udf((x: Int) => if (x < 10) "0" + x.toString else x.toString)
-            val ff = ef.withColumn("year", col("_c0").cast("string"))
-              .withColumn("month", prependZero(col("_c1")))
-              .withColumn("day", prependZero(col("_c2")))
-              .withColumn("dateSt", concat_ws("/", col("year"), col("month"), col("day")))
-              .withColumn("date", to_date(col("dateSt"), "yyy/MM/dd"))
-              .withColumnRenamed(stationCol, "y_0")
             ff.show()
-            ff.printSchema()
-
             val af = roll(ff, config.lookback, config.horizon)
             af.show()
-
             // assembler look-back vector and horizon vector
-            val inputCols = (-config.lookback to 0).map(c => s"y_$c").toArray ++ Array("_c1", "_c2") // ++ Array(month, day)
+            val inputCols = (-config.lookback to 0).map(c => s"y_$c").toArray ++ extraInputCols
             val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("x")
             val assemblerY = new VectorAssembler().setInputCols((1 to config.horizon).map(c => s"y_$c").toArray).setOutputCol("y")
             val scalerX = new StandardScaler().setInputCol("x").setOutputCol("features")
@@ -144,27 +168,27 @@ object Forecaster {
             val bf = preprocesor.transform(af)
             bf.show()
 
-            // split roughly 80/20, keep order sequence
-            val uf = bf.filter("_c0 <= 2012")
-            val vf = bf.filter("2013 <= _c0")
+            // split roughly 90/10, keep order sequence
+            val uf = bf.filter("year <= 2015")
+            val vf = bf.filter("2016 <= year")
             println(s"Training size = ${uf.count}")
             println(s"    Test size = ${vf.count}")
             uf.write.mode("overwrite").parquet("dat/uf")
             vf.write.mode("overwrite").parquet("dat/vf")
 
-            val bigdl = createModel(config)
+            val bigdl = createModel(config, extraInputCols.length)
             bigdl.summary()
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/")
 
-            val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(config.lookback + 3), labelSize = Array(config.horizon))
+            val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(config.lookback + 1 + extraInputCols.length), labelSize = Array(config.horizon))
             estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
             val model = estimator.fit(uf)
             val prediction = model.transform(vf)
             prediction.select("label", "prediction").show(false)
-            bigdl.saveModel(s"bin/${config.modelType}.bigdl")
+            bigdl.saveModel(s"bin/${config.modelType}.bigdl", overWrite = true)
             plot(spark, config, prediction)
 
           case "eval" =>

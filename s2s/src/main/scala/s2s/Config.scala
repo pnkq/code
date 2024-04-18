@@ -5,11 +5,12 @@ case class Config(
   executorMemory: String = "4g",
   mode: String = "eval",
   modelType: String = "lstm",
+  data: String = "complex",
   lookback: Int = 7,
   horizon: Int = 3,
   numLayers: Int = 2,
   hiddenSize: Int = 16,
   batchSize: Int = 64,
   learningRate: Double = 1E-4,
-  epochs: Int = 20
+  epochs: Int = 30
 )
