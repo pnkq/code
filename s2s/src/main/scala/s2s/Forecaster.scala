@@ -20,7 +20,6 @@ import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSu
 import org.apache.spark.SparkConf
 import org.apache.spark.ml.feature.StandardScaler
 import scopt.OptionParser
-
 import com.cibo.evilplot.displayPlot
 import com.cibo.evilplot.plot._
 import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
@@ -66,6 +65,30 @@ object Forecaster {
     model.add(Dropout(0.2).setName("dropout"))
     model.add(Dense(config.horizon).setName("dense"))
     model
+  }
+
+  private def plot(spark: SparkSession, config: Config, prediction: DataFrame) = {
+    // draw multiple plots corresponding to number of time steps up to horizon for the first year of the validation set
+    import spark.implicits._
+    val ys = prediction.select("label").map(row => row.getAs[Vector](0).toDense.toArray).take(365).zipWithIndex
+    val zs = prediction.select("prediction").map(row => row.getAs[Seq[Float]](0)).take(365).zipWithIndex
+    val plots = (0 until config.horizon).map { d =>
+      val dataY = ys.map(pair => Point(pair._2, pair._1(d)))
+      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
+      Seq(
+        LinePlot(dataY, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = HTMLNamedColors.gray)))
+          .topPlot(LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue)))))
+      )
+    }
+    // overlay plots
+    val colors = Color.getGradientSeq(config.horizon)
+    val days = (0 until config.horizon)
+    val overlayPlots = days.map { d =>
+      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
+      LinePlot(data = dataZ, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = colors(d))))
+    }
+    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend().render())
+    displayPlot(Overlay(overlayPlots: _*).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend().render())
   }
 
   def main(args: Array[String]): Unit = {
@@ -139,9 +162,11 @@ object Forecaster {
               .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
             val model = estimator.fit(uf)
-            val cf = model.transform(vf)
-            cf.select("label", "prediction").show(false)
+            val prediction = model.transform(vf)
+            prediction.select("label", "prediction").show(false)
             bigdl.saveModel(s"bin/${config.modelType}.bigdl")
+            plot(spark, config, prediction)
+
           case "eval" =>
             val vf = spark.read.parquet("dat/vf")
             vf.show(10)
@@ -149,15 +174,7 @@ object Forecaster {
             bigdl.summary()
             val prediction = bigdl.predict(vf, featureCols = Array("features"), predictionCol = "prediction")
             prediction.select("label", "prediction").show(false)
-            import spark.implicits._
-            val ys = prediction.select("label").map(row => row.getAs[Vector](0).toDense.toArray.head).take(365)
-            val zs = prediction.select("prediction").map(row => row.getAs[Seq[Float]](0).head).take(365)
-            val dataY = ys.zipWithIndex.map(pair => Point(pair._2, pair._1))
-            val dataZ = zs.zipWithIndex.map(pair => Point(pair._2, pair._1))
-            displayPlot(Overlay(
-              LinePlot(dataY, Some(PathRenderer.default[Point](strokeWidth = Some(1.0), color = Some(HTMLNamedColors.gray)))),
-              LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.0), color = Some(HTMLNamedColors.blue))))
-            ).xLabel("day").yLabel("rainfall").xAxis().yAxis().yGrid().render())
+            plot(spark, config, prediction)
         }
         spark.stop()
       case None => println("Invalid options!")
