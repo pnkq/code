@@ -24,7 +24,7 @@ import com.cibo.evilplot.displayPlot
 import com.cibo.evilplot.plot._
 import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
 import com.cibo.evilplot.numeric.Point
-import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.ml.linalg.{Vector, Vectors}
 import com.cibo.evilplot.colors._
 import com.cibo.evilplot.plot.renderers.PathRenderer
 
@@ -58,11 +58,18 @@ object Forecaster {
   private def createModel(config: Config, extraFeatureSize: Int): Sequential[Float] = {
     val model = Sequential()
     model.add(Reshape(targetShape = Array(1, config.lookback + 1 + extraFeatureSize), inputShape = Shape(config.lookback + 1 + extraFeatureSize)).setName("reshape"))
-    for (j <- 0 until config.numLayers - 1) {
-      model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
+    if (!config.bidirectional) {
+      for (j <- 0 until config.numLayers - 1) {
+        model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
+      }
+      model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}"))
+    } else {
+      for (j <- 0 until config.numLayers - 1) {
+        model.add(Bidirectional(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j")))
+      }
+      model.add(Bidirectional(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}")))
     }
-    model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}"))
-    model.add(Dropout(0.2).setName("dropout"))
+    model.add(Dropout(config.dropoutRate).setName("dropout"))
     model.add(Dense(config.horizon).setName("dense"))
     model
   }
@@ -124,12 +131,29 @@ object Forecaster {
     (ff, extraInputCols.toArray ++ Array("month", "dayOfMonth", "dayOfYear"))
   }
 
+  /**
+   * Compute the error between the gold label and the prediction (MAE -- mean absolute error)
+   * @param df a prediction data frame, which should have two columns: "label" (vector) and "prediction" (array[float])
+   */
+  private def computeError(df: DataFrame) = {
+    val error = udf((label: Vector, prediction: Array[Float]) => {
+      val error = label.toArray.zip(prediction).map { case (a, b) => Math.abs(a - b) }
+      Vectors.dense(error)
+    })
+    // compute average MAE between label and prediction
+    val output = df.select("label", "prediction").withColumn("error", error(col("label"), col("prediction")))
+    output.show(false)
+    import org.apache.spark.ml.stat.Summarizer
+    output.select(Summarizer.mean(col("error")))
+  }
+
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[Config](getClass().getName()) {
       head(getClass().getName(), "1.0")
       opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
+      opt[Boolean]('b', "b").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
       opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookback = x)).text("look-back (days)")
       opt[Int]('h', "horizon").action((x, conf) => conf.copy(horizon = x)).text("horizon (days)")
       opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of layers")
@@ -150,6 +174,8 @@ object Forecaster {
           case "complex" => readComplex(spark, "dat/lnq/vinh-yen.csv")
           case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
         }
+        val modelPath = if (config.data == "complex") "bin/c/" else "bin/s"
+
         config.mode match {
           case "train" =>
             ff.show()
@@ -163,7 +189,7 @@ object Forecaster {
             val scalerY = new StandardScaler().setInputCol("y").setOutputCol("label")
             val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
             val preprocesor = pipeline.fit(af)
-            preprocesor.write.overwrite().save("bin/pre")
+            preprocesor.write.overwrite().save(s"$modelPath/pre")
 
             val bf = preprocesor.transform(af)
             bf.show()
@@ -173,8 +199,8 @@ object Forecaster {
             val vf = bf.filter("2016 <= year")
             println(s"Training size = ${uf.count}")
             println(s"    Test size = ${vf.count}")
-            uf.write.mode("overwrite").parquet("dat/uf")
-            vf.write.mode("overwrite").parquet("dat/vf")
+            uf.write.mode("overwrite").parquet(s"$modelPath/uf")
+            vf.write.mode("overwrite").parquet(s"$modelPath/vf")
 
             val bigdl = createModel(config, extraInputCols.length)
             bigdl.summary()
@@ -188,20 +214,25 @@ object Forecaster {
             val model = estimator.fit(uf)
             val prediction = model.transform(vf)
             prediction.select("label", "prediction").show(false)
-            bigdl.saveModel(s"bin/${config.modelType}.bigdl", overWrite = true)
+            bigdl.saveModel(s"$modelPath/${config.modelType}.bigdl", overWrite = true)
             plot(spark, config, prediction)
-
+            val mae = computeError(prediction)
+            mae.show(false)
           case "eval" =>
-            val vf = spark.read.parquet("dat/vf")
+            val vf = spark.read.parquet(s"$modelPath/vf")
             vf.show(10)
-            val bigdl = Models.loadModel[Float](s"bin/${config.modelType}.bigdl")
+            val bigdl = Models.loadModel[Float](s"$modelPath/${config.modelType}.bigdl")
             bigdl.summary()
             val prediction = bigdl.predict(vf, featureCols = Array("features"), predictionCol = "prediction")
             prediction.select("label", "prediction").show(false)
+            prediction.printSchema()
             plot(spark, config, prediction)
+            val mae = computeError(prediction)
+            mae.show(false)
         }
         spark.stop()
       case None => println("Invalid options!")
     }
   }
 }
+
