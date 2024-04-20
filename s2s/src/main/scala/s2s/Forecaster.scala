@@ -79,6 +79,14 @@ object Forecaster {
     import spark.implicits._
     val ys = prediction.select("label").map(row => row.getAs[Vector](0).toDense.toArray).take(365).zipWithIndex
     val zs = prediction.select("prediction").map(row => row.getAs[Seq[Float]](0)).take(365).zipWithIndex
+
+    val dataY0 = ys.map(pair => Point(pair._2, pair._1(0)))
+    val dataZ0 = zs.map(pair => Point(pair._2, pair._1(0)))
+    displayPlot(Overlay(
+      LinePlot(dataY0, Some(PathRenderer.named[Point](name = "horizon=0", strokeWidth = Some(1.2), color = HTMLNamedColors.gray))),
+      LinePlot(dataZ0, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue))))
+    ).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend().render())
+
     val plots = (0 until config.horizon).map { d =>
       val dataY = ys.map(pair => Point(pair._2, pair._1(d)))
       val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
@@ -153,7 +161,8 @@ object Forecaster {
       opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
-      opt[Boolean]('b', "b").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
+      opt[String]('d', "data").action((x, conf) => conf.copy(data = x)).text("data type: simple/complex")
+      opt[Boolean]('u', "u").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
       opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookback = x)).text("look-back (days)")
       opt[Int]('h', "horizon").action((x, conf) => conf.copy(horizon = x)).text("horizon (days)")
       opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of layers")
