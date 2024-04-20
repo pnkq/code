@@ -1,0 +1,66 @@
+          case "c" => (hf, hfV)
+          case "c@" => (hf, hfV)
+          case "t+c" => (hf, hfV)
+
+
+          case "t+c" =>
+            // token module (same as the "t" model type)
+            val inputT = Input(inputShape = Shape(config.maxSeqLen))
+            val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).inputs(inputT)
+            // char module: use a GRU for each token position (same as the "c@" type)
+            val inputC = Input(inputShape = Shape(config.maxSeqLen * config.maxCharLen))
+            val embeddingC = Embedding(numChars + 1, config.charEmbeddingSize).inputs(inputC)
+            val reshape = Reshape(targetShape = Array(config.maxSeqLen, -1)).inputs(embeddingC)
+            val split = SplitTensor(1, config.maxSeqLen).inputs(reshape) // 1 or 0?
+            val modules = (0 until config.maxSeqLen).map { j =>
+              val select = SelectTable(j).inputs(split)
+              val reshape = Reshape(targetShape = Array(config.maxCharLen, config.charEmbeddingSize)).inputs(select)
+              GRU(config.charHiddenSize).inputs(reshape) // NOTE: use a separate GRU for each token position. This is not a good way!
+            }
+            val mergeC = Merge.merge(modules.toList, "concat")
+            val reshapeC = Reshape(targetShape = Array(config.maxSeqLen, -1)).inputs(mergeC)
+            // concat the token embeddings
+            val mergeT = Merge.merge(List(embeddingT, reshapeC), mode = "concat")
+            val lstm1 = Bidirectional(LSTM(config.tokenHiddenSize, returnSequences = true)).inputs(mergeT)
+            val lstm2 = Bidirectional(LSTM(config.tokenHiddenSize, returnSequences = true)).inputs(lstm1)
+            val output = Dense(numOffsets, activation = "softmax").inputs(lstm2)
+            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen * config.maxCharLen)), Array(config.maxSeqLen))
+            val bigdl = Model(Array(inputT, inputC), output)
+            (bigdl, featureSize, labelSize, "t+c")
+          case "c@" =>
+            // since MapTable does not work with Keras-style layers, we need to use the elementary nn layers here...
+            // char module: use a GRU for each token position, inputShape = Shape(config.maxSeqLen * config.maxCharLen
+            val inputC = com.intel.analytics.bigdl.dllib.nn.Input()
+            val embeddingC = LookupTable(numChars + 1, config.charEmbeddingSize).inputs(inputC)
+            val reshape = com.intel.analytics.bigdl.dllib.nn.Reshape(Array(config.maxSeqLen, config.maxCharLen, config.charEmbeddingSize)).inputs(embeddingC)
+            val split = SplitTable(1, config.maxSeqLen).inputs(reshape) // tensors of shape (1 x maxCharLen x charEmbeddingSize)
+            // table => MapTable(gru) to compute token representation by GRU
+            val gru = com.intel.analytics.bigdl.dllib.nn.GRU(config.charEmbeddingSize, config.charHiddenSize) // to output tensors of shape (1 x charHiddenSize)
+            val mapTable = MapTable(gru).inputs(split) // NOTE: it seems that MapTable does not work with GRU...
+            // table => JoinTable() to get output maxSeqLen x charHiddenSize
+            val joinTable = JoinTable(1, 2).inputs(mapTable)
+            val merge = JoinTable(2, 2).asInstanceOf[AbstractModule[Table, Tensor[Float], Float]]
+            val recurrent = com.intel.analytics.bigdl.dllib.nn.BiRecurrent[Float](merge)
+            recurrent.add(com.intel.analytics.bigdl.dllib.nn.LSTM(config.charHiddenSize, config.tokenHiddenSize))
+            val recurrentNode = recurrent.inputs(joinTable)
+            val linearNode = TimeDistributed(Linear(2*config.tokenHiddenSize, numOffsets)).inputs(recurrentNode)
+            val output = TimeDistributed(LogSoftMax()).inputs(linearNode)
+            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen * config.maxCharLen)), Array(config.maxSeqLen))
+            val bigdl = com.intel.analytics.bigdl.dllib.nn.Graph(inputC, output)
+            (bigdl, featureSize, labelSize, "c")
+          case "c" =>
+            // use characters (30 * 13 positions, very long sequence!)
+            val bigdl = Sequential()
+            val embeddingC = Embedding(numChars + 1, config.charEmbeddingSize, inputLength = config.maxSeqLen * config.maxCharLen)
+            bigdl.add(embeddingC)
+            val lstmC = Bidirectional(LSTM(config.charHiddenSize, returnSequences = true))
+            bigdl.add(lstmC)
+            val reshapeC = Reshape(targetShape = Array(config.maxSeqLen, config.maxCharLen, 2*config.charHiddenSize))
+            bigdl.add(reshapeC)
+            val selectC = Select(2, -1) // select the state at the last character of each token
+            bigdl.add(selectC)
+            bigdl.add(Dropout(0.5))
+            bigdl.add(Dense(numOffsets, activation = "softmax"))
+            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen * config.maxCharLen)), Array(config.maxSeqLen))
+            bigdl.summary()
+            (bigdl, featureSize, labelSize, "c")
