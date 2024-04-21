@@ -31,7 +31,7 @@ import java.nio.file.{Files, Paths, StandardOpenOption}
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 
-import vlp.con.{Sequencer, CharSequencer, Sequencer4BERT, TimeDistributedTop1Accuracy}
+import vlp.ner.{Sequencer, CharSequencer, Sequencer4BERT, TimeDistributedTop1Accuracy}
 
 
 object VSC {

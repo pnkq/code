@@ -7,6 +7,10 @@ import java.nio.file.StandardOpenOption
 case class Node(id: String, attributes: Map[String, String])
 case class Edge(src: String, tar: String, label: String)
 
+/**
+* phuonglh, April 2024. 
+
+*/
 object NetworkX {
 
   def createGraph(pathCoNLLU: String): (Set[Node], Set[Edge]) = {    
@@ -61,11 +65,25 @@ object NetworkX {
   }
 
   def main(args: Array[String]): Unit = {
-    val path = "dat/dep/eng/UD_English-EWT/en_ewt-ud-train.conllu"
-    val (nodes, edges) = createGraph(path)
-    // export the edges to a TSV file
-    val lines = edges.map { edge => edge.src + "\t" + edge.tar + "\t" + edge.label}.toList
+    if (args.length == 0) {
+      println("Need an argument of language: eng/ind/vie.")
+    }
+    var basePath = "dat/dep/ud-treebanks-v2.13/" 
+    val language = args(0)
+    language match {
+      case "eng" => basePath += "UD_English-EWT/en_ewt-ud-"
+      case "ind" => basePath += "UD_Indonesian-GSD/id_gsd-ud-"
+      case "vie" => basePath += "UD_Vietnamese-VTB/vi_vtb-ud-"
+    }
+    val splits = Array("train", "dev", "test")
+
     import scala.collection.JavaConverters._
-    Files.write(Paths.get("dat/dep/eng-train.tsv"), lines.asJava, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    for (split <- splits) {
+      val path = basePath + split + ".conllu"
+      val (nodes, edges) = createGraph(path)
+      // export the edges to a TSV file
+      val lines = edges.map { edge => edge.src + "\t" + edge.tar + "\t" + edge.label}.toList
+      Files.write(Paths.get(s"dat/dep/$language-$split.tsv"), lines.asJava, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    }
   }
 }

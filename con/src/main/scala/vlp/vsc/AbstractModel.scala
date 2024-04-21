@@ -15,7 +15,7 @@ import org.apache.spark.sql.DataFrame
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.feature.{Tokenizer, RegexTokenizer, CountVectorizer, CountVectorizerModel, StringIndexer}
 
-import vlp.con.{Sequencer, CharSequencer, Sequencer4BERT, ArgMaxLayer}
+import vlp.ner.{Sequencer, CharSequencer, Sequencer4BERT, ArgMaxLayer}
 
 
 /**

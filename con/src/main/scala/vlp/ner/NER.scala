@@ -1,4 +1,4 @@
-package vlp.con
+package vlp.ner
 
 import com.johnsnowlabs.nlp.annotator._
 import com.johnsnowlabs.nlp.embeddings.{BertEmbeddings, DeBertaEmbeddings, DistilBertEmbeddings}
