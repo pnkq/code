@@ -120,10 +120,11 @@ object Forecaster {
       .withColumn("dateSt", concat_ws("/", col("yearSt"), col("monthSt"), col("daySt")))
       .withColumn("date", to_date(col("dateSt"), "yyy/MM/dd"))
       .withColumnRenamed(stationCol, "y_0")
-    (ff, Array("_c1", "_c2")) // Array(month, day)
+    (ff, Array("_c1", "_c2")) // Array(month, dayOfMonth)
   }
   /**
    * Reads a complex CSV file containing more than a hundred of columns. The label (rainfall) column is named "y".
+   * Should filter out data of year < 2020 (many missing re-analysis data).
    * @param spark spark session
    * @param path a path to the CSV file
    * @return a data frame and an array of extra input columns
@@ -135,10 +136,9 @@ object Forecaster {
       .withColumn("year", year(col("date")))
       .withColumn("month", month(col("date")))
       .withColumn("dayOfMonth", dayofmonth(col("date")))
-      .withColumn("dayOfYear", dayofyear(col("date")))
     val ff = ef.filter("year < 2020")
     val extraInputCols = for (i <- 0 to 13; j <- 0 to 8) yield s"extra_${i}_$j"
-    (ff, extraInputCols.toArray ++ Array("month", "dayOfMonth", "dayOfYear"))
+    (ff, extraInputCols.toArray ++ Array("month", "dayOfMonth"))
   }
 
   /**
@@ -170,6 +170,7 @@ object Forecaster {
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
       opt[String]('d', "data").action((x, conf) => conf.copy(data = x)).text("data type: simple/complex")
+      opt[String]('s', "station").action((x, conf) => conf.copy(station = x)).text("station viet-tri/vinh-yen/...")
       opt[Boolean]('u', "u").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
       opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookback = x)).text("look-back (days)")
       opt[Int]('h', "horizon").action((x, conf) => conf.copy(horizon = x)).text("horizon (days)")
@@ -182,16 +183,17 @@ object Forecaster {
     }
     opts.parse(args, Config()) match {
       case Some(config) =>
-        val conf = new SparkConf().setAppName(getClass.getName).setMaster("local[*]").set("spark.executor.memory", config.executorMemory).set("spark.driver.memory", config.driverMemory)
+        val conf = new SparkConf().setAppName(getClass.getName).setMaster("local[*]")
+          .set("spark.executor.memory", config.executorMemory).set("spark.driver.memory", config.driverMemory)
         val sc = NNContext.initNNContext(conf)
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
 
         val (ff, extraInputCols) = config.data match {
-          case "complex" => readComplex(spark, "dat/lnq/vinh-yen.csv")
+          case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
           case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
         }
-        val modelPath = if (config.data == "complex") "bin/c/" else "bin/s"
+        val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
 
         config.mode match {
           case "train" =>
@@ -211,7 +213,7 @@ object Forecaster {
             val bf = preprocessor.transform(af)
             bf.show()
 
-            // split roughly 90/10, keep order sequence
+            // split roughly 90/10, keep sequence order
             val uf = bf.filter("year <= 2015")
             val vf = bf.filter("2016 <= year")
             println(s"Training size = ${uf.count}")
@@ -221,8 +223,8 @@ object Forecaster {
 
             val bigdl = createModel(config, extraInputCols.length)
             bigdl.summary()
-            val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/")
-            val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/")
+            val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/${config.station}")
+            val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/${config.station}")
 
             val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(config.lookback + 1 + extraInputCols.length), labelSize = Array(config.horizon))
             estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
@@ -233,8 +235,8 @@ object Forecaster {
             prediction.select("label", "prediction").show(false)
             bigdl.saveModel(s"$modelPath/${config.modelType}.bigdl", overWrite = true)
             plot(spark, config, prediction)
-            val mae = computeError(prediction)
-            mae.show(false)
+            val error = computeError(prediction)
+            error.show(false)
           case "eval" =>
             val vf = spark.read.parquet(s"$modelPath/vf")
             vf.show(10)
@@ -243,8 +245,8 @@ object Forecaster {
             val prediction = bigdl.predict(vf, featureCols = Array("features"), predictionCol = "prediction")
             prediction.select("label", "prediction").show(false)
             plot(spark, config, prediction)
-            val mae = computeError(prediction)
-            mae.show(false)
+            val error = computeError(prediction)
+            error.show(false)
         }
         spark.stop()
       case None => println("Invalid options!")

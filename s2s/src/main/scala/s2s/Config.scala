@@ -14,5 +14,6 @@ case class Config(
   dropoutRate: Double = 0.2,
   batchSize: Int = 64,
   learningRate: Double = 1E-4,
-  epochs: Int = 30
+  epochs: Int = 30,
+  station: String = "viet-tri"
 )
