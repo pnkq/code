@@ -33,7 +33,7 @@ import com.cibo.evilplot.plot.renderers.PathRenderer
  */
 object Forecaster {
 
-  private def roll(ff: DataFrame, lookback: Int = 7, horizon: Int = 5): DataFrame = {
+  private def roll(ff: DataFrame, lookback: Int, horizon: Int): DataFrame = {
     // defining a window ordered by date
     val window = Window.orderBy("date")
     // create previous values, each in a separate column
@@ -74,36 +74,38 @@ object Forecaster {
     model
   }
 
-  private def plot(spark: SparkSession, config: Config, prediction: DataFrame) = {
+  private def plot(spark: SparkSession, config: Config, prediction: DataFrame): Unit = {
     // draw multiple plots corresponding to number of time steps up to horizon for the first year of the validation set
     import spark.implicits._
     val ys = prediction.select("label").map(row => row.getAs[Vector](0).toDense.toArray).take(365).zipWithIndex
     val zs = prediction.select("prediction").map(row => row.getAs[Seq[Float]](0)).take(365).zipWithIndex
 
-    val dataY0 = ys.map(pair => Point(pair._2, pair._1(0)))
-    val dataZ0 = zs.map(pair => Point(pair._2, pair._1(0)))
+    // plot +1 day prediction and label
+    val dataY0 = ys.map(pair => Point(pair._2, pair._1.head))
+    val dataZ0 = zs.map(pair => Point(pair._2, pair._1.head))
     displayPlot(Overlay(
       LinePlot(dataY0, Some(PathRenderer.named[Point](name = "horizon=0", strokeWidth = Some(1.2), color = HTMLNamedColors.gray))),
       LinePlot(dataZ0, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue))))
-    ).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend().render())
+    ).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend())
 
-    val plots = (0 until config.horizon).map { d =>
-      val dataY = ys.map(pair => Point(pair._2, pair._1(d)))
-      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
-      Seq(
-        LinePlot(dataY, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = HTMLNamedColors.gray)))
-          .topPlot(LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue)))))
-      )
-    }
+//    val plots = (0 until config.horizon).map { d =>
+//      val dataY = ys.map(pair => Point(pair._2, pair._1(d)))
+//      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
+//      Seq(
+//        LinePlot(dataY, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = HTMLNamedColors.gray)))
+//          .topPlot(LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue)))))
+//      )
+//    }
+//    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend().render())
+
     // overlay plots
     val colors = Color.getGradientSeq(config.horizon)
-    val days = (0 until config.horizon)
+    val days = 0 until config.horizon
     val overlayPlots = days.map { d =>
       val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
       LinePlot(data = dataZ, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = colors(d))))
     }
-    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend().render())
-    displayPlot(Overlay(overlayPlots: _*).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend().render())
+    displayPlot(Overlay(overlayPlots: _*).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend())
   }
 
   private def readSimple(spark: SparkSession, path: String) = {
@@ -121,9 +123,9 @@ object Forecaster {
     (ff, Array("_c1", "_c2")) // Array(month, day)
   }
   /**
-   * Reads a complex CSV file containing more than hundred of columns. The label (rainfall) column is named "y".
-   * @param spark
-   * @param path
+   * Reads a complex CSV file containing more than a hundred of columns. The label (rainfall) column is named "y".
+   * @param spark spark session
+   * @param path a path to the CSV file
    * @return a data frame and an array of extra input columns
    */
   private def readComplex(spark: SparkSession, path: String) = {
@@ -135,29 +137,35 @@ object Forecaster {
       .withColumn("dayOfMonth", dayofmonth(col("date")))
       .withColumn("dayOfYear", dayofyear(col("date")))
     val ff = ef.filter("year < 2020")
-    val extraInputCols = for (i <- 0 to 13; j <- 0 to 8) yield s"extra_${i}_${j}"
+    val extraInputCols = for (i <- 0 to 13; j <- 0 to 8) yield s"extra_${i}_$j"
     (ff, extraInputCols.toArray ++ Array("month", "dayOfMonth", "dayOfYear"))
   }
 
   /**
-   * Compute the error between the gold label and the prediction (MAE -- mean absolute error)
+   * Compute the error between the gold label and the prediction (MAE -- mean absolute error, MSE -- mean squared error)
    * @param df a prediction data frame, which should have two columns: "label" (vector) and "prediction" (array[float])
    */
   private def computeError(df: DataFrame) = {
-    val error = udf((label: Vector, prediction: Array[Float]) => {
+    val errorMAE = udf((label: Vector, prediction: Array[Float]) => {
       val error = label.toArray.zip(prediction).map { case (a, b) => Math.abs(a - b) }
       Vectors.dense(error)
     })
-    // compute average MAE between label and prediction
-    val output = df.select("label", "prediction").withColumn("error", error(col("label"), col("prediction")))
+    val errorMSE = udf((label: Vector, prediction: Array[Float]) => {
+      val error = label.toArray.zip(prediction).map { case (a, b) => (a - b)*(a - b) }
+      Vectors.dense(error)
+    })
+    // compute average MAE/MSE between label and prediction
+    val output = df.select("label", "prediction")
+      .withColumn("mae", errorMAE(col("label"), col("prediction")))
+      .withColumn("mse", errorMSE(col("label"), col("prediction")))
     output.show(false)
     import org.apache.spark.ml.stat.Summarizer
-    output.select(Summarizer.mean(col("error")))
+    output.select(Summarizer.mean(col("mae")), Summarizer.mean(col("mse")))
   }
 
   def main(args: Array[String]): Unit = {
-    val opts = new OptionParser[Config](getClass().getName()) {
-      head(getClass().getName(), "1.0")
+    val opts = new OptionParser[Config](getClass.getName) {
+      head(getClass.getName, "1.0")
       opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
@@ -197,10 +205,10 @@ object Forecaster {
             val scalerX = new StandardScaler().setInputCol("x").setOutputCol("features")
             val scalerY = new StandardScaler().setInputCol("y").setOutputCol("label")
             val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
-            val preprocesor = pipeline.fit(af)
-            preprocesor.write.overwrite().save(s"$modelPath/pre")
+            val preprocessor = pipeline.fit(af)
+            preprocessor.write.overwrite().save(s"$modelPath/pre")
 
-            val bf = preprocesor.transform(af)
+            val bf = preprocessor.transform(af)
             bf.show()
 
             // split roughly 90/10, keep order sequence
@@ -234,7 +242,6 @@ object Forecaster {
             bigdl.summary()
             val prediction = bigdl.predict(vf, featureCols = Array("features"), predictionCol = "prediction")
             prediction.select("label", "prediction").show(false)
-            prediction.printSchema()
             plot(spark, config, prediction)
             val mae = computeError(prediction)
             mae.show(false)
