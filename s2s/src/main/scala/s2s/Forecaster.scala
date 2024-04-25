@@ -77,13 +77,12 @@ object Forecaster {
       for (j <- 0 until config.numLayers - 1) {
         model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
       }
-      model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}"))
     } else {
       for (j <- 0 until config.numLayers - 1) {
         model.add(Bidirectional(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j")))
       }
-      model.add(Bidirectional(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}")))
     }
+    model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}"))
     model.add(Dropout(config.dropoutRate).setName("dropout"))
     model.add(Dense(config.horizon).setName("dense"))
     model
@@ -111,7 +110,7 @@ object Forecaster {
           .topPlot(LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue)))))
       )
     }
-    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend().render())
+    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend())
 
     // overlay plots
     val colors = Color.getGradientSeq(config.horizon)
