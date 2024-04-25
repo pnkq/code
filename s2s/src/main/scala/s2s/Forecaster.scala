@@ -24,7 +24,7 @@ import com.cibo.evilplot.displayPlot
 import com.cibo.evilplot.plot._
 import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
 import com.cibo.evilplot.numeric.Point
-import org.apache.spark.ml.linalg.{Vector, Vectors}
+import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import com.cibo.evilplot.colors._
 import com.cibo.evilplot.plot.renderers.PathRenderer
 
@@ -33,31 +33,46 @@ import com.cibo.evilplot.plot.renderers.PathRenderer
  */
 object Forecaster {
 
-  private def roll(ff: DataFrame, lookback: Int, horizon: Int): DataFrame = {
+  /**
+   * Rolls a data frame based on the "date" column.
+   * @param ff a data frame
+   * @param lookback number of past days to look back
+   * @param horizon number of future days to forecast
+   * @param featureCols column names to row
+   * @param targetCol target column
+   * @return a data frame with an array of columns for input features
+   */
+  private def roll(ff: DataFrame, lookback: Int, horizon: Int, featureCols: Array[String], targetCol: String = "y", imputeMissing: Boolean = false): DataFrame = {
     // defining a window ordered by date
     val window = Window.orderBy("date")
-    // create previous values, each in a separate column
+    // roll values, each value is in a separate column
     var gf = ff
-    for (j <- -lookback to -1) {
-      gf = gf.withColumn(s"y_$j", lag("y_0", -j).over(window))
+    // all features and the target value are rolled backward (NOTE: append targetCol)
+    for (name <- featureCols :+ targetCol) {
+      for (j <- -lookback + 1 to -1) {
+        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
+      }
     }
-    gf.show()
-    // create next values, each in a separate column
+    // only target value is rolled forward
     for (j <- 1 to horizon) {
-      gf = gf.withColumn(s"y_$j", lead("y_0", j).over(window))
+      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
     }
-    // fill missing data (null) as zero
-    val valueCols = ((-lookback to -1) ++ (1 to horizon)).map(c => s"y_$c")
-    var af = gf
-    for (c <- valueCols) {
-      af = af.withColumn(c, when(isnull(col(c)), 0).otherwise(col(c)))
+    // impute missing values if specified:
+    if (!imputeMissing) gf else {
+      // collect all columns that has been rolled for missing value imputation
+      val addedCols = gf.schema.fieldNames.filter(c => featureCols.exists(c.indexOf(_) >= 0))
+      // fill missing data (null) as zero
+      var af = gf
+      for (c <- addedCols) {
+        af = af.withColumn(c, when(isnull(col(c)), 0).otherwise(col(c)))
+      }
+      af
     }
-    af
   }
 
-  private def createModel(config: Config, extraFeatureSize: Int): Sequential[Float] = {
+  private def createModel(config: Config, featureSize: Int): Sequential[Float] = {
     val model = Sequential()
-    model.add(Reshape(targetShape = Array(1, config.lookback + 1 + extraFeatureSize), inputShape = Shape(config.lookback + 1 + extraFeatureSize)).setName("reshape"))
+    model.add(Reshape(targetShape = Array(config.lookback, featureSize), inputShape = Shape(config.lookback * featureSize)).setName("reshape"))
     if (!config.bidirectional) {
       for (j <- 0 until config.numLayers - 1) {
         model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
@@ -88,15 +103,15 @@ object Forecaster {
       LinePlot(dataZ0, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue))))
     ).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend())
 
-//    val plots = (0 until config.horizon).map { d =>
-//      val dataY = ys.map(pair => Point(pair._2, pair._1(d)))
-//      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
-//      Seq(
-//        LinePlot(dataY, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = HTMLNamedColors.gray)))
-//          .topPlot(LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue)))))
-//      )
-//    }
-//    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend().render())
+    val plots = (0 until config.horizon).map { d =>
+      val dataY = ys.map(pair => Point(pair._2, pair._1(d)))
+      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
+      Seq(
+        LinePlot(dataY, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = HTMLNamedColors.gray)))
+          .topPlot(LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue)))))
+      )
+    }
+    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend().render())
 
     // overlay plots
     val colors = Color.getGradientSeq(config.horizon)
@@ -119,7 +134,7 @@ object Forecaster {
       .withColumn("daySt", prependZero(col("_c2")))
       .withColumn("dateSt", concat_ws("/", col("yearSt"), col("monthSt"), col("daySt")))
       .withColumn("date", to_date(col("dateSt"), "yyy/MM/dd"))
-      .withColumnRenamed(stationCol, "y_0")
+      .withColumnRenamed(stationCol, "y")
     (ff, Array("_c1", "_c2")) // Array(month, dayOfMonth)
   }
   /**
@@ -127,18 +142,20 @@ object Forecaster {
    * Should filter out data of year < 2020 (many missing re-analysis data).
    * @param spark spark session
    * @param path a path to the CSV file
-   * @return a data frame and an array of extra input columns
+   * @return a data frame and an array of date columns
    */
   private def readComplex(spark: SparkSession, path: String) = {
-    val df = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
-    val ef = df.withColumnRenamed("y", "y_0")
-      .withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
+    val cf = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
+    val selectedColNames = cf.schema.fieldNames.filter(name =>
+      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
+    )
+    val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
+    val ef = df.withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
       .withColumn("year", year(col("date")))
       .withColumn("month", month(col("date")))
       .withColumn("dayOfMonth", dayofmonth(col("date")))
     val ff = ef.filter("year < 2020")
-    val extraInputCols = for (i <- 0 to 13; j <- 0 to 8) yield s"extra_${i}_$j"
-    (ff, extraInputCols.toArray ++ Array("month", "dayOfMonth"))
+    (ff, Array("month", "dayOfMonth"))
   }
 
   /**
@@ -189,29 +206,34 @@ object Forecaster {
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
 
-        val (ff, extraInputCols) = config.data match {
+        val (ff, dateInputCols) = config.data match {
           case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
           case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
         }
         val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
+        val targetCol = "y"
+        val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
+        val featureCols = extraCols ++ dateInputCols
 
         config.mode match {
           case "train" =>
             ff.show()
-            val af = roll(ff, config.lookback, config.horizon)
-            af.show()
-            // assembler look-back vector and horizon vector
-            val inputCols = (-config.lookback to 0).map(c => s"y_$c").toArray ++ extraInputCols
-            val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("x")
-            val assemblerY = new VectorAssembler().setInputCols((1 to config.horizon).map(c => s"y_$c").toArray).setOutputCol("y")
-            val scalerX = new StandardScaler().setInputCol("x").setOutputCol("features")
-            val scalerY = new StandardScaler().setInputCol("y").setOutputCol("label")
+            val af = roll(ff, config.lookback, config.horizon, featureCols, targetCol)
+            if (config.data == "simple") af.show()
+            // arrange input by time steps (i.e., -3, -2, -1, 0)
+            val inputCols = (-config.lookback + 1 until 0).toArray.flatMap { j =>
+              af.schema.fieldNames.filter(name => name.endsWith(j.toString))
+            } ++ featureCols ++ Array(targetCol)
+            val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
+            val assemblerY = new VectorAssembler().setInputCols((1 to config.horizon).map(c => s"y_$c").toArray).setOutputCol("output").setHandleInvalid("skip")
+            val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
+            val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
             val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
             val preprocessor = pipeline.fit(af)
             preprocessor.write.overwrite().save(s"$modelPath/pre")
 
             val bf = preprocessor.transform(af)
-            bf.show()
+            bf.select("input", "output").show()
 
             // split roughly 90/10, keep sequence order
             val uf = bf.filter("year <= 2015")
@@ -221,12 +243,13 @@ object Forecaster {
             uf.write.mode("overwrite").parquet(s"$modelPath/uf")
             vf.write.mode("overwrite").parquet(s"$modelPath/vf")
 
-            val bigdl = createModel(config, extraInputCols.length)
+            val featureSize = featureCols.length + 1
+            val bigdl = createModel(config, featureSize)
             bigdl.summary()
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/${config.station}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/${config.station}")
 
-            val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(config.lookback + 1 + extraInputCols.length), labelSize = Array(config.horizon))
+            val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(featureSize * config.lookback), labelSize = Array(config.horizon))
             estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
@@ -246,9 +269,19 @@ object Forecaster {
             prediction.select("label", "prediction").show(false)
             plot(spark, config, prediction)
             val error = computeError(prediction)
-            error.show(false)
+            val mae = error.head().getAs[DenseVector](0)
+            val mse = error.head().getAs[DenseVector](1)
+            println("avg(MAE) = " + mae)
+            println("avg(MSE) = " + mse)
+          case "roll" =>
+            val (ff, _) = readComplex(spark, s"dat/lnq/x.csv")
+            val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")
+            val af = roll(ff, config.lookback, config.horizon, featureCols)
+            ff.show()
+            af.show()
         }
         spark.stop()
+        println("Done!")
       case None => println("Invalid options!")
     }
   }
