@@ -18,9 +18,21 @@ LSTM-based Rainfall Prediction
 
     You may want to open TensorBoard (sum/lstm) to see the training log.
 
-    tensorboard --logdir sum/lstm
+    tensorboard --logdir sum/
 
 4. Evaluate a model:
 
     bloop run -p s2s -m s2s.Forecaster -- -m eval -d simple
 
+5. Arguments:
+
+    -d simple/complex (data source)
+    -m train/eval (mode)
+    -s stationName (viet-tri, vinh-yen,...)
+    -h horizon (number of days)
+    -l look back (number of days)
+    -b batchSize
+    -j numLayers (LSTM layers)
+    -r recurrentSize (number of hidden units in each LSTM layer)
+    -p plot figures (false by default)
+    -u bidirectional LSTM (false by default)
