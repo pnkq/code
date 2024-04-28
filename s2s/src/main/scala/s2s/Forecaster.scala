@@ -28,6 +28,8 @@ import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import com.cibo.evilplot.colors._
 import com.cibo.evilplot.plot.renderers.PathRenderer
 
+import java.nio.file.{Files, Paths, StandardOpenOption}
+
 /**
  * An implementation of time series predictor using LSTM.
  */
@@ -83,7 +85,8 @@ object Forecaster {
       }
     }
     model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}"))
-    model.add(Dropout(config.dropoutRate).setName("dropout"))
+    if (config.dropoutRate > 0)
+      model.add(Dropout(config.dropoutRate).setName("dropout"))
     model.add(Dense(config.horizon).setName("dense"))
     model
   }
@@ -179,6 +182,77 @@ object Forecaster {
     output.select(Summarizer.mean(col("mae")), Summarizer.mean(col("mse")))
   }
 
+  def train(spark: SparkSession, config: Config): Result = {
+    val (ff, dateInputCols) = config.data match {
+      case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
+      case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
+    }
+    val targetCol = "y"
+    val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
+    val featureCols = extraCols ++ dateInputCols
+
+    val af = roll(ff, config.lookback, config.horizon, featureCols, targetCol)
+    if (config.verbose && config.data == "simple") af.show()
+    // arrange input by time steps (i.e., -3, -2, -1, 0)
+    val inputCols = (-config.lookback + 1 until 0).toArray.flatMap { j =>
+      af.schema.fieldNames.filter(name => name.endsWith(j.toString))
+    } ++ featureCols ++ Array(targetCol)
+    val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
+    val assemblerY = new VectorAssembler().setInputCols((1 to config.horizon).map(c => s"y_$c").toArray).setOutputCol("output").setHandleInvalid("skip")
+    val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
+    val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
+    val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
+    val preprocessor = pipeline.fit(af)
+
+    val bf = preprocessor.transform(af)
+    // split roughly 90/10, keep sequence order
+    val uf = bf.filter("year <= 2015")
+    val vf = bf.filter("2016 <= year")
+    if (config.verbose) {
+      println(s"Training size = ${uf.count}")
+      println(s"    Test size = ${vf.count}")
+    }
+    val featureSize = featureCols.length + 1
+    val bigdl = createModel(config, featureSize)
+    bigdl.summary()
+    val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/${config.station}")
+    val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/${config.station}")
+
+    val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(featureSize * config.lookback), labelSize = Array(config.horizon))
+    estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
+      .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
+      .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
+    if (config.save) {
+      val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
+      uf.write.mode("overwrite").parquet(s"$modelPath/uf")
+      vf.write.mode("overwrite").parquet(s"$modelPath/vf")
+      bigdl.saveModel(s"$modelPath/${config.modelType}.bigdl", overWrite = true)
+    }
+    val startClock = System.currentTimeMillis()
+    val model = estimator.fit(uf)
+    val endClock = System.currentTimeMillis()
+    // compute training errors and validation errors
+    val predictionU = model.transform(uf)
+    val predictionV = model.transform(vf)
+    if (config.verbose) {
+      predictionV.select("label", "prediction").show(false)
+    }
+    val errorU = computeError(predictionU)
+    val maeU = errorU.head().getAs[DenseVector](0)
+    val mseU = errorU.head().getAs[DenseVector](1)
+    val errorV = computeError(predictionV)
+    val maeV = errorV.head().getAs[DenseVector](0)
+    val mseV = errorV.head().getAs[DenseVector](1)
+    if (config.verbose) {
+      println("avg(validationMAE) = " + maeV)
+      println("avg(validationMSE) = " + mseV)
+    }
+    if (config.plot) plot(spark, config, predictionV)
+    val trainingTime = (endClock - startClock) / 1000 // seconds
+    Result(maeU.toArray, mseU.toArray, maeV.toArray, mseV.toArray, trainingTime, config)
+  }
+
+
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[Config](getClass.getName) {
       head(getClass.getName, "1.0")
@@ -206,64 +280,16 @@ object Forecaster {
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
 
-        val (ff, dateInputCols) = config.data match {
-          case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
-          case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
-        }
-        val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
-        val targetCol = "y"
-        val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
-        val featureCols = extraCols ++ dateInputCols
-
         config.mode match {
           case "train" =>
-            ff.show()
-            val af = roll(ff, config.lookback, config.horizon, featureCols, targetCol)
-            if (config.data == "simple") af.show()
-            // arrange input by time steps (i.e., -3, -2, -1, 0)
-            val inputCols = (-config.lookback + 1 until 0).toArray.flatMap { j =>
-              af.schema.fieldNames.filter(name => name.endsWith(j.toString))
-            } ++ featureCols ++ Array(targetCol)
-            val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
-            val assemblerY = new VectorAssembler().setInputCols((1 to config.horizon).map(c => s"y_$c").toArray).setOutputCol("output").setHandleInvalid("skip")
-            val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
-            val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
-            val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
-            val preprocessor = pipeline.fit(af)
-            preprocessor.write.overwrite().save(s"$modelPath/pre")
-
-            val bf = preprocessor.transform(af)
-            bf.select("input", "output").show()
-
-            // split roughly 90/10, keep sequence order
-            val uf = bf.filter("year <= 2015")
-            val vf = bf.filter("2016 <= year")
-            println(s"Training size = ${uf.count}")
-            println(s"    Test size = ${vf.count}")
-            uf.write.mode("overwrite").parquet(s"$modelPath/uf")
-            vf.write.mode("overwrite").parquet(s"$modelPath/vf")
-
-            val featureSize = featureCols.length + 1
-            val bigdl = createModel(config, featureSize)
-            bigdl.summary()
-            val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/${config.station}")
-            val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/${config.station}")
-
-            val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(featureSize * config.lookback), labelSize = Array(config.horizon))
-            estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
-              .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
-            val model = estimator.fit(uf)
-            val prediction = model.transform(vf)
-            prediction.select("label", "prediction").show(false)
-            bigdl.saveModel(s"$modelPath/${config.modelType}.bigdl", overWrite = true)
-            if (config.plot) plot(spark, config, prediction)
-            val error = computeError(prediction)
-            val mae = error.head().getAs[DenseVector](0)
-            val mse = error.head().getAs[DenseVector](1)
-            println("avg(MAE) = " + mae)
-            println("avg(MSE) = " + mse)
+            val result = train(spark, config)
+            import upickle.default._
+            implicit val configRw: ReadWriter[Config] = macroRW[Config]
+            implicit val resultRw: ReadWriter[Result] = macroRW[Result]
+            val json = write(result) + "\n"
+            Files.write(Paths.get("dat/result.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
           case "eval" =>
+            val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
             val vf = spark.read.parquet(s"$modelPath/vf")
             vf.show(10)
             val bigdl = Models.loadModel[Float](s"$modelPath/${config.modelType}.bigdl")

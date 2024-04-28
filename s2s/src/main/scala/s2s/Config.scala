@@ -16,5 +16,7 @@ case class Config(
   learningRate: Double = 1E-4,
   epochs: Int = 30,
   station: String = "viet-tri",
-  plot: Boolean = false
+  plot: Boolean = false,
+  verbose: Boolean = false,
+  save: Boolean = false
 )

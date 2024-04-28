@@ -20,6 +20,7 @@ lazy val s2s = (project in file("."))
       "com.google.protobuf" % "protobuf-java" % "3.22.2",
       "org.scala-lang.modules" %% "scala-collection-compat" % "2.8.0",
       "io.github.cibotech" %% "evilplot" % "0.9.0",
-      "io.github.cibotech" %% "evilplot-repl" % "0.9.0"
+      "io.github.cibotech" %% "evilplot-repl" % "0.9.0",
+      "com.lihaoyi" %% "upickle" % "3.3.0"
     )
   )

@@ -32,6 +32,7 @@ LSTM-based Rainfall Prediction
     -h horizon (number of days)
     -l look back (number of days)
     -b batchSize
+    -k number of epochs
     -j numLayers (LSTM layers)
     -r recurrentSize (number of hidden units in each LSTM layer)
     -p plot figures (false by default)
