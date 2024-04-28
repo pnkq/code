@@ -22,7 +22,7 @@ lazy val commonSettings = Seq(
     "com.google.protobuf" % "protobuf-java" % "3.22.2",
     "com.github.scopt" %% "scopt" % "4.1.0",
     "com.johnsnowlabs.nlp" %% "spark-nlp" % sparkNLPVersion,
-    "org.openjfx" %% "javafx" % "22"
+    "org.openjfx" % "javafx" % "22" pomOnly()
   )
 )
 
