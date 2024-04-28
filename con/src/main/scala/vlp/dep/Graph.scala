@@ -48,6 +48,10 @@ case class Graph(sentence: Sentence) {
     dependencies.exists(_ == (u, dependency))
   }
 
+  def toText: String = {
+    sentence.tokens.tail.map(_.lemma).mkString(" ")
+  }
+
   override def toString: String = {
     val seq = dependencies.toSeq.sortBy(_._1).tail
     seq.map(pair => {

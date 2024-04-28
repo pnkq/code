@@ -4,9 +4,6 @@ val sparkNLPVersion = "4.3.2"
 
 
 javacOptions ++= Seq("-encoding", "UTF-8")
-scalacOptions ++= Seq("-Xfatal-warnings", "-deprecation", "-feature", "-unchecked",
-    "-language:implicitConversions", "-language:higherKinds", "-language:existentials", "-language:postfixOps"
-)
 
 lazy val commonSettings = Seq(
   name := "con",
@@ -31,5 +28,5 @@ lazy val con = (project in file("."))
       assembly / mainClass := Some("vlp.con.MED"),
       assembly / assemblyJarName := "con.jar",
       libraryDependencies ++= Seq(),
-   run / fork := true
+      run / fork := true
   )
