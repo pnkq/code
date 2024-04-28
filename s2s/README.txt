@@ -28,12 +28,12 @@ LSTM-based Rainfall Prediction
 
     -d simple/complex (data source)
     -m train/eval (mode)
-    -s stationName (viet-tri, vinh-yen,...)
+    -s station name (viet-tri, vinh-yen,...)
     -h horizon (number of days)
     -l look back (number of days)
-    -b batchSize
+    -b batch size
     -k number of epochs
     -j numLayers (LSTM layers)
-    -r recurrentSize (number of hidden units in each LSTM layer)
+    -r recurrent size (number of hidden units in each LSTM layer)
     -p plot figures (false by default)
     -u bidirectional LSTM (false by default)

@@ -74,7 +74,7 @@ object Forecaster {
 
   private def createModel(config: Config, featureSize: Int): Sequential[Float] = {
     val model = Sequential()
-    model.add(Reshape(targetShape = Array(config.lookback, featureSize), inputShape = Shape(config.lookback * featureSize)).setName("reshape"))
+    model.add(Reshape(targetShape = Array(config.lookBack, featureSize), inputShape = Shape(config.lookBack * featureSize)).setName("reshape"))
     if (!config.bidirectional) {
       for (j <- 0 until config.numLayers - 1) {
         model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
@@ -191,10 +191,10 @@ object Forecaster {
     val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
     val featureCols = extraCols ++ dateInputCols
 
-    val af = roll(ff, config.lookback, config.horizon, featureCols, targetCol)
+    val af = roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
     if (config.verbose && config.data == "simple") af.show()
     // arrange input by time steps (i.e., -3, -2, -1, 0)
-    val inputCols = (-config.lookback + 1 until 0).toArray.flatMap { j =>
+    val inputCols = (-config.lookBack + 1 until 0).toArray.flatMap { j =>
       af.schema.fieldNames.filter(name => name.endsWith(j.toString))
     } ++ featureCols ++ Array(targetCol)
     val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
@@ -218,7 +218,7 @@ object Forecaster {
     val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/${config.station}")
     val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/${config.station}")
 
-    val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(featureSize * config.lookback), labelSize = Array(config.horizon))
+    val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(featureSize * config.lookBack), labelSize = Array(config.horizon))
     estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
       .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
@@ -249,9 +249,10 @@ object Forecaster {
     }
     if (config.plot) plot(spark, config, predictionV)
     val trainingTime = (endClock - startClock) / 1000 // seconds
-    Result(maeU.toArray, mseU.toArray, maeV.toArray, mseV.toArray, trainingTime, config)
+    val experimentConfig = ExperimentConfig(config.station, config.horizon, config.lookBack, config.numLayers,
+      config.hiddenSize, config.epochs, config.dropoutRate, config.learningRate)
+    Result(maeU.toArray, mseU.toArray, maeV.toArray, mseV.toArray, trainingTime, experimentConfig)
   }
-
 
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[Config](getClass.getName) {
@@ -263,7 +264,7 @@ object Forecaster {
       opt[String]('s', "station").action((x, conf) => conf.copy(station = x)).text("station viet-tri/vinh-yen/...")
       opt[Boolean]('u', "u").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
       opt[Boolean]('p', "p").action((_, conf) => conf.copy(plot = true)).text("plot figures")
-      opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookback = x)).text("look-back (days)")
+      opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookBack = x)).text("look-back (days)")
       opt[Int]('h', "horizon").action((x, conf) => conf.copy(horizon = x)).text("horizon (days)")
       opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of layers")
       opt[Int]('r', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("hidden size")
@@ -284,7 +285,7 @@ object Forecaster {
           case "train" =>
             val result = train(spark, config)
             import upickle.default._
-            implicit val configRw: ReadWriter[Config] = macroRW[Config]
+            implicit val configRw: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
             implicit val resultRw: ReadWriter[Result] = macroRW[Result]
             val json = write(result) + "\n"
             Files.write(Paths.get("dat/result.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
@@ -305,9 +306,31 @@ object Forecaster {
           case "roll" =>
             val (ff, _) = readComplex(spark, s"dat/lnq/x.csv")
             val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")
-            val af = roll(ff, config.lookback, config.horizon, featureCols)
+            val af = roll(ff, config.lookBack, config.horizon, featureCols)
             ff.show()
             af.show()
+          case "experiment" =>
+            val horizons = Array(3, 5, 7, 10, 14)
+            val lookBacks = Array(7, 14)
+            val layers = Array(1, 2, 3, 4)
+            val hiddenSizes = Array(32, 64, 128, 256, 300, 400, 512)
+            for {
+              h <- horizons
+              l <- lookBacks
+              j <- layers
+              r <- hiddenSizes
+            } {
+              val runConfig = Config(config.station, "train", config.data, lookBack =  l, horizon = h, numLayers = j,
+                hiddenSize = r, config.epochs, config.dropoutRate, config.learningRate, batchSize = Runtime.getRuntime.availableProcessors * 4,
+                driverMemory = config.driverMemory, executorMemory = config.executorMemory
+              )
+              val result = train(spark, runConfig)
+              import upickle.default._
+              implicit val configRw: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
+              implicit val resultRw: ReadWriter[Result] = macroRW[Result]
+              val json = write(result) + "\n"
+              Files.write(Paths.get("dat/result.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+            }
         }
         spark.stop()
         println("Done!")
