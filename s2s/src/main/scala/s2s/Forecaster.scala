@@ -177,7 +177,6 @@ object Forecaster {
     val output = df.select("label", "prediction")
       .withColumn("mae", errorMAE(col("label"), col("prediction")))
       .withColumn("mse", errorMSE(col("label"), col("prediction")))
-    output.show(false)
     import org.apache.spark.ml.stat.Summarizer
     output.select(Summarizer.mean(col("mae")), Summarizer.mean(col("mse")))
   }
@@ -262,8 +261,9 @@ object Forecaster {
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
       opt[String]('d', "data").action((x, conf) => conf.copy(data = x)).text("data type: simple/complex")
       opt[String]('s', "station").action((x, conf) => conf.copy(station = x)).text("station viet-tri/vinh-yen/...")
-      opt[Boolean]('u', "u").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
-      opt[Boolean]('p', "p").action((_, conf) => conf.copy(plot = true)).text("plot figures")
+      opt[Boolean]('u', "bidirectional").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
+      opt[Boolean]('p', "plot").action((_, conf) => conf.copy(plot = true)).text("plot figures")
+      opt[Boolean]('v', "verbose").action((_, conf) => conf.copy(verbose = true)).text("verbose mode")
       opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookBack = x)).text("look-back (days)")
       opt[Int]('h', "horizon").action((x, conf) => conf.copy(horizon = x)).text("horizon (days)")
       opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of layers")
@@ -310,9 +310,9 @@ object Forecaster {
             ff.show()
             af.show()
           case "experiment" =>
-            val horizons = Array(3, 5, 7, 10, 14)
+            val horizons = Array(5, 7, 10, 14)
             val lookBacks = Array(7, 14)
-            val layers = Array(1, 2, 3, 4)
+            val layers = Array(2, 3)
             val hiddenSizes = Array(32, 64, 128, 256, 300, 400, 512)
             for {
               h <- horizons
