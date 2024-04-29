@@ -44,5 +44,7 @@ LSTM-based Rainfall Prediction
 
 6. Run many experiments: -m experiment
 
-    bloop run -p s2s -m s2s.Forecaster -- -m experiment -d simple -s S1
-    bloop run -p s2s -m s2s.Forecaster -- -m experiment -d complex -s viet-tri
+    TeslaT4: bloop run -p s2s -m s2s.Forecaster -- -m experiment -d simple -s S1
+    Sun: bloop run -p s2s -m s2s.Forecaster -- -m experiment -d complex -s viet-tri
+
+

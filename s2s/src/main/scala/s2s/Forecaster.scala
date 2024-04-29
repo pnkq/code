@@ -44,21 +44,40 @@ object Forecaster {
    * @param targetCol target column
    * @return a data frame with an array of columns for input features
    */
-  private def roll(ff: DataFrame, lookback: Int, horizon: Int, featureCols: Array[String], targetCol: String = "y", imputeMissing: Boolean = false): DataFrame = {
+  private def roll(ff: DataFrame, lookBack: Int, horizon: Int, featureCols: Array[String], targetCol: String = "y", imputeMissing: Boolean = false): DataFrame = {
     // defining a window ordered by date
     val window = Window.orderBy("date")
     // roll values, each value is in a separate column
     var gf = ff
     // all features and the target value are rolled backward (NOTE: append targetCol)
-    for (name <- featureCols :+ targetCol) {
-      for (j <- -lookback + 1 to -1) {
-        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
-      }
+//    for (name <- featureCols :+ targetCol) {
+//      for (j <- -lookBack + 1 to -1) {
+//        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
+//      }
+//  }
+  // use select() to avoid StackOverflowException
+    val gfColNames = gf.schema.fieldNames
+    val gfCols = gfColNames.map(col(_))
+    val pairs = for {
+      name <- featureCols :+ targetCol
+      j <- -lookBack + 1 to -1
+    } yield {
+      (s"${name}_$j", lag(name, -j).over(window))
     }
-    // only target value is rolled forward
-    for (j <- 1 to horizon) {
-      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
-    }
+    val lagColNames = pairs.map(_._1)
+    val lagCols = pairs.map(_._2)
+    gf = gf.select(gfCols ++ lagCols: _*).toDF(gfColNames ++ lagColNames: _*)
+
+    // only target value is rolled forward (this method will result in StackOverflowException)
+//    for (j <- 1 to horizon) {
+//      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
+//    }
+    // use select() to avoid StackOverflowException
+    val allColNames = gf.schema.fieldNames
+    val allCols = allColNames.map(col(_))
+    val leadColNames = (1 to horizon).map(j => s"${targetCol}_$j")
+    val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window))
+    gf = gf.select(allCols ++ leadCols: _*).toDF(allColNames ++ leadColNames: _*)
     // impute missing values if specified:
     if (!imputeMissing) gf else {
       // collect all columns that has been rolled for missing value imputation
@@ -148,10 +167,12 @@ object Forecaster {
    */
   private def readComplex(spark: SparkSession, path: String) = {
     val cf = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
-    val selectedColNames = cf.schema.fieldNames.filter(name =>
-      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
-    )
-    val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
+    val selectedColNames = cf.schema.fieldNames.filter(name => name != "_c0")
+//    val selectedColNames = cf.schema.fieldNames.filter(name =>
+//      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
+//    )
+//    val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
+    val df = cf.select(selectedColNames.map(name => col(name)) :_*)
     val ef = df.withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
       .withColumn("year", year(col("date")))
       .withColumn("month", month(col("date")))
