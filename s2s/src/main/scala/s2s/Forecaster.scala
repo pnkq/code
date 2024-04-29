@@ -50,34 +50,35 @@ object Forecaster {
     // roll values, each value is in a separate column
     var gf = ff
     // all features and the target value are rolled backward (NOTE: append targetCol)
-//    for (name <- featureCols :+ targetCol) {
-//      for (j <- -lookBack + 1 to -1) {
-//        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
-//      }
-//  }
+    for (name <- featureCols :+ targetCol) {
+      for (j <- -lookBack + 1 to -1) {
+        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
+      }
+  }
   // use select() to avoid StackOverflowException
-    val gfColNames = gf.schema.fieldNames
-    val gfCols = gfColNames.map(col(_))
-    val pairs = for {
-      name <- featureCols :+ targetCol
-      j <- -lookBack + 1 to -1
-    } yield {
-      (s"${name}_$j", lag(name, -j).over(window))
-    }
-    val lagColNames = pairs.map(_._1)
-    val lagCols = pairs.map(_._2)
-    gf = gf.select(gfCols ++ lagCols: _*).toDF(gfColNames ++ lagColNames: _*)
+//    val gfColNames = gf.schema.fieldNames
+//    val gfCols = gfColNames.map(col(_))
+//    val pairs = for {
+//      name <- featureCols :+ targetCol
+//      j <- -lookBack + 1 to -1
+//    } yield {
+//      (s"${name}_$j", lag(name, -j).over(window))
+//    }
+//    val lagColNames = pairs.map(_._1)
+//    val lagCols = pairs.map(_._2)
+//    gf = gf.select(gfCols ++ lagCols: _*).toDF(gfColNames ++ lagColNames: _*)
 
     // only target value is rolled forward (this method will result in StackOverflowException)
-//    for (j <- 1 to horizon) {
-//      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
-//    }
+    for (j <- 1 to horizon) {
+      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
+    }
     // use select() to avoid StackOverflowException
-    val allColNames = gf.schema.fieldNames
-    val allCols = allColNames.map(col(_))
-    val leadColNames = (1 to horizon).map(j => s"${targetCol}_$j")
-    val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window))
-    gf = gf.select(allCols ++ leadCols: _*).toDF(allColNames ++ leadColNames: _*)
+//    val allColNames = gf.schema.fieldNames
+//    val allCols = allColNames.map(col(_))
+//    val leadColNames = (1 to horizon).map(j => s"${targetCol}_$j")
+//    val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window))
+//    gf = gf.select(allCols ++ leadCols: _*).toDF(allColNames ++ leadColNames: _*)
+
     // impute missing values if specified:
     if (!imputeMissing) gf else {
       // collect all columns that has been rolled for missing value imputation
@@ -147,16 +148,15 @@ object Forecaster {
   private def readSimple(spark: SparkSession, path: String) = {
     val df = spark.read.options(Map("delimiter" -> "\t", "inferSchema" -> "true")).csv(path)
     val stationCol = "_c8"
-    val ef = df.select("_c0", "_c1", "_c2", stationCol)
+    val ef = df.select("_c0", "_c1", "_c2", stationCol).toDF("year", "month", "dayOfMonth", stationCol)
     val prependZero = udf((x: Int) => if (x < 10) "0" + x.toString else x.toString)
-    val ff = ef.withColumn("year", col("_c0"))
-      .withColumn("yearSt", col("_c0").cast("string"))
-      .withColumn("monthSt", prependZero(col("_c1")))
-      .withColumn("daySt", prependZero(col("_c2")))
+    val ff = ef.withColumn("yearSt", col("year").cast("string"))
+      .withColumn("monthSt", prependZero(col("month")))
+      .withColumn("daySt", prependZero(col("dayOfMonth")))
       .withColumn("dateSt", concat_ws("/", col("yearSt"), col("monthSt"), col("daySt")))
       .withColumn("date", to_date(col("dateSt"), "yyy/MM/dd"))
       .withColumnRenamed(stationCol, "y")
-    (ff, Array("_c1", "_c2")) // Array(month, dayOfMonth)
+    ff
   }
   /**
    * Reads a complex CSV file containing more than a hundred of columns. The label (rainfall) column is named "y".
@@ -167,18 +167,17 @@ object Forecaster {
    */
   private def readComplex(spark: SparkSession, path: String) = {
     val cf = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
-    val selectedColNames = cf.schema.fieldNames.filter(name => name != "_c0")
-//    val selectedColNames = cf.schema.fieldNames.filter(name =>
-//      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
-//    )
-//    val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
-    val df = cf.select(selectedColNames.map(name => col(name)) :_*)
+    val selectedColNames = cf.schema.fieldNames.filter(name =>
+      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
+    )
+//    val selectedColNames = cf.schema.fieldNames.filter(name => name.contains("extra_"))
+    val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
     val ef = df.withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
       .withColumn("year", year(col("date")))
       .withColumn("month", month(col("date")))
       .withColumn("dayOfMonth", dayofmonth(col("date")))
     val ff = ef.filter("year < 2020")
-    (ff, Array("month", "dayOfMonth"))
+    ff
   }
 
   /**
@@ -202,8 +201,9 @@ object Forecaster {
     output.select(Summarizer.mean(col("mae")), Summarizer.mean(col("mse")))
   }
 
-  def train(spark: SparkSession, config: Config): Result = {
-    val (ff, dateInputCols) = config.data match {
+  private def train(spark: SparkSession, config: Config): Result = {
+    val dateInputCols = Array("month", "dayOfMonth")
+    val ff = config.data match {
       case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
       case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
     }
@@ -211,6 +211,7 @@ object Forecaster {
     val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
     val featureCols = extraCols ++ dateInputCols
 
+    println(s"Rolling the data for horizon=${config.horizon} and lookBack=${config.lookBack}. Please wait...")
     val af = roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
     if (config.verbose && config.data == "simple") af.show()
     // arrange input by time steps (i.e., -3, -2, -1, 0)
@@ -325,7 +326,7 @@ object Forecaster {
             println("avg(MAE) = " + mae)
             println("avg(MSE) = " + mse)
           case "roll" =>
-            val (ff, _) = readComplex(spark, s"dat/lnq/x.csv")
+            val ff = readComplex(spark, s"dat/lnq/x.csv")
             val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")
             val af = roll(ff, config.lookBack, config.horizon, featureCols)
             ff.show()
