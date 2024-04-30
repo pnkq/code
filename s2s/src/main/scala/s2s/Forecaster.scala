@@ -147,7 +147,7 @@ object Forecaster {
 
   private def readSimple(spark: SparkSession, path: String, station: String) = {
     val df = spark.read.options(Map("delimiter" -> "\t", "inferSchema" -> "true")).csv(path)
-    val stationMap = Map("muong-te" -> 0, "son-la" -> 9, "sa-pa" -> 17, "ha-giang" -> 22, "viet-tri" -> 35, "vinh-yen" -> 36)
+    val stationMap = Map("muong-te" -> 0, "tuan-giao" -> 5, "son-la" -> 9, "sa-pa" -> 17, "ha-giang" -> 22, "viet-tri" -> 35, "vinh-yen" -> 36)
     val stationCol = s"_c${stationMap(station) + 3}"
     val ef = df.select("_c0", "_c1", "_c2", stationCol).toDF("year", "month", "dayOfMonth", stationCol)
     val prependZero = udf((x: Int) => if (x < 10) "0" + x.toString else x.toString)
