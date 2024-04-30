@@ -2,7 +2,7 @@ package s2s
 
 import com.intel.analytics.bigdl.dllib.NNContext
 import org.apache.spark.ml.Pipeline
-import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.feature.{StandardScaler, VectorAssembler}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
@@ -18,7 +18,6 @@ import com.intel.analytics.bigdl.dllib.nn.MSECriterion
 import com.intel.analytics.bigdl.dllib.optim.{Loss, Trigger}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import org.apache.spark.SparkConf
-import org.apache.spark.ml.feature.StandardScaler
 import scopt.OptionParser
 import com.cibo.evilplot.displayPlot
 import com.cibo.evilplot.plot._
@@ -50,34 +49,29 @@ object Forecaster {
     // roll values, each value is in a separate column
     var gf = ff
     // all features and the target value are rolled backward (NOTE: append targetCol)
-    for (name <- featureCols :+ targetCol) {
-      for (j <- -lookBack + 1 to -1) {
-        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
-      }
-  }
+//    for (name <- featureCols :+ targetCol) {
+//      for (j <- -lookBack + 1 to -1) {
+//        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
+//      }
+//  }
   // use select() to avoid StackOverflowException
-//    val gfColNames = gf.schema.fieldNames
-//    val gfCols = gfColNames.map(col(_))
-//    val pairs = for {
-//      name <- featureCols :+ targetCol
-//      j <- -lookBack + 1 to -1
-//    } yield {
-//      (s"${name}_$j", lag(name, -j).over(window))
-//    }
-//    val lagColNames = pairs.map(_._1)
-//    val lagCols = pairs.map(_._2)
-//    gf = gf.select(gfCols ++ lagCols: _*).toDF(gfColNames ++ lagColNames: _*)
+    val gfCols = gf.schema.fieldNames.map(col(_))
+    val lagCols = for {
+      name <- featureCols :+ targetCol
+      j <- -lookBack + 1 to -1
+    } yield {
+      lag(name, -j).over(window).as(s"${name}_$j")
+    }
+    gf = gf.select(gfCols ++ lagCols: _*)
 
     // only target value is rolled forward (this method will result in StackOverflowException)
-    for (j <- 1 to horizon) {
-      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
-    }
+//    for (j <- 1 to horizon) {
+//      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
+//    }
     // use select() to avoid StackOverflowException
-//    val allColNames = gf.schema.fieldNames
-//    val allCols = allColNames.map(col(_))
-//    val leadColNames = (1 to horizon).map(j => s"${targetCol}_$j")
-//    val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window))
-//    gf = gf.select(allCols ++ leadCols: _*).toDF(allColNames ++ leadColNames: _*)
+    val allCols = gf.schema.fieldNames.map(col(_))
+    val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window).as(s"${targetCol}_$j"))
+    gf = gf.select(allCols ++ leadCols: _*)
 
     // impute missing values if specified:
     if (!imputeMissing) gf else {
@@ -168,10 +162,10 @@ object Forecaster {
    */
   private def readComplex(spark: SparkSession, path: String) = {
     val cf = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
-    val selectedColNames = cf.schema.fieldNames.filter(name =>
-      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
-    )
-//    val selectedColNames = cf.schema.fieldNames.filter(name => name.contains("extra_"))
+//    val selectedColNames = cf.schema.fieldNames.filter(name =>
+//      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
+//    )
+    val selectedColNames = cf.schema.fieldNames.filter(name => name.contains("extra_"))
     val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
     val ef = df.withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
       .withColumn("year", year(col("date")))
@@ -214,7 +208,11 @@ object Forecaster {
 
     println(s"Rolling the data for horizon=${config.horizon} and lookBack=${config.lookBack}. Please wait...")
     val af = roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
-    if (config.verbose && config.data == "simple") af.show()
+    if (config.verbose) {
+      println(s"Number of columns of ff = ${af.schema.fieldNames.length}")
+      if (config.data == "simple")
+        af.show()
+    }
     // arrange input by time steps (i.e., -3, -2, -1, 0)
     val inputCols = (-config.lookBack + 1 until 0).toArray.flatMap { j =>
       af.schema.fieldNames.filter(name => name.endsWith(j.toString))

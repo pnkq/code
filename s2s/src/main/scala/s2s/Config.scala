@@ -15,8 +15,8 @@ case class Config(
   plot: Boolean = false,
   verbose: Boolean = false,
   save: Boolean = false,
-  driverMemory: String = "8g",
-  executorMemory: String = "4g",
+  driverMemory: String = "16g",
+  executorMemory: String = "8g",
   modelType: String = "lstm",
   bidirectional: Boolean = false
 )
