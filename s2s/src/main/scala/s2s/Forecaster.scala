@@ -161,7 +161,7 @@ object Forecaster {
   }
   /**
    * Reads a complex CSV file containing more than a hundred of columns. The label (rainfall) column is named "y".
-   * Should filter out data of year < 2020 (many missing re-analysis data).
+   * Should remove data of year >= 2020 (many missing re-analysis data).
    * @param spark spark session
    * @param path a path to the CSV file
    * @return a data frame and an array of date columns
@@ -309,8 +309,8 @@ object Forecaster {
           case "train" =>
             val result = train(spark, config)
             import upickle.default._
-            implicit val configRw: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
-            implicit val resultRw: ReadWriter[Result] = macroRW[Result]
+            implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
+            implicit val resultRW: ReadWriter[Result] = macroRW[Result]
             val json = write(result) + "\n"
             Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
           case "eval" =>
