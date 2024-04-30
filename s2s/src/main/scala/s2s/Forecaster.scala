@@ -145,9 +145,10 @@ object Forecaster {
     displayPlot(Overlay(overlayPlots: _*).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend())
   }
 
-  private def readSimple(spark: SparkSession, path: String) = {
+  private def readSimple(spark: SparkSession, path: String, station: String) = {
     val df = spark.read.options(Map("delimiter" -> "\t", "inferSchema" -> "true")).csv(path)
-    val stationCol = "_c8"
+    val stationMap = Map("muong-te" -> 0, "son-la" -> 9, "sa-pa" -> 17, "ha-giang" -> 22, "viet-tri" -> 35, "vinh-yen" -> 36)
+    val stationCol = s"_c${stationMap(station) + 3}"
     val ef = df.select("_c0", "_c1", "_c2", stationCol).toDF("year", "month", "dayOfMonth", stationCol)
     val prependZero = udf((x: Int) => if (x < 10) "0" + x.toString else x.toString)
     val ff = ef.withColumn("yearSt", col("year").cast("string"))
@@ -205,7 +206,7 @@ object Forecaster {
     val dateInputCols = Array("month", "dayOfMonth")
     val ff = config.data match {
       case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
-      case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv")
+      case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
     }
     val targetCol = "y"
     val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
@@ -286,6 +287,7 @@ object Forecaster {
       opt[Boolean]('u', "bidirectional").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
       opt[Boolean]('p', "plot").action((_, conf) => conf.copy(plot = true)).text("plot figures")
       opt[Boolean]('v', "verbose").action((_, conf) => conf.copy(verbose = true)).text("verbose mode")
+      opt[Boolean]('w', "write").action((_, conf) => conf.copy(save = true)).text("save data and trained model")
       opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookBack = x)).text("look-back (days)")
       opt[Int]('h', "horizon").action((x, conf) => conf.copy(horizon = x)).text("horizon (days)")
       opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of layers")
@@ -310,7 +312,7 @@ object Forecaster {
             implicit val configRw: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
             implicit val resultRw: ReadWriter[Result] = macroRW[Result]
             val json = write(result) + "\n"
-            Files.write(Paths.get("dat/result.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+            Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
           case "eval" =>
             val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
             val vf = spark.read.parquet(s"$modelPath/vf")
@@ -348,10 +350,10 @@ object Forecaster {
               )
               val result = train(spark, runConfig)
               import upickle.default._
-              implicit val configRw: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
-              implicit val resultRw: ReadWriter[Result] = macroRW[Result]
+              implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
+              implicit val resultRW: ReadWriter[Result] = macroRW[Result]
               val json = write(result) + "\n"
-              Files.write(Paths.get("dat/result.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+              Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
             }
         }
         spark.stop()
