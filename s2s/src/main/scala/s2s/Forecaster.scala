@@ -26,6 +26,7 @@ import com.cibo.evilplot.numeric.Point
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import com.cibo.evilplot.colors._
 import com.cibo.evilplot.plot.renderers.PathRenderer
+import org.apache.spark.ml.functions.array_to_vector
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
 
@@ -108,11 +109,11 @@ object Forecaster {
         val input1 = Input(inputShape = Shape(config.lookBack * featureSize), name = "input1")
         val input2 = Input(inputShape = Shape(4*config.lookBack), name = "input2")
         val reshape1 = Reshape(targetShape = Array(config.lookBack, featureSize)).inputs(input1)
-        val lstm = LSTM(config.hiddenSize, returnSequences = false).inputs(reshape1)
         val reshape2 = Reshape(targetShape = Array(4, config.lookBack)).inputs(input2)
+        val lstm = LSTM(config.hiddenSize, returnSequences = false).inputs(reshape1)
         val split = SplitTensor(1, 4).inputs(reshape2)
-        val bert = BERT(nBlock = 2, nHead = 2, hiddenSize = 32, intermediateSize = 16,
-          maxPositionLen = config.lookBack, outputAllBlock = false).inputs(split)
+        val bert = BERT(vocab = 366, hiddenSize = 32, nBlock = 2, nHead = 2, maxPositionLen = config.lookBack,
+          intermediateSize = 16, outputAllBlock = false).inputs(split)
         val merge = Merge.merge(inputs = List(lstm, bert), mode = "concat")
         val output = Dense(config.horizon).setName("dense").inputs(merge)
         Model(Array(input1, input2), output)
@@ -218,17 +219,19 @@ object Forecaster {
     val af = if (config.modelType == 2) {
       // BERT
       val bf = roll(ff, config.lookBack, config.horizon, featureCols, targetCol, dayOfYear = true)
-      bf.withColumn("type", array((0 until config.lookBack).map(j => lit(0)) : _*))
-        .withColumn("position", array((0 until config.lookBack).map(j => lit(j)) : _*))
-        .withColumn("mask", array((0 until config.lookBack).map(j => lit(1)) : _*))
+      bf.withColumn("typeA", array((0 until config.lookBack).map(j => lit(0)) : _*))
+        .withColumn("type", array_to_vector(col("typeA")))
+        .withColumn("positionA", array((0 until config.lookBack).map(j => lit(j)) : _*))
+        .withColumn("position", array_to_vector(col("positionA")))
+        .withColumn("maskA", array((0 until config.lookBack).map(j => lit(1)) : _*))
+        .withColumn("mask", array_to_vector(col("maskA")))
     } else {
       // LSTM
       roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
     }
     if (config.verbose) {
       println(s"Number of columns of ff = ${af.schema.fieldNames.length}")
-      if (config.data == "simple")
-        af.show()
+      if (config.data == "simple") af.show()
     }
     // arrange input features by time steps (i.e., -3, -2, -1, 0)
     var inputCols = (-config.lookBack + 1 until 0).toArray
@@ -250,11 +253,12 @@ object Forecaster {
     // split roughly 90/10, keep sequence order
     val uf = bf.filter("year <= 2015")
     val vf = bf.filter("2016 <= year")
+    val featureSize = featureCols.length + 1 // +1 for y (target is also a feature)
     if (config.verbose) {
       println(s"Training size = ${uf.count}")
       println(s"    Test size = ${vf.count}")
+      println(s" Feature size = $featureSize")
     }
-    val featureSize = featureCols.length + 1 // +1 for y (target is also a feature)
     val bigdl = createModel(config, featureSize)
     bigdl.summary()
     val trainingSummary = TrainSummary(appName = config.modelType.toString, logDir = s"sum/${config.station}")
@@ -364,16 +368,10 @@ object Forecaster {
           case "roll" =>
             val ff = readComplex(spark, s"dat/lnq/x.csv")
             val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")
-            val af = if (config.modelType == 2) {
-              roll(ff, config.lookBack, config.horizon, featureCols, dayOfYear = true)
-                .withColumn("type", array((0 until config.lookBack).map(j => lit(0)) : _*))
-                .withColumn("position", array((0 until config.lookBack).map(j => lit(j)) : _*))
-                .withColumn("mask", array((0 until config.lookBack).map(j => lit(1)) : _*))
-            } else {
-              roll(ff, config.lookBack, config.horizon, featureCols)
-            }
+            val af = roll(ff, config.lookBack, config.horizon, featureCols, "y", config.modelType == 2)
             ff.show()
             af.show()
+            train(ff, config)
           case "experiment" =>
             val horizons = Array(5, 7, 10, 14)
             val lookBacks = Array(7, 14)
