@@ -37,7 +37,7 @@ object Forecaster {
   /**
    * Rolls a data frame based on the "date" column.
    * @param ff a data frame
-   * @param lookback number of past days to look back
+   * @param lookBack number of past days to look back
    * @param horizon number of future days to forecast
    * @param featureCols column names to row
    * @param targetCol target column
@@ -55,7 +55,7 @@ object Forecaster {
 //      }
 //  }
   // use select() to avoid StackOverflowException
-    val gfCols = gf.schema.fieldNames.map(col(_))
+    val gfCols = gf.schema.fieldNames.map(col)
     val lagCols = for {
       name <- featureCols :+ targetCol
       j <- -lookBack + 1 to -1
@@ -69,7 +69,7 @@ object Forecaster {
 //      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
 //    }
     // use select() to avoid StackOverflowException
-    val allCols = gf.schema.fieldNames.map(col(_))
+    val allCols = gf.schema.fieldNames.map(col)
     val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window).as(s"${targetCol}_$j"))
     gf = gf.select(allCols ++ leadCols: _*)
 
