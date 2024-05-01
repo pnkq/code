@@ -8,7 +8,8 @@ case class ExperimentConfig(
   hiddenSize: Int,
   epochs: Int,
   dropoutRate: Double,
-  learningRate: Double
+  learningRate: Double,
+  modelType: Int = 1
 )
 
 case class Result(

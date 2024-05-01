@@ -17,6 +17,6 @@ case class Config(
   save: Boolean = false,
   driverMemory: String = "16g",
   executorMemory: String = "8g",
-  modelType: String = "lstm",
+  modelType: Int = 1, // 1=lstm, 2=lstm+bert
   bidirectional: Boolean = false
 )

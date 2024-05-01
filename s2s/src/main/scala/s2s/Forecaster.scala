@@ -7,10 +7,10 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
 import com.intel.analytics.bigdl.numeric.NumericFloat
-import com.intel.analytics.bigdl.dllib.keras.Sequential
+import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
 import com.intel.analytics.bigdl.dllib.keras.layers._
 import com.intel.analytics.bigdl.dllib.keras.metrics.MAE
-import com.intel.analytics.bigdl.dllib.keras.models.Models
+import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
@@ -41,20 +41,17 @@ object Forecaster {
    * @param horizon number of future days to forecast
    * @param featureCols column names to row
    * @param targetCol target column
+   * @param dayOfYear if given a dayOfYear feature, we roll it for the Transformer model.
    * @return a data frame with an array of columns for input features
    */
-  private def roll(ff: DataFrame, lookBack: Int, horizon: Int, featureCols: Array[String], targetCol: String = "y", imputeMissing: Boolean = false): DataFrame = {
+  private def roll(ff: DataFrame, lookBack: Int, horizon: Int, featureCols: Array[String], targetCol: String = "y",
+                   dayOfYear: Boolean = false, imputeMissing: Boolean = false): DataFrame = {
     // defining a window ordered by date
     val window = Window.orderBy("date")
     // roll values, each value is in a separate column
     var gf = ff
-    // all features and the target value are rolled backward (NOTE: append targetCol)
-//    for (name <- featureCols :+ targetCol) {
-//      for (j <- -lookBack + 1 to -1) {
-//        gf = gf.withColumn(s"${name}_$j", lag(name, -j).over(window))
-//      }
-//  }
-  // use select() to avoid StackOverflowException
+    // all features and the target value are rolled backward
+    // use select() to avoid StackOverflowException
     val gfCols = gf.schema.fieldNames.map(col)
     val lagCols = for {
       name <- featureCols :+ targetCol
@@ -63,16 +60,16 @@ object Forecaster {
       lag(name, -j).over(window).as(s"${name}_$j")
     }
     gf = gf.select(gfCols ++ lagCols: _*)
-
-    // only target value is rolled forward (this method will result in StackOverflowException)
-//    for (j <- 1 to horizon) {
-//      gf = gf.withColumn(s"${targetCol}_$j", lead(targetCol, j).over(window))
-//    }
-    // use select() to avoid StackOverflowException
+    // the target value is rolled forward
     val allCols = gf.schema.fieldNames.map(col)
     val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window).as(s"${targetCol}_$j"))
     gf = gf.select(allCols ++ leadCols: _*)
-
+    // roll the dayOfYear feature
+    if (dayOfYear) {
+      val allCols = gf.schema.fieldNames.map(col)
+      val lagCols = (-lookBack + 1 to -1).map(j => lag("dayOfYear", -j).over(window).as(s"dayOfYear_$j"))
+      gf = gf.select(allCols ++ lagCols: _*)
+    }
     // impute missing values if specified:
     if (!imputeMissing) gf else {
       // collect all columns that has been rolled for missing value imputation
@@ -86,23 +83,40 @@ object Forecaster {
     }
   }
 
-  private def createModel(config: Config, featureSize: Int): Sequential[Float] = {
-    val model = Sequential()
-    model.add(Reshape(targetShape = Array(config.lookBack, featureSize), inputShape = Shape(config.lookBack * featureSize)).setName("reshape"))
-    if (!config.bidirectional) {
-      for (j <- 0 until config.numLayers - 1) {
-        model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
-      }
-    } else {
-      for (j <- 0 until config.numLayers - 1) {
-        model.add(Bidirectional(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j")))
-      }
+  private def createModel(config: Config, featureSize: Int): KerasNet[Float] = {
+    config.modelType match {
+      case 1 =>
+        // LSTM
+        val model = Sequential()
+        model.add(Reshape(targetShape = Array(config.lookBack, featureSize), inputShape = Shape(config.lookBack * featureSize)).setName("reshape"))
+        if (!config.bidirectional) {
+          for (j <- 0 until config.numLayers - 1) {
+            model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
+          }
+        } else {
+          for (j <- 0 until config.numLayers - 1) {
+            model.add(Bidirectional(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j")))
+          }
+        }
+        model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers - 1}"))
+        if (config.dropoutRate > 0)
+          model.add(Dropout(config.dropoutRate).setName("dropout"))
+        model.add(Dense(config.horizon).setName("dense"))
+        model
+      case 2 =>
+        // LSTM + BERT for dayOfYear
+        val input1 = Input(inputShape = Shape(config.lookBack * featureSize), name = "input1")
+        val input2 = Input(inputShape = Shape(4*config.lookBack), name = "input2")
+        val reshape1 = Reshape(targetShape = Array(config.lookBack, featureSize)).inputs(input1)
+        val lstm = LSTM(config.hiddenSize, returnSequences = false).inputs(reshape1)
+        val reshape2 = Reshape(targetShape = Array(4, config.lookBack)).inputs(input2)
+        val split = SplitTensor(1, 4).inputs(reshape2)
+        val bert = BERT(nBlock = 2, nHead = 2, hiddenSize = 32, intermediateSize = 16,
+          maxPositionLen = config.lookBack, outputAllBlock = false).inputs(split)
+        val merge = Merge.merge(inputs = List(lstm, bert), mode = "concat")
+        val output = Dense(config.horizon).setName("dense").inputs(merge)
+        Model(Array(input1, input2), output)
     }
-    model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers-1}"))
-    if (config.dropoutRate > 0)
-      model.add(Dropout(config.dropoutRate).setName("dropout"))
-    model.add(Dense(config.horizon).setName("dense"))
-    model
   }
 
   private def plot(spark: SparkSession, config: Config, prediction: DataFrame): Unit = {
@@ -162,15 +176,13 @@ object Forecaster {
    */
   private def readComplex(spark: SparkSession, path: String) = {
     val cf = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
-//    val selectedColNames = cf.schema.fieldNames.filter(name =>
-//      name.contains("_0_") || name.contains("_1_") || name.contains("_2_")
-//    )
-    val selectedColNames = cf.schema.fieldNames.filter(name => name.contains("extra_"))
+    val selectedColNames = cf.schema.fieldNames.filter(name => name.contains("extra"))
     val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
     val ef = df.withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
       .withColumn("year", year(col("date")))
       .withColumn("month", month(col("date")))
       .withColumn("dayOfMonth", dayofmonth(col("date")))
+      .withColumn("dayOfYear", dayofyear(col("date")))
     val ff = ef.filter("year < 2020")
     ff
   }
@@ -196,29 +208,39 @@ object Forecaster {
     output.select(Summarizer.mean(col("mae")), Summarizer.mean(col("mse")))
   }
 
-  private def train(spark: SparkSession, config: Config): Result = {
+  private def train(ff: DataFrame, config: Config): Result = {
     val dateInputCols = Array("month", "dayOfMonth")
-    val ff = config.data match {
-      case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
-      case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
-    }
     val targetCol = "y"
     val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
     val featureCols = extraCols ++ dateInputCols
 
     println(s"Rolling the data for horizon=${config.horizon} and lookBack=${config.lookBack}. Please wait...")
-    val af = roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
+    val af = if (config.modelType == 2) {
+      // BERT
+      val bf = roll(ff, config.lookBack, config.horizon, featureCols, targetCol, dayOfYear = true)
+      bf.withColumn("type", array((0 until config.lookBack).map(j => lit(0)) : _*))
+        .withColumn("position", array((0 until config.lookBack).map(j => lit(j)) : _*))
+        .withColumn("mask", array((0 until config.lookBack).map(j => lit(1)) : _*))
+    } else {
+      // LSTM
+      roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
+    }
     if (config.verbose) {
       println(s"Number of columns of ff = ${af.schema.fieldNames.length}")
       if (config.data == "simple")
         af.show()
     }
-    // arrange input by time steps (i.e., -3, -2, -1, 0)
-    val inputCols = (-config.lookBack + 1 until 0).toArray.flatMap { j =>
-      af.schema.fieldNames.filter(name => name.endsWith(j.toString))
-    } ++ featureCols ++ Array(targetCol)
+    // arrange input features by time steps (i.e., -3, -2, -1, 0)
+    var inputCols = (-config.lookBack + 1 until 0).toArray
+      .flatMap(j => af.schema.fieldNames.filter(name => name.endsWith(j.toString))) ++ featureCols ++ Array(targetCol)
+    if (config.modelType == 2) {
+      val dayOfYearCols = af.schema.fieldNames.filter(name => name.contains("dayOfYear_")) :+ "dayOfYear"
+      inputCols = inputCols ++ dayOfYearCols
+      inputCols = inputCols ++ Array("type", "position", "mask")
+    }
     val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
-    val assemblerY = new VectorAssembler().setInputCols((1 to config.horizon).map(c => s"y_$c").toArray).setOutputCol("output").setHandleInvalid("skip")
+    val outputCols = (1 to config.horizon).map(c => s"y_$c").toArray
+    val assemblerY = new VectorAssembler().setInputCols(outputCols).setOutputCol("output").setHandleInvalid("skip")
     val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
     val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
     val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
@@ -232,13 +254,19 @@ object Forecaster {
       println(s"Training size = ${uf.count}")
       println(s"    Test size = ${vf.count}")
     }
-    val featureSize = featureCols.length + 1
+    val featureSize = featureCols.length + 1 // +1 for y (target is also a feature)
     val bigdl = createModel(config, featureSize)
     bigdl.summary()
-    val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/${config.station}")
-    val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/${config.station}")
+    val trainingSummary = TrainSummary(appName = config.modelType.toString, logDir = s"sum/${config.station}")
+    val validationSummary = ValidationSummary(appName = config.modelType.toString, logDir = s"sum/${config.station}")
 
-    val estimator = NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = Array(featureSize * config.lookBack), labelSize = Array(config.horizon))
+    val estimator = if (config.modelType == 1) {
+      val inputSize = Array(featureSize * config.lookBack)
+      NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
+    } else {
+      val inputSize = Array(Array(featureSize * config.lookBack), Array(4*config.lookBack))
+      NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
+    }
     estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
       .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
@@ -267,7 +295,10 @@ object Forecaster {
       println("avg(validationMAE) = " + maeV)
       println("avg(validationMSE) = " + mseV)
     }
-    if (config.plot) plot(spark, config, predictionV)
+    if (config.plot) {
+      val spark = SparkSession.getActiveSession.get
+      plot(spark, config, predictionV)
+    }
     val trainingTime = (endClock - startClock) / 1000 // seconds
     val experimentConfig = ExperimentConfig(config.station, config.horizon, config.lookBack, config.numLayers,
       config.hiddenSize, config.epochs, config.dropoutRate, config.learningRate)
@@ -292,8 +323,9 @@ object Forecaster {
       opt[Int]('r', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("hidden size")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
       opt[Double]('a', "learningRate").action((x, conf) => conf.copy(learningRate = x)).text("learning rate")
+      opt[Double]('o', "dropoutRate").action((x, conf) => conf.copy(dropoutRate = x)).text("dropout rate")
       opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
-      opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
+      opt[Int]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type: 1 = lstm, 2 = lstm+transformer")
     }
     opts.parse(args, Config()) match {
       case Some(config) =>
@@ -302,10 +334,14 @@ object Forecaster {
         val sc = NNContext.initNNContext(conf)
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+        val ff = config.data match {
+          case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
+          case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
+        }
 
         config.mode match {
           case "train" =>
-            val result = train(spark, config)
+            val result = train(ff, config)
             import upickle.default._
             implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
             implicit val resultRW: ReadWriter[Result] = macroRW[Result]
@@ -328,7 +364,14 @@ object Forecaster {
           case "roll" =>
             val ff = readComplex(spark, s"dat/lnq/x.csv")
             val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")
-            val af = roll(ff, config.lookBack, config.horizon, featureCols)
+            val af = if (config.modelType == 2) {
+              roll(ff, config.lookBack, config.horizon, featureCols, dayOfYear = true)
+                .withColumn("type", array((0 until config.lookBack).map(j => lit(0)) : _*))
+                .withColumn("position", array((0 until config.lookBack).map(j => lit(j)) : _*))
+                .withColumn("mask", array((0 until config.lookBack).map(j => lit(1)) : _*))
+            } else {
+              roll(ff, config.lookBack, config.horizon, featureCols)
+            }
             ff.show()
             af.show()
           case "experiment" =>
@@ -346,7 +389,7 @@ object Forecaster {
                 hiddenSize = r, config.epochs, config.dropoutRate, config.learningRate, batchSize = Runtime.getRuntime.availableProcessors * 4,
                 driverMemory = config.driverMemory, executorMemory = config.executorMemory
               )
-              val result = train(spark, runConfig)
+              val result = train(ff, runConfig)
               import upickle.default._
               implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
               implicit val resultRW: ReadWriter[Result] = macroRW[Result]
