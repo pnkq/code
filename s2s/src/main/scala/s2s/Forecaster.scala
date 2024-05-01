@@ -112,8 +112,17 @@ object Forecaster {
         val reshape2 = Reshape(targetShape = Array(4, config.lookBack)).inputs(input2)
         val lstm = LSTM(config.hiddenSize, returnSequences = false).inputs(reshape1)
         val split = SplitTensor(1, 4).inputs(reshape2)
+        val id = SelectTable(0).inputs(split)
+        val sId = Squeeze(1).inputs(id)
+        val typ = SelectTable(1).inputs(split)
+        val sTyp = Squeeze(1).inputs(typ)
+        val pos = SelectTable(2).inputs(split)
+        val sPos = Squeeze(1).inputs(pos)
+        val mask = SelectTable(3).inputs(split)
+        val reshapeMask = Reshape(targetShape = Array(1, 1, config.lookBack)).inputs(mask)
+        // ERROR
         val bert = BERT(vocab = 366, hiddenSize = 32, nBlock = 2, nHead = 2, maxPositionLen = config.lookBack,
-          intermediateSize = 16, outputAllBlock = false).inputs(split)
+          intermediateSize = 16, outputAllBlock = false).inputs(sId, sTyp, sPos, reshapeMask)
         val merge = Merge.merge(inputs = List(lstm, bert), mode = "concat")
         val output = Dense(config.horizon).setName("dense").inputs(merge)
         Model(Array(input1, input2), output)
@@ -219,11 +228,11 @@ object Forecaster {
     val af = if (config.modelType == 2) {
       // BERT
       val bf = roll(ff, config.lookBack, config.horizon, featureCols, targetCol, dayOfYear = true)
-      bf.withColumn("typeA", array((0 until config.lookBack).map(j => lit(0)) : _*))
+      bf.withColumn("typeA", array((0 until config.lookBack).map(_ => lit(0)) : _*))
         .withColumn("type", array_to_vector(col("typeA")))
         .withColumn("positionA", array((0 until config.lookBack).map(j => lit(j)) : _*))
         .withColumn("position", array_to_vector(col("positionA")))
-        .withColumn("maskA", array((0 until config.lookBack).map(j => lit(1)) : _*))
+        .withColumn("maskA", array((0 until config.lookBack).map(_ => lit(1)) : _*))
         .withColumn("mask", array_to_vector(col("maskA")))
     } else {
       // LSTM
