@@ -31,7 +31,10 @@ import org.apache.spark.ml.functions.array_to_vector
 import java.nio.file.{Files, Paths, StandardOpenOption}
 
 /**
- * An implementation of time series predictor using LSTM.
+ * An implementation of time series predictor using LSTM and BERT.
+ *
+ * (C) phuonglh@gmail.com
+ *
  */
 object Forecaster {
 
@@ -42,7 +45,7 @@ object Forecaster {
    * @param horizon number of future days to forecast
    * @param featureCols column names to row
    * @param targetCol target column
-   * @param dayOfYear if given a dayOfYear feature, we roll it for the Transformer model.
+   * @param dayOfYear if given a dayOfYear feature, we roll it (only for the BERT model).
    * @return a data frame with an array of columns for input features
    */
   private def roll(ff: DataFrame, lookBack: Int, horizon: Int, featureCols: Array[String], targetCol: String = "y",
@@ -91,26 +94,31 @@ object Forecaster {
         val model = Sequential()
         model.add(Reshape(targetShape = Array(config.lookBack, featureSize), inputShape = Shape(config.lookBack * featureSize)).setName("reshape"))
         if (!config.bidirectional) {
-          for (j <- 0 until config.numLayers - 1) {
+          for (j <- 0 until config.nLayer - 1) {
             model.add(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j"))
           }
         } else {
-          for (j <- 0 until config.numLayers - 1) {
+          for (j <- 0 until config.nLayer - 1) {
             model.add(Bidirectional(LSTM(config.hiddenSize, returnSequences = true).setName(s"lstm-$j")))
           }
         }
-        model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.numLayers - 1}"))
+        model.add(LSTM(config.hiddenSize).setName(s"lstm-${config.nLayer - 1}"))
         if (config.dropoutRate > 0)
           model.add(Dropout(config.dropoutRate).setName("dropout"))
         model.add(Dense(config.horizon).setName("dense"))
         model
       case 2 =>
-        // LSTM + BERT for dayOfYear
-        val input1 = Input(inputShape = Shape(config.lookBack * featureSize), name = "input1")
-        val input2 = Input(inputShape = Shape(4*config.lookBack), name = "input2")
+        // LSTMs + BERT for dayOfYear
+        val input1 = Input(inputShape = Shape(config.lookBack * featureSize))
+        val input2 = Input(inputShape = Shape(4*config.lookBack))
         val reshape1 = Reshape(targetShape = Array(config.lookBack, featureSize)).inputs(input1)
         val reshape2 = Reshape(targetShape = Array(4, config.lookBack)).inputs(input2)
-        val lstm = LSTM(config.hiddenSize, returnSequences = false).inputs(reshape1)
+        val lstm1 = if (config.bidirectional) {
+          Bidirectional(LSTM(config.hiddenSize, returnSequences = true)).inputs(reshape1)
+        } else LSTM(config.hiddenSize, returnSequences = true).inputs(reshape1)
+        val lstm2 = if (config.bidirectional) {
+          Bidirectional(LSTM(config.hiddenSize, returnSequences = false)).inputs(lstm1)
+        } else LSTM(config.hiddenSize, returnSequences = false).inputs(lstm1)
         val split = SplitTensor(1, 4).inputs(reshape2)
         val id = SelectTable(0).inputs(split)
         val sId = Squeeze(1).inputs(id)
@@ -120,11 +128,11 @@ object Forecaster {
         val sPos = Squeeze(1).inputs(pos)
         val mask = SelectTable(3).inputs(split)
         val reshapeMask = Reshape(targetShape = Array(1, 1, config.lookBack)).inputs(mask)
-        val bert = BERT(hiddenSize = 32, nBlock = 2, nHead = 2, maxPositionLen = config.lookBack,
-          intermediateSize = 16, outputAllBlock = false).inputs(sId, sTyp, sPos, reshapeMask)
+        val bert = BERT(hiddenSize = config.hiddenSize, nBlock = config.nBlock, nHead = config.nHead, maxPositionLen = config.lookBack,
+          intermediateSize = config.intermediateSize, outputAllBlock = false).inputs(sId, sTyp, sPos, reshapeMask)
         val poolOutput = SelectTable(1).inputs(bert) // a tensor of shape 1x32
-        val merge = Merge.merge(inputs = List(lstm, poolOutput), mode = "concat")
-        val output = Dense(config.horizon).setName("dense").inputs(merge)
+        val merge = Merge.merge(inputs = List(lstm2, poolOutput), mode = "concat")
+        val output = Dense(config.horizon).inputs(merge)
         Model(Array(input1, input2), output)
     }
   }
@@ -278,7 +286,7 @@ object Forecaster {
       val inputSize = Array(featureSize * config.lookBack)
       NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
     } else {
-      val inputSize = Array(Array(featureSize * config.lookBack), Array(4 * config.lookBack))
+      val inputSize = Array(Array(featureSize * config.lookBack), Array(4*config.lookBack))
       NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
     }
     estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
@@ -314,8 +322,13 @@ object Forecaster {
       plot(spark, config, predictionV)
     }
     val trainingTime = (endClock - startClock) / 1000 // seconds
-    val experimentConfig = ExperimentConfig(config.station, config.horizon, config.lookBack, config.numLayers,
-      config.hiddenSize, config.epochs, config.dropoutRate, config.learningRate)
+    val experimentConfig = config.modelType match {
+      case 1 => ExperimentConfig(config.station, config.horizon, config.lookBack, config.nLayer,
+        config.hiddenSize, config.epochs, config.dropoutRate, config.learningRate, modelType = config.modelType)
+      case 2 => ExperimentConfig(config.station, config.horizon, config.lookBack, config.nLayer,
+        config.hiddenSize, config.epochs, config.dropoutRate, config.learningRate, modelType = config.modelType,
+        heads = config.nHead, blocks = config.nBlock, intermediateSize = config.intermediateSize)
+    }
     Result(maeU.toArray, mseU.toArray, maeV.toArray, mseV.toArray, trainingTime, experimentConfig)
   }
 
@@ -327,19 +340,22 @@ object Forecaster {
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
       opt[String]('d', "data").action((x, conf) => conf.copy(data = x)).text("data type: simple/complex")
       opt[String]('s', "station").action((x, conf) => conf.copy(station = x)).text("station viet-tri/vinh-yen/...")
-      opt[Boolean]('u', "bidirectional").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional RNN")
       opt[Boolean]('p', "plot").action((_, conf) => conf.copy(plot = true)).text("plot figures")
       opt[Boolean]('v', "verbose").action((_, conf) => conf.copy(verbose = true)).text("verbose mode")
       opt[Boolean]('w', "write").action((_, conf) => conf.copy(save = true)).text("save data and trained model")
       opt[Int]('l', "lookBack").action((x, conf) => conf.copy(lookBack = x)).text("look-back (days)")
       opt[Int]('h', "horizon").action((x, conf) => conf.copy(horizon = x)).text("horizon (days)")
-      opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of layers")
-      opt[Int]('r', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("hidden size")
+      opt[Boolean]('u', "bidirectional").action((_, conf) => conf.copy(bidirectional = true)).text("bidirectional LSTM")
+      opt[Int]('j', "nLayer").action((x, conf) => conf.copy(nLayer = x)).text("number of layers")
+      opt[Int]('r', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("hidden size (for both LSTM and BERT)")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
       opt[Double]('a', "learningRate").action((x, conf) => conf.copy(learningRate = x)).text("learning rate")
       opt[Double]('o', "dropoutRate").action((x, conf) => conf.copy(dropoutRate = x)).text("dropout rate")
       opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
-      opt[Int]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type: 1 = lstm, 2 = lstm+transformer")
+      opt[Int]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type: 1 = LSTM, 2 = LSTM+BERT")
+      opt[Int]('x', "nHead").action((x, conf) => conf.copy(nHead = x)).text("number of attention heads of BERT")
+      opt[Int]('y', "nBlock").action((x, conf) => conf.copy(nBlock = x)).text("number of blocks of BERT")
+      opt[Int]('i', "intermediateSize").action((x, conf) => conf.copy(intermediateSize = x)).text("FFN size of BERT")
     }
     opts.parse(args, Config()) match {
       case Some(config) =>
@@ -381,7 +397,7 @@ object Forecaster {
             val af = roll(ff, config.lookBack, config.horizon, featureCols, "y", config.modelType == 2)
             ff.show()
             af.show()
-            train(ff, config)
+//            train(ff, config)
           case "experiment" =>
             val horizons = Array(5, 7, 10, 14)
             val lookBacks = Array(7, 14)
@@ -393,9 +409,9 @@ object Forecaster {
               j <- layers
               r <- hiddenSizes
             } {
-              val runConfig = Config(config.station, "train", config.data, lookBack =  l, horizon = h, numLayers = j,
-                hiddenSize = r, config.epochs, config.dropoutRate, config.learningRate, batchSize = Runtime.getRuntime.availableProcessors * 4,
-                driverMemory = config.driverMemory, executorMemory = config.executorMemory
+              val runConfig = Config(config.station, "train", config.data, lookBack =  l, horizon = h, nLayer = j,
+                hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate,
+                batchSize = Runtime.getRuntime.availableProcessors * 4, driverMemory = config.driverMemory, executorMemory = config.executorMemory
               )
               val result = train(ff, runConfig)
               import upickle.default._

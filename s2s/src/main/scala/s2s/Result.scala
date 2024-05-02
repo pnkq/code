@@ -9,6 +9,9 @@ case class ExperimentConfig(
   epochs: Int,
   dropoutRate: Double,
   learningRate: Double,
+  heads: Int = 0,
+  blocks: Int = 0,
+  intermediateSize: Int = 0,
   modelType: Int = 1
 )
 
