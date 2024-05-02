@@ -1,4 +1,5 @@
-LSTM-based Rainfall Prediction
+Rainfall Prediction using LSTM and BERT
+
 
 1. Install JDK 1.8+, coursier, sbt and bloop:
     - coursier: https://get-coursier.io/docs/cli-installation
@@ -26,6 +27,15 @@ LSTM-based Rainfall Prediction
 
     tensorboard --logdir sum/station
 
+    Using option `-t 2` for training a model which combines both LSTM and BERT. Days of a year are encoded by a BERT model
+    and concatenated with a multilayer LSTM model for prediction.
+
+    `-m train -d complex -t 2 -x 2 -y 2 -r 128 -i 16`
+
+    Here, -x is the number of attention heads, -y is the number of encoder blocks, -r is the hidden size, and -i is the
+    intermediate size (feed-forward size) of BERT. Note that both LSTM and BERT use -r hidden size for their encoder.
+
+
 4. Evaluate a model:
 
     bloop run -p s2s -m s2s.Forecaster -- -m eval -d simple
@@ -33,6 +43,7 @@ LSTM-based Rainfall Prediction
 
 5. Arguments:
 
+    -t model type (1 for LSTM, 2 for LSTM+BERT)
     -d simple/complex (data source)
     -m train/eval/experiment (mode)
     -s station name (viet-tri, vinh-yen,...)
@@ -40,10 +51,13 @@ LSTM-based Rainfall Prediction
     -l look back (number of days)
     -b batch size
     -k number of epochs
-    -j numLayers (LSTM layers)
-    -r recurrent size (number of hidden units in each LSTM layer)
+    -j number of recurrent layers (LSTM)
+    -r hidden size (number of hidden units in each LSTM layer or in each BERT block)
     -p plot figures (false by default)
     -u bidirectional LSTM (false by default)
+    -x number of attention heads (BERT)
+    -y number of encoder blocks (BERT)
+    -i intermediate size (ffn size of BERT)
 
 6. Run many experiments at a given station
 
