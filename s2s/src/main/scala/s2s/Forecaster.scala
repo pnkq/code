@@ -68,7 +68,7 @@ object Forecaster {
     // roll the dayOfYear feature
     if (dayOfYear) {
       val allCols = gf.schema.fieldNames.map(col)
-      val lagCols = (-lookBack + 1 to -1).map(j => lag("dayOfYear", -j).over(window).as(s"dayOfYear_$j"))
+      val lagCols = (-lookBack + 1 to -1).map(j => lag("dayOfYear", -j).over(window).as(s"dayOfYearP${Math.abs(j)}"))
       gf = gf.select(allCols ++ lagCols: _*)
     }
     // impute missing values if specified:
@@ -120,10 +120,10 @@ object Forecaster {
         val sPos = Squeeze(1).inputs(pos)
         val mask = SelectTable(3).inputs(split)
         val reshapeMask = Reshape(targetShape = Array(1, 1, config.lookBack)).inputs(mask)
-        // ERROR
-        val bert = BERT(vocab = 366, hiddenSize = 32, nBlock = 2, nHead = 2, maxPositionLen = config.lookBack,
+        val bert = BERT(hiddenSize = 32, nBlock = 2, nHead = 2, maxPositionLen = config.lookBack,
           intermediateSize = 16, outputAllBlock = false).inputs(sId, sTyp, sPos, reshapeMask)
-        val merge = Merge.merge(inputs = List(lstm, bert), mode = "concat")
+        val poolOutput = SelectTable(1).inputs(bert) // a tensor of shape 1x32
+        val merge = Merge.merge(inputs = List(lstm, poolOutput), mode = "concat")
         val output = Dense(config.horizon).setName("dense").inputs(merge)
         Model(Array(input1, input2), output)
     }
@@ -222,7 +222,7 @@ object Forecaster {
     val dateInputCols = Array("month", "dayOfMonth")
     val targetCol = "y"
     val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
-    val featureCols = extraCols ++ dateInputCols
+    val featureCols = extraCols ++ dateInputCols // all features features to be rolled, excluding targetCol
 
     println(s"Rolling the data for horizon=${config.horizon} and lookBack=${config.lookBack}. Please wait...")
     val af = if (config.modelType == 2) {
@@ -243,10 +243,11 @@ object Forecaster {
       if (config.data == "simple") af.show()
     }
     // arrange input features by time steps (i.e., -3, -2, -1, 0)
-    var inputCols = (-config.lookBack + 1 until 0).toArray
-      .flatMap(j => af.schema.fieldNames.filter(name => name.endsWith(j.toString))) ++ featureCols ++ Array(targetCol)
+    var inputCols = (-config.lookBack + 1 until 0).toArray.flatMap(j => af.schema.fieldNames.filter(name => name.endsWith(j.toString)))
+    inputCols ++= (featureCols ++ Array(targetCol))
+    // add rolled cols for dayOfYear feature if using BERT
     if (config.modelType == 2) {
-      val dayOfYearCols = af.schema.fieldNames.filter(name => name.contains("dayOfYear_")) :+ "dayOfYear"
+      val dayOfYearCols = af.schema.fieldNames.filter(name => name.contains("dayOfYearP")) :+ "dayOfYear"
       inputCols = inputCols ++ dayOfYearCols
       inputCols = inputCols ++ Array("type", "position", "mask")
     }
@@ -277,7 +278,7 @@ object Forecaster {
       val inputSize = Array(featureSize * config.lookBack)
       NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
     } else {
-      val inputSize = Array(Array(featureSize * config.lookBack), Array(4*config.lookBack))
+      val inputSize = Array(Array(featureSize * config.lookBack), Array(4 * config.lookBack))
       NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
     }
     estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
