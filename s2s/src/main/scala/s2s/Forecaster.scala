@@ -368,13 +368,13 @@ object Forecaster {
           case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
           case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
         }
+        import upickle.default._
+        implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
+        implicit val resultRW: ReadWriter[Result] = macroRW[Result]
 
         config.mode match {
           case "train" =>
             val result = train(ff, config)
-            import upickle.default._
-            implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
-            implicit val resultRW: ReadWriter[Result] = macroRW[Result]
             val json = write(result) + "\n"
             Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
           case "eval" =>
@@ -397,7 +397,6 @@ object Forecaster {
             val af = roll(ff, config.lookBack, config.horizon, featureCols, "y", config.modelType == 2)
             ff.show()
             af.show()
-//            train(ff, config)
           case "experiment" =>
             val horizons = Array(5, 7, 10, 14)
             val lookBacks = Array(7, 14)
@@ -410,13 +409,10 @@ object Forecaster {
               r <- hiddenSizes
             } {
               val runConfig = Config(config.station, "train", config.data, lookBack =  l, horizon = h, nLayer = j,
-                hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate,
+                hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate, modelType = config.modelType,
                 batchSize = Runtime.getRuntime.availableProcessors * 4, driverMemory = config.driverMemory, executorMemory = config.executorMemory
               )
               val result = train(ff, runConfig)
-              import upickle.default._
-              implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
-              implicit val resultRW: ReadWriter[Result] = macroRW[Result]
               val json = write(result) + "\n"
               Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
             }
