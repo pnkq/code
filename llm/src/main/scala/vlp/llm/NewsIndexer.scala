@@ -41,8 +41,8 @@ case class Sites(sites: List[Site])
   * (C) phuonglh@gmail.com, April 2023.
   */
 object NewsIndexer {
-  val specialUnicodePattern = Pattern.compile("""[\u0000]+""")
-  val useKafka: Boolean = false
+  private val specialUnicodePattern: Pattern = Pattern.compile("""[\u0000]+""")
+  private val useKafka: Boolean = false
 
   /**
     * Extracts the main content of a news URL.
@@ -50,7 +50,7 @@ object NewsIndexer {
     * @param url a URL to extract text.
     * @return main content in string.
     */
-  def extract(url: String): String = {
+  private def extract(url: String): String = {
     try {
       val path = new URL(url)
       val is = new InputSource
@@ -73,7 +73,7 @@ object NewsIndexer {
     * @param filter a URL filter
     * @return a set of URLs.
     */
-  def extractURLs(site: String, category: String, regexp: String, filter: String => Boolean): Set[String] = {
+  private def extractURLs(site: String, category: String, regexp: String, filter: String => Boolean): Set[String] = {
     val urls = mutable.Set[String]()
     try {
       val address = site + "/" + category
@@ -99,7 +99,7 @@ object NewsIndexer {
     urls.toSet.filter(filter(_))
   }
 
-  def runWithTimeout[T](timeout: Long)(f: => T): Option[T] = {
+  private def runWithTimeout[T](timeout: Long)(f: => T): Option[T] = {
     try {
       Some(Await.result(Future(f), timeout.seconds))
     } catch {
@@ -109,7 +109,7 @@ object NewsIndexer {
     }
   }
 
-  def run(jsonSource: String): Unit = {
+  private def run(jsonSource: String): Unit = {
     System.setProperty("http.agent", "Chrome")
     System.setProperty("https.protocols", "TLSv1,TLSv1.1,TLSv1.2")
 
