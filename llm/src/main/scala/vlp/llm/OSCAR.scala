@@ -33,6 +33,13 @@ case class Config(
 
 object OSCAR {
 
+  final private val vietnameseCharacters: Set[Char] = Set(
+    'à', 'á', 'ả', 'ã', 'ạ', 'â', 'ầ', 'ấ', 'ẩ', 'ẫ', 'ậ', 'ă', 'ằ', 'ắ', 'ẳ', 'ẵ', 'ặ',
+    'è', 'é', 'ẻ', 'ẽ', 'ẹ', 'ê', 'ề', 'ế', 'ể', 'ễ', 'ệ', 'ò', 'ó', 'ỏ', 'õ', 'ọ',
+    'ì', 'í', 'ỉ', 'ĩ', 'ị', 'ô', 'ồ', 'ố', 'ổ', 'ỗ', 'ộ', 'ơ', 'ờ', 'ớ', 'ở', 'ỡ', 'ợ',
+    'ù', 'ú', 'ủ', 'ũ', 'ụ', 'ư', 'ừ', 'ứ', 'ử', 'ữ', 'ự', 'ỳ', 'ý', 'ỷ', 'ỹ', 'ỵ', 'đ'
+  )
+
   /**
    * Given a data frame, we remove all rows containing bad content (sex, code/script)
    * @param df a data frame
@@ -40,17 +47,26 @@ object OSCAR {
    * @return a filtered data frame
    */
   def filterBadRows(df: DataFrame, colName: String): DataFrame = {
-    df.filter(length(col(colName)) >= 80)
-      .filter(not(col(colName).contains("sex")))
-      .filter(not(col(colName).contains("<div")))
-      .filter(not(col(colName).contains("class=")))
-      .filter(not(col(colName).contains("script")))
-      .filter(not(col(colName).contains("\u0000")))
+    df.filter(length(col(colName)) >= 80).filter(not(col(colName).contains("\u0000")))
+  }
+
+  /**
+   * A line is considered not a proper Vietnamese text if there is not a Vietnamese-specific character
+   * in a substring of a given length.
+   * @param line a line to test
+   * @param chunkLength length of chunk
+   * @return true or false
+   */
+  private def isVietnamese(line: String, chunkLength: Int = 40): Boolean = {
+    val chunks = line.toLowerCase.sliding(chunkLength)
+    val containVietnamese = chunks.forall(p => p.toSet.exists(c => vietnameseCharacters.contains(c)))
+    val containSpace = chunks.forall(p => p.contains(' '))
+    containVietnamese && containSpace
   }
 
   /**
    * Preprocess the OSCAR 21 dataset containing plain text documents, where each document is separated by a newline. We need
-   * to combine consecutive lines into a document. The documents are filtered to remove toxic contents and deduplicated
+   * to combine consecutive lines into a document. The documents are filtered to remove toxic contents and de-duplicated
    * at the document level.
    * @param spark spark session
    * @param cf a data frame
@@ -111,10 +127,17 @@ object OSCAR {
     // deduplicate the document (whole document level)
     val ffUnique = ff.select("content").distinct()
     // remove bad lines from each document before saving result
+    println("Removing bad documents and then bad lines in each good document...")
     import spark.implicits._
-    ffUnique.map { row =>
+    ffUnique.filter { row =>
+      val content = row.getAs[String]("content")
+      isVietnamese(content, 80)
+    }.map { row =>
       row.getAs[String]("content").split("""\n+""")
-        .filter(line => line.length >= 40 && line.length <= 2048).filter(_.trim.nonEmpty).mkString("\n")
+        .filter(line => line.length >= 40 && line.length <= 2048)
+        .filter(_.trim.nonEmpty)
+        .filter(line => isVietnamese(line))
+        .mkString("\n")
     }.toDF("text")
   }
 
@@ -190,6 +213,7 @@ object OSCAR {
               case "23" => // same for 22
                 val cf = spark.read.option("recursiveFileLookup", value = true).json(config.inputPath).select("content")
                 val gf = f22(spark, cf)
+                print(s"Number of documents after filtering = ${gf.count}\n")
                 gf.select("text").repartition(config.numPartitions).write.option("compression", "gzip").mode(SaveMode.Overwrite).json(config.outputPath)
               case "21" =>
                 val cf = spark.read.option("recursiveFileLookup", value = true).text(config.inputPath).toDF("content")
