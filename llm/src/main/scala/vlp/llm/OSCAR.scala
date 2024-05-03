@@ -8,13 +8,12 @@ import scopt.OptionParser
 /**
  * OSCAR-2301 document extractor.
  * <p/>
- * This utility reads OSCAR-23 json file(s) into a data frame, tokenizes the content field, filters all documents
+ * This utility reads OSCAR file(s) into a data frame, tokenizes the content field, filters all documents
  * containing less than 80 syllables, flat map the contents into lines, filters line of length more than 40 characters
  * and less than 2048 characters; and writes the result into a text directory (20 partitions).
  *
- *
  * <p/>
- * phuonglh, May 24, 2023
+ * phuonglh
  *
  */
 
@@ -36,12 +35,13 @@ object OSCAR {
 
   /**
    * Given a data frame, we remove all rows containing bad content (sex, code/script)
-   * @param df
-   * @param colName
+   * @param df a data frame
+   * @param colName column of interest
    * @return a filtered data frame
    */
   def filterBadRows(df: DataFrame, colName: String): DataFrame = {
-    df.filter(not(col(colName).contains("sex")))
+    df.filter(length(col(colName)) >= 80)
+      .filter(not(col(colName).contains("sex")))
       .filter(not(col(colName).contains("<div")))
       .filter(not(col(colName).contains("class=")))
       .filter(not(col(colName).contains("script")))
@@ -52,21 +52,21 @@ object OSCAR {
    * Preprocess the OSCAR 21 dataset containing plain text documents, where each document is separated by a newline. We need
    * to combine consecutive lines into a document. The documents are filtered to remove toxic contents and deduplicated
    * at the document level.
-   * @param spark
-   * @param cf
+   * @param spark spark session
+   * @param cf a data frame
    * @return a data frame with a "text" column name.
    */
-  def f21(spark: SparkSession, cf: DataFrame): DataFrame = {
+  private def f21(spark: SparkSession, cf: DataFrame): DataFrame = {
     val pairRDD = cf.rdd.zipWithIndex()
     val n = cf.count()
     val emptyLineIdx = pairRDD.map { case (row, id) =>
       val line = row.getAs[String](0).trim
-      (line.size, id)
+      (line.length, id)
     }.filter(_._1 == 0).map(_._2.toInt).collect() ++ Array(n.toInt)
     // fill an index array for grouping consecutive lines into a document
     val ids = Array.fill[Int](n.toInt)(0)
     var start = 0
-    for (i <- 0 until emptyLineIdx.size) {
+    for (i <- emptyLineIdx.indices) {
       val k = emptyLineIdx(i)
       (start until k).foreach(j => ids(j) = i)
       start = k
@@ -96,23 +96,25 @@ object OSCAR {
 
   /**
    * Preprocess the OSCAR 22/23 datasets containing JSONL documents. We filter bad rows and perform document deduplication.
-   * @param spark
-   * @param cf
+   * @param spark spark session
+   * @param cf a data frame which has a "content" raw text column.
    * @return a dataframe with a "text" column name.
    */
-  def f22(spark: SparkSession, cf: DataFrame): DataFrame = {
+  private def f22(spark: SparkSession, cf: DataFrame): DataFrame = {
+    print(s"Number of documents before filtering = ${cf.count}\n")
     val df = filterBadRows(cf, "content")
     // filter all documents having more than 80 tokens
     val tokenizer = new Tokenizer().setInputCol("content").setOutputCol("tokens")
     val ef = tokenizer.transform(df)
     val ff = ef.withColumn("size", size(col("tokens"))).filter(col("size") >= 80)
-    print(s"Number of filtered documents = ${ff.count}\n")
+    print(s"Number of documents after filtering = ${ff.count}\n")
     // deduplicate the document (whole document level)
     val ffUnique = ff.select("content").distinct()
+    // remove bad lines from each document before saving result
     import spark.implicits._
     ffUnique.map { row =>
       row.getAs[String]("content").split("""\n+""")
-        .filter(line => line.size >= 40 && line.size <= 2048).filter(_.trim.nonEmpty).mkString("\n")
+        .filter(line => line.length >= 40 && line.length <= 2048).filter(_.trim.nonEmpty).mkString("\n")
     }.toDF("text")
   }
 
@@ -120,9 +122,9 @@ object OSCAR {
    * Deduplicate documents at the paragraph level. Each document is split into a number of paragraphs.
    * Then these paragraphs are deduplicated. Unique paragraphs are merged back into document with the same
    * order. We need to label each paragraph with its document id and its own sequential id.
-   * @param spark
-   * @param df
-   * @param colName
+   * @param spark spark session
+   * @param df a data frame
+   * @param colName column of interest
    * @return a data frame with a "text" column name.
    */
   def distinctParagraph(spark: SparkSession, df: DataFrame, colName: String): DataFrame = {
@@ -157,8 +159,8 @@ object OSCAR {
 
   def main(args: Array[String]): Unit = {
 
-    val opts = new OptionParser[Config](getClass().getName()) {
-      head(getClass().getName(), "1.0")
+    val opts = new OptionParser[Config](getClass.getName) {
+      head(getClass.getName, "1.0")
       opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
       opt[Int]('X', "executorCores").action((x, conf) => conf.copy(executorCores = x)).text("executor cores, default is 8")
       opt[Int]('Y', "totalCores").action((x, conf) => conf.copy(totalCores = x)).text("total number of cores")
@@ -186,16 +188,16 @@ object OSCAR {
           case "d" =>
             config.version match {
               case "23" => // same for 22
-                val cf = spark.read.option("recursiveFileLookup", true).json(config.inputPath).select("content")
+                val cf = spark.read.option("recursiveFileLookup", value = true).json(config.inputPath).select("content")
                 val gf = f22(spark, cf)
                 gf.select("text").repartition(config.numPartitions).write.option("compression", "gzip").mode(SaveMode.Overwrite).json(config.outputPath)
               case "21" =>
-                val cf = spark.read.option("recursiveFileLookup", true).text(config.inputPath).toDF("content")
+                val cf = spark.read.option("recursiveFileLookup", value = true).text(config.inputPath).toDF("content")
                 val df = f21(spark, cf)
                 df.select("text").repartition(config.numPartitions).write.option("compression", "gzip").mode(SaveMode.Overwrite).json(config.outputPath)
                 println(s"There are ${df.count()} documents.")
               case "c4" =>
-                val df = spark.read.option("recursiveFileLookup", true).json(config.inputPath).select("text")
+                val df = spark.read.option("recursiveFileLookup", value = true).json(config.inputPath).select("text")
                 val ef = filterBadRows(df, "text").distinct()
                 ef.repartition(config.numPartitions).write.option("compression", "gzip").mode(SaveMode.Overwrite).json(config.outputPath)
                 println(s"There are ${ef.count()} documents.")
@@ -203,7 +205,7 @@ object OSCAR {
                 // deduplication at the document level
                 // combine and deduplicate all the 3 preprocessed sub-folders (21, 22, 23) of an inputPath)
                 // this action needs a huge temporary disk memory, it is better to use the -t option to use a large NFS temporary folder
-                val df = spark.read.option("recursiveFileLookup", true).json(config.inputPath)
+                val df = spark.read.option("recursiveFileLookup", value = true).json(config.inputPath)
                 val ef = df.distinct().repartition(1)
                 ef.write.mode(SaveMode.Overwrite).option("compression", "gzip").json(config.outputPath)
               case _ =>
