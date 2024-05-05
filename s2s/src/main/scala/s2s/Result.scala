@@ -42,14 +42,20 @@ object Result {
     for (h <- horizons) {
       val stationH = station.filter(s"config.horizon == $h")
       var bf = stationH
-      for (j <- 1 to h)
+      for (j <- 1 to h) {
         bf = bf.withColumn(s"h$j", format_number(element_at(col("mseV"), j), 6))
+      }
 //      bf.select((1 to h).map(j => col(s"h$j")): _*).show()
       val aggExps = (1 to h).map(j => s"h$j" -> "mean")
+      val resultCols = (1 to h).map(j => s"avg(h$j)")
       val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize")
         .agg(aggExps.head, aggExps.tail:_*)
         .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize")
-      cf.show()
+      var ef = cf
+      for (j <- 1 to h) {
+        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
+      }
+      ef.show()
     }
 
     spark.stop()
