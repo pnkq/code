@@ -1,11 +1,6 @@
 package s2s
 
 import com.intel.analytics.bigdl.dllib.NNContext
-import org.apache.spark.ml.Pipeline
-import org.apache.spark.ml.feature.{StandardScaler, VectorAssembler}
-import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.expressions.Window
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
 import com.intel.analytics.bigdl.dllib.keras.layers._
@@ -17,16 +12,17 @@ import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.MSECriterion
 import com.intel.analytics.bigdl.dllib.optim.{Loss, Trigger}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
+
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.feature.{StandardScaler, VectorAssembler}
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.SparkConf
-import scopt.OptionParser
-import com.cibo.evilplot.displayPlot
-import com.cibo.evilplot.plot._
-import com.cibo.evilplot.plot.aesthetics.DefaultTheme._
-import com.cibo.evilplot.numeric.Point
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
-import com.cibo.evilplot.colors._
-import com.cibo.evilplot.plot.renderers.PathRenderer
 import org.apache.spark.ml.functions.array_to_vector
+
+import scopt.OptionParser
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
 
@@ -137,73 +133,6 @@ object Forecaster {
     }
   }
 
-  private def plot(spark: SparkSession, config: Config, prediction: DataFrame): Unit = {
-    // draw multiple plots corresponding to number of time steps up to horizon for the first year of the validation set
-    import spark.implicits._
-    val ys = prediction.select("label").map(row => row.getAs[Vector](0).toDense.toArray).take(365).zipWithIndex
-    val zs = prediction.select("prediction").map(row => row.getAs[Seq[Float]](0)).take(365).zipWithIndex
-
-    // plot +1 day prediction and label
-    val dataY0 = ys.map(pair => Point(pair._2, pair._1.head))
-    val dataZ0 = zs.map(pair => Point(pair._2, pair._1.head))
-    displayPlot(Overlay(
-      LinePlot(dataY0, Some(PathRenderer.named[Point](name = "horizon=0", strokeWidth = Some(1.2), color = HTMLNamedColors.gray))),
-      LinePlot(dataZ0, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue))))
-    ).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend())
-
-    val plots = (0 until config.horizon).map { d =>
-      val dataY = ys.map(pair => Point(pair._2, pair._1(d)))
-      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
-      Seq(
-        LinePlot(dataY, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = HTMLNamedColors.gray)))
-          .topPlot(LinePlot(dataZ, Some(PathRenderer.default[Point](strokeWidth = Some(1.2), color = Some(HTMLNamedColors.blue)))))
-      )
-    }
-    displayPlot(Facets(plots).standard().title("Rainfall in a Year").topLegend())
-
-    // overlay plots
-    val colors = Color.getGradientSeq(config.horizon)
-    val days = 0 until config.horizon
-    val overlayPlots = days.map { d =>
-      val dataZ = zs.map(pair => Point(pair._2, pair._1(d)))
-      LinePlot(data = dataZ, Some(PathRenderer.named[Point](name = s"horizon=$d", strokeWidth = Some(1.2), color = colors(d))))
-    }
-    displayPlot(Overlay(overlayPlots: _*).xAxis().xLabel("day").yAxis().yLabel("rainfall").yGrid().bottomLegend())
-  }
-
-  private def readSimple(spark: SparkSession, path: String, station: String) = {
-    val df = spark.read.options(Map("delimiter" -> "\t", "inferSchema" -> "true")).csv(path)
-    val stationMap = Map("muong-te" -> 0, "tuan-giao" -> 5, "son-la" -> 9, "sa-pa" -> 17, "ha-giang" -> 22, "viet-tri" -> 35, "vinh-yen" -> 36)
-    val stationCol = s"_c${stationMap(station) + 3}"
-    val ef = df.select("_c0", "_c1", "_c2", stationCol).toDF("year", "month", "dayOfMonth", stationCol)
-    val prependZero = udf((x: Int) => if (x < 10) "0" + x.toString else x.toString)
-    val ff = ef.withColumn("yearSt", col("year").cast("string"))
-      .withColumn("monthSt", prependZero(col("month")))
-      .withColumn("daySt", prependZero(col("dayOfMonth")))
-      .withColumn("dateSt", concat_ws("/", col("yearSt"), col("monthSt"), col("daySt")))
-      .withColumn("date", to_date(col("dateSt"), "yyy/MM/dd"))
-      .withColumnRenamed(stationCol, "y")
-    ff
-  }
-  /**
-   * Reads a complex CSV file containing more than a hundred of columns. The label (rainfall) column is named "y".
-   * Should remove data of year >= 2020 (many missing re-analysis data).
-   * @param spark spark session
-   * @param path a path to the CSV file
-   * @return a data frame and an array of date columns
-   */
-  private def readComplex(spark: SparkSession, path: String) = {
-    val cf = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
-    val selectedColNames = cf.schema.fieldNames.filter(name => name.contains("extra"))
-    val df = cf.select((Array("Date", "y") ++ selectedColNames).map(name => col(name)) :_*)
-    val ef = df.withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
-      .withColumn("year", year(col("date")))
-      .withColumn("month", month(col("date")))
-      .withColumn("dayOfMonth", dayofmonth(col("date")))
-      .withColumn("dayOfYear", dayofyear(col("date")))
-    val ff = ef.filter("year < 2020")
-    ff
-  }
 
   /**
    * Compute the error between the gold label and the prediction (MAE -- mean absolute error, MSE -- mean squared error)
@@ -319,7 +248,7 @@ object Forecaster {
     }
     if (config.plot) {
       val spark = SparkSession.getActiveSession.get
-      plot(spark, config, predictionV)
+      Plot.plot(spark, config, predictionV)
     }
     val trainingTime = (endClock - startClock) / 1000 // seconds
     val experimentConfig = config.modelType match {
@@ -365,8 +294,8 @@ object Forecaster {
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
         val ff = config.data match {
-          case "complex" => readComplex(spark, s"dat/lnq/${config.station}.csv")
-          case "simple" => readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
+          case "complex" => DataReader.readComplex(spark, s"dat/lnq/${config.station}.csv")
+          case "simple" => DataReader.readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
         }
         import upickle.default._
         implicit val configRW: ReadWriter[ExperimentConfig] = macroRW[ExperimentConfig]
@@ -385,14 +314,14 @@ object Forecaster {
             bigdl.summary()
             val prediction = bigdl.predict(vf, featureCols = Array("features"), predictionCol = "prediction")
             prediction.select("label", "prediction").show(false)
-            if (config.plot) plot(spark, config, prediction)
+            if (config.plot) Plot.plot(spark, config, prediction)
             val error = computeError(prediction)
             val mae = error.head().getAs[DenseVector](0)
             val mse = error.head().getAs[DenseVector](1)
             println("avg(MAE) = " + mae)
             println("avg(MSE) = " + mse)
           case "roll" =>
-            val ff = readComplex(spark, s"dat/lnq/x.csv")
+            val ff = DataReader.readComplex(spark, s"dat/lnq/x.csv")
             val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")
             val af = roll(ff, config.lookBack, config.horizon, featureCols, "y", config.modelType == 2)
             ff.show()
