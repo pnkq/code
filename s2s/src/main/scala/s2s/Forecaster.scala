@@ -327,10 +327,10 @@ object Forecaster {
             ff.show()
             af.show()
           case "experiment" =>
-            val horizons = Array(5, 7, 10, 14)
-            val lookBacks = Array(7, 14)
-            val layers = Array(2, 3)
-            val hiddenSizes = Array(300, 400, 512)
+            val horizons = Array(7)
+            val lookBacks = Array(7)
+            val layers = Array(7)
+            val hiddenSizes = Array(300, 400, 512, 768)
             for {
               h <- horizons
               l <- lookBacks
