@@ -330,7 +330,7 @@ object Forecaster {
             val horizons = Array(5, 7, 10, 14)
             val lookBacks = Array(7, 14)
             val layers = Array(2, 3)
-            val hiddenSizes = Array(32, 64, 128, 256, 300, 400, 512)
+            val hiddenSizes = Array(300, 400, 512)
             for {
               h <- horizons
               l <- lookBacks
