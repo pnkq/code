@@ -126,7 +126,7 @@ object Forecaster {
         val reshapeMask = Reshape(targetShape = Array(1, 1, config.lookBack)).inputs(mask)
         val bert = BERT(hiddenSize = config.hiddenSize, nBlock = config.nBlock, nHead = config.nHead, maxPositionLen = config.lookBack,
           intermediateSize = config.intermediateSize, outputAllBlock = false).inputs(sId, sTyp, sPos, reshapeMask)
-        val poolOutput = SelectTable(1).inputs(bert) // a tensor of shape 1x32
+        val poolOutput = SelectTable(1).inputs(bert) // a tensor of shape 1 x hiddenSize
         val merge = Merge.merge(inputs = List(lstm2, poolOutput), mode = "concat")
         val output = Dense(config.horizon).inputs(merge)
         Model(Array(input1, input2), output)
