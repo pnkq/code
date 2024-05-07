@@ -329,7 +329,7 @@ object Forecaster {
           case "experiment" =>
             val horizons = Array(7)
             val lookBacks = Array(7)
-            val layers = Array(7)
+            val layers = Array(5, 7)
             val hiddenSizes = Array(300, 400, 512, 768)
             for {
               h <- horizons
@@ -337,13 +337,15 @@ object Forecaster {
               j <- layers
               r <- hiddenSizes
             } {
-              val runConfig = Config(config.station, "train", config.data, lookBack =  l, horizon = h, nLayer = j,
-                hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate, modelType = config.modelType,
-                batchSize = Runtime.getRuntime.availableProcessors * 4, driverMemory = config.driverMemory, executorMemory = config.executorMemory
-              )
-              val result = train(ff, runConfig)
-              val json = write(result) + "\n"
-              Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+              for (_ <- 1 to 3) {
+                val runConfig = Config(config.station, "train", config.data, lookBack =  l, horizon = h, nLayer = j,
+                  hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate, modelType = config.modelType,
+                  batchSize = Runtime.getRuntime.availableProcessors * 4, driverMemory = config.driverMemory, executorMemory = config.executorMemory
+                )
+                val result = train(ff, runConfig)
+                val json = write(result) + "\n"
+                Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+              }
             }
         }
         spark.stop()
