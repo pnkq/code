@@ -305,7 +305,7 @@ object Forecaster {
           case "train" =>
             val result = train(ff, config)
             val json = write(result) + "\n"
-            Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+            Files.write(Paths.get(s"dat/result-${config.data}-${config.station}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
           case "eval" =>
             val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
             val vf = spark.read.parquet(s"$modelPath/vf")
@@ -344,7 +344,7 @@ object Forecaster {
                 )
                 val result = train(ff, runConfig)
                 val json = write(result) + "\n"
-                Files.write(Paths.get(s"dat/result-${config.data}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+                Files.write(Paths.get(s"dat/result-${config.data}-${config.station}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
               }
             }
         }
