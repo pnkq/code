@@ -10,9 +10,8 @@ import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.MSECriterion
-import com.intel.analytics.bigdl.dllib.optim.{Loss, Trigger}
+import com.intel.analytics.bigdl.dllib.optim.{Loss, Or, Trigger, MinLoss, MaxEpoch}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
-
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.feature.{StandardScaler, VectorAssembler}
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -21,7 +20,6 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.SparkConf
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.ml.functions.array_to_vector
-
 import scopt.OptionParser
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -64,7 +62,7 @@ object Forecaster {
     val allCols = gf.schema.fieldNames.map(col)
     val leadCols = (1 to horizon).map(j => lead(targetCol, j).over(window).as(s"${targetCol}_$j"))
     gf = gf.select(allCols ++ leadCols: _*)
-    // roll the dayOfYear feature
+    // roll the dayOfYear featureOr
     if (dayOfYear) {
       val allCols = gf.schema.fieldNames.map(col)
       val lagCols = (-lookBack + 1 to -1).map(j => lag("dayOfYear", -j).over(window).as(s"dayOfYearP${Math.abs(j)}"))
@@ -221,6 +219,7 @@ object Forecaster {
     estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
       .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
+      .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(1.0f)))
     if (config.save) {
       val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
       uf.write.mode("overwrite").parquet(s"$modelPath/uf")
