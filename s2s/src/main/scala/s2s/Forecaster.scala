@@ -124,7 +124,7 @@ object Forecaster {
         val sPos = Squeeze(1).inputs(pos)
         val mask = SelectTable(3).inputs(split)
         val reshapeMask = Reshape(targetShape = Array(1, 1, config.lookBack)).inputs(mask)
-        val bert = BERT(hiddenSize = config.hiddenSize, nBlock = config.nBlock, nHead = config.nHead, maxPositionLen = config.lookBack,
+        val bert = BERT(hiddenSize = config.bertSize, nBlock = config.nBlock, nHead = config.nHead, maxPositionLen = config.lookBack,
           intermediateSize = config.intermediateSize, outputAllBlock = false).inputs(sId, sTyp, sPos, reshapeMask)
         val poolOutput = SelectTable(1).inputs(bert) // a tensor of shape 1 x hiddenSize
         val merge = Merge.merge(inputs = List(lstm2, poolOutput), mode = "concat")
@@ -284,6 +284,7 @@ object Forecaster {
       opt[Int]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type: 1 = LSTM, 2 = LSTM+BERT")
       opt[Int]('x', "nHead").action((x, conf) => conf.copy(nHead = x)).text("number of attention heads of BERT")
       opt[Int]('y', "nBlock").action((x, conf) => conf.copy(nBlock = x)).text("number of blocks of BERT")
+      opt[Int]('z', "bertSize").action((x, conf) => conf.copy(bertSize = x)).text("BERT output size")
       opt[Int]('i', "intermediateSize").action((x, conf) => conf.copy(intermediateSize = x)).text("FFN size of BERT")
     }
     opts.parse(args, Config()) match {
@@ -326,7 +327,7 @@ object Forecaster {
             val af = roll(ff, config.lookBack, config.horizon, featureCols, "y", config.modelType == 2)
             ff.show()
             af.show()
-          case "experiment" =>
+          case "lstm" =>
             val horizons = Array(7)
             val lookBacks = Array(7)
             val layers = Array(5, 7)
@@ -338,13 +339,39 @@ object Forecaster {
               r <- hiddenSizes
             } {
               for (_ <- 1 to 3) {
-                val runConfig = Config(config.station, "train", config.data, lookBack =  l, horizon = h, nLayer = j,
-                  hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate, modelType = config.modelType,
+                val runConfig = Config(config.station, "train", data = config.data, lookBack =  l, horizon = h, nLayer = j,
+                  hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate,
                   batchSize = Runtime.getRuntime.availableProcessors * 4, driverMemory = config.driverMemory, executorMemory = config.executorMemory
                 )
                 val result = train(ff, runConfig)
                 val json = write(result) + "\n"
                 Files.write(Paths.get(s"dat/result-${config.data}-${config.station}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+              }
+            }
+          case "bert" =>
+            val horizons = Array(7)
+            val lookBacks = Array(7)
+            val layers = Array(5, 7)
+            val hiddenSizes = Array(300, 400, 512, 768)
+            val nBlocks = Array(2, 3, 4)
+            val nHeads = Array(2, 4, 8)
+            for {
+              h <- horizons
+              l <- lookBacks
+              j <- layers
+              r <- hiddenSizes
+              x <- nHeads
+              y <- nBlocks
+            } {
+              for (_ <- 1 to 3) {
+                val runConfig = Config(config.station, "train", data = "complex", lookBack =  l, horizon = h, nLayer = j,
+                  hiddenSize = r, epochs = config.epochs, dropoutRate = config.dropoutRate, learningRate = config.learningRate,
+                  batchSize = Runtime.getRuntime.availableProcessors * 4, driverMemory = config.driverMemory, executorMemory = config.executorMemory,
+                  nHead = x, nBlock = y, modelType = 2
+                )
+                val result = train(ff, runConfig)
+                val json = write(result) + "\n"
+                Files.write(Paths.get(s"dat/result-bert-${config.station}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
               }
             }
         }

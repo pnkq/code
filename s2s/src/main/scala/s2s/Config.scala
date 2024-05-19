@@ -12,7 +12,7 @@ case class Config(
   plot: Boolean = false,
   verbose: Boolean = false,
   save: Boolean = false,
-  driverMemory: String = "16g",
+  driverMemory: String = "24g",
   executorMemory: String = "8g",
   modelType: Int = 1, // 1=lstm, 2=lstm+bert
   // LSTM params
@@ -23,5 +23,6 @@ case class Config(
   // BERT params
   nBlock: Int = 2,
   nHead: Int = 2,
+  bertSize: Int = 32,
   intermediateSize: Int = 16
 )
