@@ -217,9 +217,10 @@ object Forecaster {
       NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
     }
     estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate))
+      .setMaxEpoch(config.epochs)
       .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
-      .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(1.0f)))
+//      .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(1.0f)))
     if (config.save) {
       val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
       uf.write.mode("overwrite").parquet(s"$modelPath/uf")
