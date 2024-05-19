@@ -216,7 +216,7 @@ object Forecaster {
       val inputSize = Array(Array(featureSize * config.lookBack), Array(4*config.lookBack))
       NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
     }
-    estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate)).setMaxEpoch(config.epochs)
+    estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate))
       .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
       .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(1.0f)))
