@@ -58,13 +58,16 @@ Rainfall Prediction using LSTM and BERT
     -x number of attention heads (BERT)
     -y number of encoder blocks (BERT)
     -i intermediate size (ffn size of BERT)
+    -x number of heads (BERT)
+    -y number of blocks (BERT)
 
 6. Run many experiments at a given station
 
-    Use -m experiment for grid search.
+    Use -m lstm
+        bloop run -p s2s -m s2s.Forecaster -- -m lstm -d simple -s vinh-yen
+        bloop run -p s2s -m s2s.Forecaster -- -m lstm -d complex -s viet-tri
 
-    bloop run -p s2s -m s2s.Forecaster -- -m experiment -d simple -s S1
-    bloop run -p s2s -m s2s.Forecaster -- -m experiment -d complex -s viet-tri
+    Use -m bert
+        bloop run -p s2s -m s2s.Forecaster -- -m bert -d complex -s viet-tri
 
-
-    Results are saved to `data/result.jsonl`. Each line contains a model result.
+    Results are saved to `data/result-bert-viet-tri.jsonl`. Each line contains a model result.
