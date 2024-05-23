@@ -31,7 +31,7 @@ base_model.summary()
 
 # 3. Create a model from a base model in which all layers are freezed
 
-def thyroid_model(base_model=base_model, num_classes=2):
+def thyroid_model(num_classes=2):
     ''' Define a tf.keras model for binary classification out of a base model
     Arguments:
         image_shape -- image width and height
@@ -65,17 +65,15 @@ def thyroid_model(base_model=base_model, num_classes=2):
     
     return model
 
-ptc = thyroid_model(base_model, 2)
+ptc = thyroid_model(2)
+ptc.summary()
 
 # 4. Compile and train the freeezed model for 20 epochs:
 
 base_learning_rate = 0.0001
 loss_function=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-ptc.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate), 
-    loss=loss_function, 
-    metrics=['accuracy']
-)
+optimizer = tf.keras.optimizers.Adam(learning_rate=base_learning_rate)
+ptc.compile(optimizer=optimizer, loss=loss_function,  metrics=['accuracy'])
 
 initial_epochs = 20
 history = ptc.fit(train_dataset, validation_data=validation_dataset, epochs=initial_epochs)
@@ -115,16 +113,15 @@ base_model.trainable = True
 print("Number of layers in the base model: ", len(base_model.layers))
 
 # Fine-tune from this layer onwards
-fine_tune_at = 120
+fine_tune_at = 134
 
 # Freeze all the layers before the `fine_tune_at` layer
 for layer in base_model.layers[:fine_tune_at]:
     layer.trainable = False
     
 # Define an Adam optimizer with a learning rate of 0.1 * base_learning_rate
-optimizer = tf.keras.optimizers.Adam(lr=0.1*base_learning_rate)
-
-ptc.compile(optimizer = optimizer, loss=loss_function, metrics=['accuracy'])
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.1*base_learning_rate)
+ptc.compile(optimizer=optimizer, loss=loss_function, metrics=['accuracy'])
 
 fine_tune_epochs = 15
 total_epochs =  initial_epochs + fine_tune_epochs
@@ -145,7 +142,7 @@ plt.plot(acc, label='Training Accuracy')
 plt.plot(val_acc, label='Validation Accuracy')
 plt.ylim([0, 1])
 plt.yticks(np.arange(0, 1, step=0.1))
-plt.plot([initial_epochs-1,initial_epochs-1], plt.ylim(), label='Start Fine Tuning')
+plt.plot([initial_epochs-1, initial_epochs-1], plt.ylim(), label='Start Fine-Tuning')
 plt.legend(loc='lower right')
 plt.title('Training and Validation Accuracy')
 
@@ -153,7 +150,7 @@ plt.subplot(2, 1, 2)
 plt.plot(loss, label='Training Loss')
 plt.plot(val_loss, label='Validation Loss')
 plt.ylim([0, 2.0])
-plt.plot([initial_epochs-1,initial_epochs-1], plt.ylim(), label='Start Fine Tuning')
+plt.plot([initial_epochs-1, initial_epochs-1], plt.ylim(), label='Start Fine-Tuning')
 plt.legend(loc='upper right')
 plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
