@@ -3,29 +3,64 @@ import numpy as np
 import os
 import tensorflow as tf
 import tensorflow.keras.layers as tfl
-
 from tensorflow.keras.preprocessing import image_dataset_from_directory
+import argparse
 
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
+# Read argument options
+parser = argparse.ArgumentParser(prog='PTC', description='papillary thyroid carcinoma')
+parser.add_argument('-m', type=str, help='[mobile, resnet, efficient]')
+parser.add_argument('-n', type=int, help='number of classes [2, 3]')
+args = parser.parse_args()
 
 # 0. Load and split data
 BATCH_SIZE = 32
 IMG_SIZE = (224, 224)
-directory = "dat/2/"
+
+def get_directory_data(n):
+    if n == 2:
+        return "dat/2/"
+    else:
+        return "dat/3/"
+
+directory = get_directory_data(args.n)
 train_dataset = image_dataset_from_directory(directory, shuffle=True, batch_size=BATCH_SIZE, image_size=IMG_SIZE, validation_split=0.2, subset='training', seed=42)
 validation_dataset = image_dataset_from_directory(directory, shuffle=True, batch_size=BATCH_SIZE, image_size=IMG_SIZE, validation_split=0.2, subset='validation', seed=42)
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
 
+
 # 1. Load preprocess function
-preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
+def preprocess(model_type):
+    match model_type:
+        case "mobile":
+            return tf.keras.applications.mobilenet_v2.preprocess_input
+        case "resnet":
+            return tf.keras.applications.resnet50.preprocess_input
+        case "efficient":
+            return tf.keras.applications.efficientnet.preprocess_input
+        case _: 
+            return tf.keras.applications.mobilenet_v2.preprocess_input
+
+preprocess_input = preprocess(args.m)
 
 # 2. Load a base model
+def get_base_model(model_type):
+    match model_type:
+        case "mobile":
+            return tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
+        case "resnet":
+            return tf.keras.applications.ResNet50V2(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
+        case "efficient":
+            return tf.keras.applications.EfficientNetB7(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
+        case _:
+            return tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
+
 IMG_SHAPE = IMG_SIZE + (3,)
-base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
+base_model = get_base_model(args.m)
 
 base_model.summary()
 
@@ -104,7 +139,7 @@ plt.ylabel('Cross Entropy')
 plt.ylim([0,1.5])
 plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
-plt.savefig('freezed.png')
+plt.savefig('freezed-%s.png' % args.m)
 
 # 6. Fine-tune the model
 base_model = ptc.layers[3] # inputs -> preprocess -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
@@ -154,7 +189,7 @@ plt.plot([initial_epochs-1, initial_epochs-1], plt.ylim(), label='Start Fine-Tun
 plt.legend(loc='upper right')
 plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
-plt.savefig("tuned.png")
+plt.savefig("tuned-%s.png' % args.m")
 
 # 8. Performance on the validation set
 
