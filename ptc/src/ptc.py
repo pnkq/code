@@ -140,7 +140,7 @@ plt.ylabel('Cross Entropy')
 plt.ylim([0,1.5])
 plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
-plt.savefig('freezed-%s.png' % args.m)
+plt.savefig(f"freezed-{args.m}.png")
 
 # 6. Fine-tune the model
 base_model = ptc.layers[3] # inputs -> preprocess -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
@@ -191,7 +191,7 @@ plt.plot([initial_epochs-1, initial_epochs-1], plt.ylim(), label='Start Fine-Tun
 plt.legend(loc='upper right')
 plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
-plt.savefig("tuned-%s.png' % args.m")
+plt.savefig(f"tuned-{args.m}.png")
 
 # 8. Performance on the validation set
 
