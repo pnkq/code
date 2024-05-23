@@ -13,6 +13,7 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 parser = argparse.ArgumentParser(prog='PTC', description='papillary thyroid carcinoma')
 parser.add_argument('-m', type=str, help='[mobile, resnet, efficient]')
 parser.add_argument('-n', type=int, help='number of classes [2, 3]')
+# parser.add_argument('-k', type=int, help='fine-tune from this layer onwards')
 args = parser.parse_args()
 
 # 0. Load and split data
@@ -148,7 +149,8 @@ base_model.trainable = True
 print("Number of layers in the base model: ", len(base_model.layers))
 
 # Fine-tune from this layer onwards
-fine_tune_at = 134
+fine_tune_at = int(0.8 * len(base_model.layers))
+print("Fine-tune from layer: ", fine_tune_at)
 
 # Freeze all the layers before the `fine_tune_at` layer
 for layer in base_model.layers[:fine_tune_at]:
