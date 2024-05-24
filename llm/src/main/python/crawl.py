@@ -18,13 +18,17 @@ def setup_driver(download_dir):
         "plugins.always_open_pdf_externally": True  # Ensures PDFs download automatically
     }
     chrome_options.add_experimental_option("prefs", prefs)
-    chrome_driver_path = "/usr/local/bin/chromedriver"
-    service = Service(chrome_driver_path)
-    return webdriver.Chrome(service=service, options=chrome_options)
+    # chrome_driver_path = "/usr/local/bin/chromedriver"
+    chrome_driver_path = "/Users/phuonglh/tools/chromedriver-mac-x64/chromedriver"
+    chrome_options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    # pip install --upgrade urllib3==1.26.16 (to fix a bug)
+    return webdriver.Chrome(executable_path=chrome_driver_path, options=chrome_options)
+    
+
  
 def login(driver, base_url, username, password):
     """ Log into the website using credentials. """
-    driver.get(base_url + "/login")  # Adjust this URL based on the actual login page
+    driver.get(base_url + "/login/#")  # Adjust this URL based on the actual login page
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.ID, "username_field"))  # Adjust ID as necessary
     )
@@ -87,12 +91,15 @@ def navigate_and_download(base_url, driver, download_dir):
  
 def main():
     download_dir = "/tmp/Downloads"
-    base_url = "https://repository.vnu.edu.vn/browse?type=title"
-    username = 'your_username'
-    password = 'your_password'
+    base_url = "https://repository.vnu.edu.vn/"
+    # base_url = "https://repository.vnu.edu.vn/browse?type=title"
+    # base_url = "https://repository.vnu.edu.vn/handle/VNU_123/33312"
+    username = 'phuonglh'
+    password = '???'
     driver = setup_driver(download_dir)
     try:
         login(driver, base_url, username, password)  # Perform login before navigating
+        print("Login success")
         navigate_and_download(base_url, driver, download_dir)
     finally:
         driver.quit()
