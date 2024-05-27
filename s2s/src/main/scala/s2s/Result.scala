@@ -36,6 +36,53 @@ import org.apache.spark.sql.functions._
  */
 object Result {
 
+  private def analyzeLSTM(spark: SparkSession, config: Config): Unit = {
+    val df = spark.read.json(s"dat/result-${config.data}.jsonl")
+    val station = df.filter(col("config.station") === config.station)
+    val horizons = Array(5, 7, 10, 14)
+    for (h <- horizons) {
+      val stationH = station.filter(s"config.horizon == $h")
+      var bf = stationH
+      for (j <- 1 to h) {
+        bf = bf.withColumn(s"h$j", format_number(element_at(col("mseV"), j), 6))
+          .withColumn("n", lit(1)) // for counting
+      }
+      val aggF = (1 to h).map(j => s"h$j" -> "mean") :+ ("n" -> "count")
+      val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize")
+        .agg(aggF.head, aggF.tail:_*)
+        .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize")
+      var ef = cf
+      for (j <- 1 to h) {
+        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
+      }
+      ef.show()
+    }
+  }
+
+  private def analyzeBERT(spark: SparkSession, config: Config): Unit = {
+    val df = spark.read.json(s"dat/result-bert-${config.station}.jsonl")
+    val station = df.filter(col("config.station") === config.station)
+    val horizons = Array(7)
+    for (h <- horizons) {
+      val stationH = station.filter(s"config.horizon == $h")
+      var bf = stationH
+      for (j <- 1 to h) {
+        bf = bf.withColumn(s"h$j", format_number(element_at(col("mseV"), j), 6))
+          .withColumn("n", lit(1)) // for counting
+      }
+      val aggF = (1 to h).map(j => s"h$j" -> "mean") :+ ("n" -> "count")
+      val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize", "config.heads", "config.blocks")
+        .agg(aggF.head, aggF.tail:_*)
+        .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize", "heads", "blocks")
+      var ef = cf
+      for (j <- 1 to h) {
+        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
+      }
+      ef.show()
+    }
+
+  }
+
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[Config](getClass.getName) {
       head(getClass.getName, "1.0")
@@ -46,27 +93,12 @@ object Result {
       case Some(config) =>
         val spark = SparkSession.builder().master("local[4]").appName(Result.getClass.getName).getOrCreate()
         spark.sparkContext.setLogLevel("ERROR")
-        val df = spark.read.json(s"dat/result-${config.data}.jsonl")
-        val station = df.filter(col("config.station") === config.station)
-        val horizons = Array(5, 7, 10, 14)
-        for (h <- horizons) {
-          val stationH = station.filter(s"config.horizon == $h")
-          var bf = stationH
-          for (j <- 1 to h) {
-            bf = bf.withColumn(s"h$j", format_number(element_at(col("mseV"), j), 6))
-              .withColumn("n", lit(1)) // for counting
-          }
-          val aggF = (1 to h).map(j => s"h$j" -> "mean") :+ ("n" -> "count")
-          val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize")
-            .agg(aggF.head, aggF.tail:_*)
-            .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize")
-          var ef = cf
-          for (j <- 1 to h) {
-            ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
-          }
-          ef.show()
+        println(f"Analyze results at station = ${config.station}: ")
+        config.data match {
+          case "bert" => analyzeBERT(spark, config)    // LSTM+BERT
+          case "complex" => analyzeLSTM(spark, config) // LSTM on complex
+          case "simple" => analyzeLSTM(spark, config)  // LSTM on simple
         }
-
         spark.stop()
 
       case None => println("Invalid options!")
