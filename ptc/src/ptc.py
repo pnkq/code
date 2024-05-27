@@ -19,6 +19,7 @@ args = parser.parse_args()
 # 0. Load and split data
 BATCH_SIZE = 32
 IMG_SIZE = (224, 224)
+IMG_SHAPE = IMG_SIZE + (3,)
 
 def get_directory_data(n):
     if n == 2:
@@ -60,7 +61,6 @@ def get_base_model(model_type):
         case _:
             return tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
 
-IMG_SHAPE = IMG_SIZE + (3,)
 base_model = get_base_model(args.m)
 
 base_model.summary()
@@ -101,7 +101,7 @@ def thyroid_model(num_classes=2):
     
     return model
 
-ptc = thyroid_model(2)
+ptc = thyroid_model(args.n)
 ptc.summary()
 
 # 4. Compile and train the freeezed model for 20 epochs:
@@ -140,10 +140,23 @@ plt.ylabel('Cross Entropy')
 plt.ylim([0,1.5])
 plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
-plt.savefig(f"freezed-{args.m}.png")
+plt.savefig(f"freezed-{args.n}-{args.m}.png")
 
 # 6. Fine-tune the model
-base_model = ptc.layers[3] # inputs -> preprocess -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
+# inputs -> preprocess -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
+
+def get_base_model_index(model_type):
+    match model_type:
+        case "mobile":
+            return 3
+        case "resnet":
+            return 3
+        case "efficient":
+            return 1
+        case _:
+            return -1
+
+base_model = ptc.layers[get_base_model_index(args.m)] 
 base_model.trainable = True
 # Let's take a look to see how many layers are in the base model
 print("Number of layers in the base model: ", len(base_model.layers))
@@ -191,7 +204,7 @@ plt.plot([initial_epochs-1, initial_epochs-1], plt.ylim(), label='Start Fine-Tun
 plt.legend(loc='upper right')
 plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
-plt.savefig(f"tuned-{args.m}.png")
+plt.savefig(f"tuned-{args.n}-{args.m}.png")
 
 # 8. Performance on the validation set
 
