@@ -291,6 +291,7 @@ object Forecaster {
       case Some(config) =>
         val conf = new SparkConf().setAppName(getClass.getName).setMaster("local[*]")
           .set("spark.executor.memory", config.executorMemory).set("spark.driver.memory", config.driverMemory)
+          .set("spark.driver.extraClassPath", "lib/mkl-java-x86_64-linux-2.0.0.jar")
         val sc = NNContext.initNNContext(conf)
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
