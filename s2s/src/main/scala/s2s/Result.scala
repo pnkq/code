@@ -12,10 +12,10 @@ case class ExperimentConfig(
   epochs: Int,
   dropoutRate: Double,
   learningRate: Double,
+  modelType: Int,
   heads: Int = 0,
   blocks: Int = 0,
-  intermediateSize: Int = 0,
-  modelType: Int = 1
+  intermediateSize: Int = 0
 )
 
 case class Result(

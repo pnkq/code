@@ -71,3 +71,9 @@ Rainfall Prediction using LSTM and BERT
         bloop run -p s2s -m s2s.Forecaster -- -m bert -d complex -s viet-tri
 
     Results are saved to `data/result-bert-viet-tri.jsonl`. Each line contains a model result.
+
+6. Run many experiments at a given region
+
+    Use -m lstm and simple data
+        bloop run -p s2s -m s2s.Forecaster -- -m lstm -d clusterS -s tay-bac
+

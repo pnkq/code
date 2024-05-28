@@ -157,7 +157,7 @@ object Forecaster {
     val dateInputCols = Array("month", "dayOfMonth")
     val targetCol = "y"
     val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
-    val featureCols = extraCols ++ dateInputCols // all features features to be rolled, excluding targetCol
+    val featureCols = extraCols ++ dateInputCols // all features features to be rolled
 
     println(s"Rolling the data for horizon=${config.horizon} and lookBack=${config.lookBack}. Please wait...")
     val af = if (config.modelType == 2) {
@@ -170,12 +170,12 @@ object Forecaster {
         .withColumn("maskA", array((0 until config.lookBack).map(_ => lit(1)) : _*))
         .withColumn("mask", array_to_vector(col("maskA")))
     } else {
-      // LSTM
+      // LSTM (model type = 1)
       roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
     }
     if (config.verbose) {
       println(s"Number of columns of ff = ${af.schema.fieldNames.length}")
-      if (config.data == "simple") af.show()
+      af.show()
     }
     // arrange input features by time steps (i.e., -3, -2, -1, 0)
     var inputCols = (-config.lookBack + 1 until 0).toArray.flatMap(j => af.schema.fieldNames.filter(name => name.endsWith(j.toString)))
@@ -217,10 +217,10 @@ object Forecaster {
       NNEstimator[Float](bigdl, new MSECriterion[Float](), featureSize = inputSize, labelSize = Array(config.horizon))
     }
     estimator.setBatchSize(config.batchSize).setOptimMethod(new Adam(lr = config.learningRate))
-      .setMaxEpoch(config.epochs)
       .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
-//      .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(1.0f)))
+//      .setMaxEpoch(config.epochs)
+      .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(config.minLoss)))
     if (config.save) {
       val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
       uf.write.mode("overwrite").parquet(s"$modelPath/uf")
@@ -294,7 +294,9 @@ object Forecaster {
         val sc = NNContext.initNNContext(conf)
         sc.setLogLevel("ERROR")
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+        // read data
         val ff = config.data match {
+          case "clusterS" => DataReader.readClusterSimple(spark, s"dat/lnq/${config.station}.csv")
           case "complex" => DataReader.readComplex(spark, s"dat/lnq/${config.station}.csv")
           case "simple" => DataReader.readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
         }
@@ -330,8 +332,8 @@ object Forecaster {
           case "lstm" =>
             val horizons = Array(7)
             val lookBacks = Array(7)
-            val layers = Array(5, 7)
-            val hiddenSizes = Array(300, 400, 512, 768)
+            val layers = Array(2, 3, 4)
+            val hiddenSizes = Array(128, 300, 400, 512)
             for {
               h <- horizons
               l <- lookBacks
@@ -352,7 +354,7 @@ object Forecaster {
             val horizons = Array(7)
             val lookBacks = Array(7)
             val layers = Array(5, 7)
-            val hiddenSizes = Array(300, 400, 512)
+            val hiddenSizes = Array(128, 300, 400, 512)
             val nBlocks = Array(2, 3, 4)
             val nHeads = Array(2, 4, 8)
             for {

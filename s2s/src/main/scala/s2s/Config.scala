@@ -3,7 +3,7 @@ package s2s
 case class Config(
   station: String = "viet-tri",
   mode: String = "eval",
-  data: String = "simple",
+  data: String = "simple", // {simple, complex, cluster}
   lookBack: Int = 7,
   horizon: Int = 7,
   epochs: Int = 30,
@@ -24,5 +24,6 @@ case class Config(
   nBlock: Int = 2,
   nHead: Int = 2,
   bertSize: Int = 32,
-  intermediateSize: Int = 16
+  intermediateSize: Int = 16,
+  minLoss: Float = 0.2f // minLoss for early stopping
 )
