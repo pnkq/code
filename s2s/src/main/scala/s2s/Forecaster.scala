@@ -156,7 +156,11 @@ object Forecaster {
   private def train(ff: DataFrame, config: Config): Result = {
     val dateInputCols = Array("month", "dayOfMonth")
     val targetCol = "y"
-    val extraCols = ff.schema.fieldNames.filter(name => name.contains("extra"))
+    // station-specific data contains "extra" columns
+    // region-specific data contains [hgt, relh, uwind, vwind, slp, soilw] columns
+    val extraColumnNames = Set("extra", "hgt", "relh", "wind", "slp", "soilw")
+    val extraCols = ff.schema.fieldNames.filter(name => extraColumnNames.exists(e => name.contains(e)))
+    println(s"Number of extra features = ${extraCols.length}")
     val featureCols = extraCols ++ dateInputCols // all features features to be rolled
 
     println(s"Rolling the data for horizon=${config.horizon} and lookBack=${config.lookBack}. Please wait...")
@@ -174,8 +178,7 @@ object Forecaster {
       roll(ff, config.lookBack, config.horizon, featureCols, targetCol)
     }
     if (config.verbose) {
-      println(s"Number of columns of ff = ${af.schema.fieldNames.length}")
-      af.show()
+      println(s"Number of columns of af = ${af.schema.fieldNames.length}")
     }
     // arrange input features by time steps (i.e., -3, -2, -1, 0)
     var inputCols = (-config.lookBack + 1 until 0).toArray.flatMap(j => af.schema.fieldNames.filter(name => name.endsWith(j.toString)))
@@ -222,7 +225,7 @@ object Forecaster {
 //      .setMaxEpoch(config.epochs)
       .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(config.minLoss)))
     if (config.save) {
-      val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
+      val modelPath = s"bin/${config.station}/${config.data}"
       uf.write.mode("overwrite").parquet(s"$modelPath/uf")
       vf.write.mode("overwrite").parquet(s"$modelPath/vf")
       bigdl.saveModel(s"$modelPath/${config.modelType}.bigdl", overWrite = true)
@@ -264,8 +267,9 @@ object Forecaster {
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[Config](getClass.getName) {
       head(getClass.getName, "1.0")
-      opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
-      opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
+      opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("master, default is local[*]")
+      opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory")
+      opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
       opt[String]('d', "data").action((x, conf) => conf.copy(data = x)).text("data type: simple/complex")
       opt[String]('s', "station").action((x, conf) => conf.copy(station = x)).text("station viet-tri/vinh-yen/...")
@@ -289,7 +293,7 @@ object Forecaster {
     }
     opts.parse(args, Config()) match {
       case Some(config) =>
-        val conf = new SparkConf().setAppName(getClass.getName).setMaster("local[*]")
+        val conf = new SparkConf().setAppName(getClass.getName).setMaster(config.master)
           .set("spark.executor.memory", config.executorMemory).set("spark.driver.memory", config.driverMemory)
           .set("spark.driver.extraClassPath", "lib/mkl-java-x86_64-linux-2.0.0.jar")
         val sc = NNContext.initNNContext(conf)
@@ -297,7 +301,8 @@ object Forecaster {
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
         // read data
         val ff = config.data match {
-          case "clusterS" => DataReader.readClusterSimple(spark, s"dat/lnq/${config.station}.csv")
+          case "clusterC" => DataReader.readClusterComplex(spark, s"dat/lnq/${config.station}-complex.csv")
+          case "clusterS" => DataReader.readClusterSimple(spark, s"dat/lnq/${config.station}-simple.csv")
           case "complex" => DataReader.readComplex(spark, s"dat/lnq/${config.station}.csv")
           case "simple" => DataReader.readSimple(spark, "dat/lnq/y.80-19.tsv", config.station)
         }

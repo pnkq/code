@@ -12,6 +12,7 @@ case class Config(
   plot: Boolean = false,
   verbose: Boolean = false,
   save: Boolean = false,
+  master: String = "local[*]",
   driverMemory: String = "24g",
   executorMemory: String = "8g",
   modelType: Int = 1, // 1=lstm, 2=lstm+bert
