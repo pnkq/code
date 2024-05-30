@@ -147,23 +147,10 @@ plt.xlabel('epoch')
 plt.savefig(f"freezed-{args.n}-{args.m}.png")
 
 # 6. Fine-tune the model
-# inputs -> preprocess -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
-
-def get_base_model_index(model_type):
-    match model_type:
-        case "mobile":
-            return 3
-        case "resnet":
-            return 1
-        case "efficient":
-            return 1
-        case "vgg":
-            return 1
-        case _:
-            return -1
+# inputs -> (preprocess) -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
 
 print("Number of layers in ptc: ", len(ptc.layers))
-base_model = ptc.layers[get_base_model_index(args.m)] 
+base_model = ptc.layers[1] 
 base_model.trainable = True
 # Let's take a look to see how many layers are in the base model
 print("Number of layers in the base model: ", len(base_model.layers))
