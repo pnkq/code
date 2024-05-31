@@ -44,6 +44,8 @@ def preprocess(model_type):
             return tf.keras.applications.resnet50.preprocess_input
         case "efficient":
             return tf.keras.applications.efficientnet.preprocess_input
+        case "vgg":
+            return tf.keras.applications.vgg19.preprocess_input
         case _: 
             return tf.keras.applications.mobilenet_v2.preprocess_input
 
@@ -58,12 +60,14 @@ def get_base_model(model_type):
             return tf.keras.applications.ResNet50V2(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
         case "efficient":
             return tf.keras.applications.EfficientNetB7(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
+        case "vgg":
+            return tf.keras.applications.VGG19(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
         case _:
             return tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')
 
 base_model = get_base_model(args.m)
 
-base_model.summary()
+# base_model.summary() # print architecture of the base model (long!)
 
 # 3. Create a model from a base model in which all layers are freezed
 
@@ -143,20 +147,10 @@ plt.xlabel('epoch')
 plt.savefig(f"freezed-{args.n}-{args.m}.png")
 
 # 6. Fine-tune the model
-# inputs -> preprocess -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
+# inputs -> (preprocess) -> base_model -> GlobalAveragePooling2D -> Dropout -> Dense
 
-def get_base_model_index(model_type):
-    match model_type:
-        case "mobile":
-            return 3
-        case "resnet":
-            return 3
-        case "efficient":
-            return 1
-        case _:
-            return -1
-
-base_model = ptc.layers[get_base_model_index(args.m)] 
+print("Number of layers in ptc: ", len(ptc.layers))
+base_model = ptc.layers[1] 
 base_model.trainable = True
 # Let's take a look to see how many layers are in the base model
 print("Number of layers in the base model: ", len(base_model.layers))

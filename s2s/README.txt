@@ -78,4 +78,5 @@ Rainfall Prediction using LSTM and BERT
         bloop run -p s2s -m s2s.Forecaster -- -m lstm -d clusterS -s tay-bac
     Use -m lstm and complex data
         bloop run -p s2s -m s2s.Forecaster -- -m lstm -d clusterC -s tay-bac
-
+    Use -m bert and complex data
+        bloop run -p s2s -m s2s.Forecaster -- -m bert -d clusterC -s tay-bac
