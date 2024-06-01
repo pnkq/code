@@ -25,13 +25,11 @@
       <scope>provided</scope>
     </dependency>
     <!-- https://mvnrepository.com/artifact/jakarta.faces/jakarta.faces-api -->
-    <!--
     <dependency>
       <groupId>jakarta.faces</groupId>
       <artifactId>jakarta.faces-api</artifactId>
       <version>4.0.0</version>
     </dependency>
-    -->
   </dependencies>
   <build>
     <directory>target</directory>
