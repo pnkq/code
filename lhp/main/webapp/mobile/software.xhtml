@@ -1,0 +1,44 @@
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="http://xmlns.jcp.org/jsf/html"
+      xmlns:f="http://java.sun.com/jsf/core"
+      xmlns:pm="http://primefaces.org/mobile"
+      xmlns:pui="http://primefaces.org/ui">
+<f:view renderKitId="PRIMEFACES_MOBILE"/>
+<h:head>
+    <meta http-equiv="Content-Type" text="text/html; charset=utf-8"/>
+    <title>Lê Hồng Phương</title>
+</h:head>
+<h:body>
+    <pm:page id="software">
+        <pm:header title="Lê Hồng Phương"/>
+        <pm:content id="softwareContent">
+            <h1>Software</h1>
+            I have written some fundamental tools for Vietnamese text processing which are widely used by the community. The toolkit includes a word segmentation tool, a part-of-speech tagger, a dependency parser, a named entity recognizer. These tools are all open source and published under the GNU GPL.
+            Here are some links to the tools:
+            <ul>
+                <li><a href="http://vlp.group/vlp/">Vietnamese Language Processing Demo</a></li>
+                <li><a href="https://github.com/phuonglh/vlp">vlp</a></li>
+                <li><a href="https://github.com/phuonglh/vn.vitk">vitk</a> (old toolkit, written in Java)</li>
+                <li><a href="https://github.com/phuonglh/ai.vitk.ner">vitk-ner</a> (old toolkit, written in Scala)</li>
+            </ul>
+            Most of my programs are currently written in the Julia programming language. They will be made open soon.
+            <h:panelGrid columns="3" layout="grid">
+                <h:outputLink value="projects.xhtml">Projects</h:outputLink>
+                <h:outputLink value="software.xhtml">Software</h:outputLink>
+                <h:outputLink value="publications.xhtml">Publications</h:outputLink>
+                <h:outputLink value="teaching.xhtml">Teaching</h:outputLink>
+                <h:outputLink value="talks.xhtml">Talks</h:outputLink>
+                <h:outputLink value="blog.xhtml">Blog</h:outputLink>
+                <h:outputLink value="index.xhtml">phuonglh</h:outputLink>
+            </h:panelGrid>
+            <h:form>
+                <pm:field>
+                    <pui:commandButton value="Switch to Desktop Layout" actionListener="#{mobileSwitch.switchTo('WEB')}" ajax="false"/>
+                </pm:field>
+            </h:form>
+        </pm:content>
+        <pm:footer title="Copyright 2019 by phuonglh"/>
+    </pm:page>
+</h:body>
+</html>
