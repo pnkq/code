@@ -67,12 +67,14 @@ object DataReader {
    * Should remove data of year >= 2020 (many missing re-analysis data).
    *
    * @param spark spark session
-   * @param path  path to the CSV file
+   * @param path  path to the CSV file [Date, y, extra_j,...]
    * @return a data frame and an array of date columns
    */
   def readClusterComplex(spark: SparkSession, path: String): DataFrame = {
-    val df = spark.read.options(Map("inferSchema" -> "true", "header" -> "true")).csv(path)
-    val ef = df.withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
+    val df = spark.read.options(Map("inferSchema" -> "true", "header" -> "false")).csv(path)
+    val ef = df.withColumnRenamed("_c0", "Date")
+      .withColumnRenamed("_c1", "y")
+      .withColumn("date", to_date(col("Date"), "yyy-MM-dd"))
       .withColumn("year", year(col("date")))
       .withColumn("month", month(col("date")))
       .withColumn("dayOfMonth", dayofmonth(col("date")))

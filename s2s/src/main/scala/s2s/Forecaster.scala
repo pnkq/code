@@ -158,7 +158,8 @@ object Forecaster {
     val targetCol = "y"
     // station-specific data contains "extra" columns
     // region-specific data contains [hgt, relh, uwind, vwind, slp, soilw] columns
-    val extraColumnNames = Set("extra", "hgt", "relh", "wind", "slp", "soilw")
+    // val extraColumnNames = Set("extra", "hgt", "relh", "wind", "slp", "soilw")
+    val extraColumnNames = Set("extra", "_c")
     val extraCols = ff.schema.fieldNames.filter(name => extraColumnNames.exists(e => name.contains(e)))
     println(s"Number of extra features = ${extraCols.length}")
     val featureCols = extraCols ++ dateInputCols // all features features to be rolled
