@@ -1,0 +1,172 @@
+ Total params: 23,570,947 (89.92 MB)
+ Trainable params: 6,147 (24.01 KB)
+ Non-trainable params: 23,564,800 (89.89 MB)
+Epoch 1/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 50s 986ms/step - accuracy: 0.3730 - loss: 48.9153 - val_accuracy: 0.4778 - val_loss: 10.9336
+Epoch 2/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 963ms/step - accuracy: 0.3959 - loss: 37.5401 - val_accuracy: 0.5278 - val_loss: 10.3490
+Epoch 3/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 951ms/step - accuracy: 0.3856 - loss: 35.3891 - val_accuracy: 0.5000 - val_loss: 9.7297
+Epoch 4/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 951ms/step - accuracy: 0.4095 - loss: 32.9985 - val_accuracy: 0.5111 - val_loss: 10.4828
+Epoch 5/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 948ms/step - accuracy: 0.4076 - loss: 31.1528 - val_accuracy: 0.5083 - val_loss: 10.8840
+Epoch 6/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 951ms/step - accuracy: 0.3936 - loss: 32.1900 - val_accuracy: 0.5306 - val_loss: 10.3472
+Epoch 7/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 954ms/step - accuracy: 0.4307 - loss: 28.7233 - val_accuracy: 0.5583 - val_loss: 10.2918
+Epoch 8/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 952ms/step - accuracy: 0.4278 - loss: 27.4479 - val_accuracy: 0.5417 - val_loss: 10.5432
+Epoch 9/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 953ms/step - accuracy: 0.4403 - loss: 26.0418 - val_accuracy: 0.5639 - val_loss: 9.6671
+Epoch 10/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 952ms/step - accuracy: 0.4622 - loss: 25.3520 - val_accuracy: 0.5694 - val_loss: 10.1275
+Epoch 11/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 951ms/step - accuracy: 0.4697 - loss: 24.0161 - val_accuracy: 0.5611 - val_loss: 9.4277
+Epoch 12/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 950ms/step - accuracy: 0.4618 - loss: 24.3153 - val_accuracy: 0.5722 - val_loss: 8.7378
+Epoch 13/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 953ms/step - accuracy: 0.4583 - loss: 22.6695 - val_accuracy: 0.5333 - val_loss: 9.4263
+Epoch 14/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 951ms/step - accuracy: 0.4557 - loss: 23.5854 - val_accuracy: 0.5639 - val_loss: 9.2406
+Epoch 15/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 954ms/step - accuracy: 0.4744 - loss: 22.7903 - val_accuracy: 0.5694 - val_loss: 8.3248
+Epoch 16/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 952ms/step - accuracy: 0.4928 - loss: 19.6867 - val_accuracy: 0.5861 - val_loss: 8.3244
+Epoch 17/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 951ms/step - accuracy: 0.4910 - loss: 20.9898 - val_accuracy: 0.5833 - val_loss: 8.2759
+Epoch 18/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 951ms/step - accuracy: 0.4684 - loss: 21.7446 - val_accuracy: 0.5972 - val_loss: 7.8653
+Epoch 19/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 952ms/step - accuracy: 0.5039 - loss: 17.5457 - val_accuracy: 0.5778 - val_loss: 7.7844
+Epoch 20/20
+46/46 ━━━━━━━━━━━━━━━━━━━━ 44s 950ms/step - accuracy: 0.4822 - loss: 18.1171 - val_accuracy: 0.5639 - val_loss: 8.1291
+Number of layers in ptc:  5
+Number of layers in the base model:  190
+Fine-tune from layer:  152
+Epoch 20/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 68s 1s/step - accuracy: 0.3996 - loss: 1.1194 - val_accuracy: 0.3722 - val_loss: 1.1775
+Epoch 21/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.5818 - loss: 0.9325 - val_accuracy: 0.3833 - val_loss: 1.1031
+Epoch 22/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.6424 - loss: 0.8394 - val_accuracy: 0.5667 - val_loss: 0.9393
+Epoch 23/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.6902 - loss: 0.7626 - val_accuracy: 0.5889 - val_loss: 0.8883
+Epoch 24/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.7478 - loss: 0.6652 - val_accuracy: 0.6472 - val_loss: 0.8477
+Epoch 25/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.7656 - loss: 0.6224 - val_accuracy: 0.6611 - val_loss: 0.8189
+Epoch 26/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.8119 - loss: 0.5314 - val_accuracy: 0.6611 - val_loss: 0.7979
+Epoch 27/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.8309 - loss: 0.4791 - val_accuracy: 0.6806 - val_loss: 0.7705
+Epoch 28/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.8678 - loss: 0.4286 - val_accuracy: 0.6694 - val_loss: 0.7705
+Epoch 29/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.8730 - loss: 0.3866 - val_accuracy: 0.6750 - val_loss: 0.7593
+Epoch 30/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.9033 - loss: 0.3319 - val_accuracy: 0.6778 - val_loss: 0.7652
+Epoch 31/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.8984 - loss: 0.3288 - val_accuracy: 0.6806 - val_loss: 0.7599
+Epoch 32/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.9353 - loss: 0.2625 - val_accuracy: 0.6778 - val_loss: 0.7502
+Epoch 33/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.9421 - loss: 0.2429 - val_accuracy: 0.6694 - val_loss: 0.7716
+Epoch 34/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.9465 - loss: 0.2119 - val_accuracy: 0.6778 - val_loss: 0.8046
+Epoch 35/35
+46/46 ━━━━━━━━━━━━━━━━━━━━ 60s 1s/step - accuracy: 0.9690 - loss: 0.1719 - val_accuracy: 0.6806 - val_loss: 0.8244
+12/12 ━━━━━━━━━━━━━━━━━━━━ 11s 819ms/step
+2024-05-30 13:59:21.877906: W tensorflow/core/framework/local_rendezvous.cc:404] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+tf.Tensor(
+[[15 36 36]
+ [22 31 49]
+ [29 60 82]], shape=(3, 3), dtype=int32)
+
+
+
+
+ Total params: 23,568,898 (89.91 MB)
+ Trainable params: 4,098 (16.01 KB)
+ Non-trainable params: 23,564,800 (89.89 MB)
+Epoch 1/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 36s 996ms/step - accuracy: 0.3944 - loss: 97.7894 - val_accuracy: 0.4127 - val_loss: 24.4413
+Epoch 2/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 958ms/step - accuracy: 0.5397 - loss: 27.9396 - val_accuracy: 0.5913 - val_loss: 17.3289
+Epoch 3/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 30s 954ms/step - accuracy: 0.5588 - loss: 25.2593 - val_accuracy: 0.6429 - val_loss: 10.7969
+Epoch 4/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 964ms/step - accuracy: 0.5827 - loss: 19.7978 - val_accuracy: 0.6746 - val_loss: 9.8323
+Epoch 5/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 958ms/step - accuracy: 0.6059 - loss: 18.3479 - val_accuracy: 0.7143 - val_loss: 8.7112
+Epoch 6/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 30s 953ms/step - accuracy: 0.6474 - loss: 16.0917 - val_accuracy: 0.7262 - val_loss: 9.9321
+Epoch 7/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 964ms/step - accuracy: 0.6360 - loss: 19.1169 - val_accuracy: 0.7222 - val_loss: 8.4667
+Epoch 8/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 957ms/step - accuracy: 0.6342 - loss: 15.8157 - val_accuracy: 0.7540 - val_loss: 8.7120
+Epoch 9/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 962ms/step - accuracy: 0.6857 - loss: 16.3839 - val_accuracy: 0.7262 - val_loss: 8.3455
+Epoch 10/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 958ms/step - accuracy: 0.7122 - loss: 13.0841 - val_accuracy: 0.7302 - val_loss: 8.3134
+Epoch 11/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 30s 955ms/step - accuracy: 0.6812 - loss: 14.0636 - val_accuracy: 0.7302 - val_loss: 8.3399
+Epoch 12/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 30s 953ms/step - accuracy: 0.6686 - loss: 15.3153 - val_accuracy: 0.7341 - val_loss: 8.1234
+Epoch 13/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 958ms/step - accuracy: 0.6987 - loss: 13.2982 - val_accuracy: 0.7302 - val_loss: 8.0749
+Epoch 14/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 957ms/step - accuracy: 0.6866 - loss: 13.5817 - val_accuracy: 0.7460 - val_loss: 7.6994
+Epoch 15/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 962ms/step - accuracy: 0.7080 - loss: 12.9209 - val_accuracy: 0.7500 - val_loss: 7.4828
+Epoch 16/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 961ms/step - accuracy: 0.6967 - loss: 12.6202 - val_accuracy: 0.7381 - val_loss: 7.7060
+Epoch 17/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 958ms/step - accuracy: 0.7108 - loss: 10.9943 - val_accuracy: 0.7421 - val_loss: 7.3284
+Epoch 18/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 31s 957ms/step - accuracy: 0.7312 - loss: 10.6555 - val_accuracy: 0.7500 - val_loss: 7.3285
+Epoch 19/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 30s 953ms/step - accuracy: 0.6842 - loss: 11.5524 - val_accuracy: 0.7579 - val_loss: 7.9737
+Epoch 20/20
+32/32 ━━━━━━━━━━━━━━━━━━━━ 30s 954ms/step - accuracy: 0.7533 - loss: 10.1309 - val_accuracy: 0.7460 - val_loss: 6.8576
+Number of layers in ptc:  5
+Number of layers in the base model:  190
+Fine-tune from layer:  152
+Epoch 20/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 50s 1s/step - accuracy: 0.5038 - loss: 0.8368 - val_accuracy: 0.6905 - val_loss: 0.6084
+Epoch 21/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.7042 - loss: 0.5848 - val_accuracy: 0.6905 - val_loss: 0.5667
+Epoch 22/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.7726 - loss: 0.5016 - val_accuracy: 0.7619 - val_loss: 0.5245
+Epoch 23/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.8258 - loss: 0.4029 - val_accuracy: 0.7540 - val_loss: 0.5119
+Epoch 24/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.8635 - loss: 0.3488 - val_accuracy: 0.7778 - val_loss: 0.4790
+Epoch 25/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9063 - loss: 0.2947 - val_accuracy: 0.7937 - val_loss: 0.4611
+Epoch 26/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9264 - loss: 0.2353 - val_accuracy: 0.7976 - val_loss: 0.4425
+Epoch 27/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9329 - loss: 0.1987 - val_accuracy: 0.8135 - val_loss: 0.4206
+Epoch 28/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9448 - loss: 0.1873 - val_accuracy: 0.8135 - val_loss: 0.4111
+Epoch 29/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9662 - loss: 0.1468 - val_accuracy: 0.8333 - val_loss: 0.3915
+Epoch 30/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9639 - loss: 0.1345 - val_accuracy: 0.8373 - val_loss: 0.3783
+Epoch 31/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9660 - loss: 0.1124 - val_accuracy: 0.8373 - val_loss: 0.3687
+Epoch 32/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9939 - loss: 0.0665 - val_accuracy: 0.8532 - val_loss: 0.3575
+Epoch 33/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 44s 1s/step - accuracy: 0.9858 - loss: 0.0641 - val_accuracy: 0.8651 - val_loss: 0.3425
+Epoch 34/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9889 - loss: 0.0550 - val_accuracy: 0.8611 - val_loss: 0.3579
+Epoch 35/35
+32/32 ━━━━━━━━━━━━━━━━━━━━ 42s 1s/step - accuracy: 0.9939 - loss: 0.0499 - val_accuracy: 0.8611 - val_loss: 0.3646
+8/8 ━━━━━━━━━━━━━━━━━━━━ 8s 933ms/step
+2024-05-30 18:16:09.988278: W tensorflow/core/framework/local_rendezvous.cc:404] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+tf.Tensor(
+[[ 29  60]
+ [ 43 120]], shape=(2, 2), dtype=int32)
+
