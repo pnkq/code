@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:f="jakarta.faces.core" xmlns:h="jakarta.faces.html">
+<html lang="en" xmlns:f="jakarta.faces.core" xmlns:h="jakarta.faces.html" xmlns:ui="jakarta.faces.facelets">
 <h:head>
     <meta http-equiv="Content-Type" text="text/html; charset=utf-8"/>
     <meta http-equiv="x-ua-compatible" content="ie=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <h:insert name="script"></h:insert>
 </h:head>
 <h:body layout="full">
     <h:outputStylesheet library="css" name="simple.css"/>
@@ -16,7 +15,7 @@
     </header>
     <main>
         <div class="container">
-            <h:insert name="content">Default content</h:insert>
+            <ui:insert name="content">Default content</ui:insert>
         </div>
     </main>
     <footer>
