@@ -13,22 +13,25 @@
   <url>http://phuonglh.com</url>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <server.path>/home/phuonglh/payara6</server.path>
+    <server.path>/Users/phuonglh/payara6</server.path>
   </properties>
 
   <dependencies>
-    <!-- https://mvnrepository.com/artifact/jakarta.platform/jakarta.jakartaee-api -->
     <dependency>
       <groupId>jakarta.platform</groupId>
       <artifactId>jakarta.jakartaee-api</artifactId>
       <version>10.0.0</version>
       <scope>provided</scope>
     </dependency>
-    <!-- https://mvnrepository.com/artifact/jakarta.faces/jakarta.faces-api -->
     <dependency>
       <groupId>jakarta.faces</groupId>
       <artifactId>jakarta.faces-api</artifactId>
       <version>4.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <version>2.2.224</version>
     </dependency>
   </dependencies>
   <build>
@@ -52,12 +55,12 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-war-plugin</artifactId>
-        <version>3.2.2</version>
+        <version>3.4.0</version>
       </plugin>
       <plugin>
         <groupId>org.codehaus.cargo</groupId>
-        <artifactId>cargo-maven2-plugin</artifactId>
-        <version>1.7.3</version>
+        <artifactId>cargo-maven3-plugin</artifactId>
+        <version>1.10.10</version>
         <configuration>
           <container>
             <containerId>glassfish5x</containerId>
@@ -89,7 +92,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.8.0</version>
+        <version>3.12.0</version>
         <configuration>
           <source>11</source>
           <target>11</target>
