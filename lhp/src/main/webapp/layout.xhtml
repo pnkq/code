@@ -1,19 +1,16 @@
-<html xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:h="http://xmlns.jcp.org/jsf/html"
-      xmlns:ui="http://xmlns.jcp.org/jsf/facelets">
+<!DOCTYPE html>
+<html lang="en" xmlns:f="jakarta.faces.core" xmlns:h="jakarta.faces.html" xmlns:ui="jakarta.faces.facelets">
 <h:head>
     <meta http-equiv="Content-Type" text="text/html; charset=utf-8"/>
     <meta http-equiv="x-ua-compatible" content="ie=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <ui:insert name="script"></ui:insert>
 </h:head>
 <h:body layout="full">
-    <h:outputStylesheet library="css" name="payara.css"/>
+    <h:outputStylesheet library="css" name="simple.css"/>
     <header id="header">
         <div class="container">
             <p class="links"><a href="/lhp/index.xhtml">About</a>  |  <a href="/lhp/projects.xhtml">Projects</a>  |  <a href="/lhp/software.xhtml">Software</a>  |  <a href="/lhp/publications.xhtml">Publications</a>  |  <a href="/lhp/teaching.xhtml">Teaching</a>  |  <a href="/lhp/talks.xhtml">Talks</a></p>
-        <!-- <h4><ui:insert name="quote"><h:outputText value="#{quo.quote}"/></ui:insert></h4> -->
-        <h4><ui:insert name="quote">Những cây chậm lớn luôn kết được quả ngọt nhất. -- Molière</ui:insert></h4>
+        <h4><h:outputText id="output" name="quote" value="#{quote.content}"/></h4>
         </div>
     </header>
     <main>
