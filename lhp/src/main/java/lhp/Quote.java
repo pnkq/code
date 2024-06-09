@@ -49,15 +49,25 @@ public class Quote {
         quotes.add("Find out what you like doing best, and get someone to pay you for doing it. (Katharine Whitehorn)");
         quotes.add("The most common way people give up their power is by thinking they don't have any. (Alice Walker)");
         quotes.add("It does not matter how slowly you go as long as you do not stop. (Confucius)");
-        quotes.add("If opportunity doesn’t knock, build a door. (Milton Berle)");
+        quotes.add("If opportunity doesn't knock, build a door. (Milton Berle)");
         quotes.add("Wanting to be someone else is a waste of the person you are. (Kurt Cobain)");
         quotes.add("Nothing will work unless you do. (Maya Angelou)");
-        quotes.add("If you’re going through hell, keep going. (Winston Churchill)");
+        quotes.add("If you're going through hell, keep going. (Winston Churchill)");
         quotes.add("The future depends on what you do today. (Mahatma Gandhi)");
         quotes.add("You only live once, but if you do it right, once is enough. (Mae West)");
         quotes.add("I am not a product of my circumstances. I am a product of my decisions. (Stephen Covey)");
         quotes.add("Start by doing what is necessary, then do what is possible, and suddenly you are doing the impossible. (Francis of Assisi)");
         quotes.add("Write your own book instead of reading someone else's book about success. (Herb Brooks)");
+        quotes.add("Style is knowing who you are, what you want to say, and not giving a damn. (Gore Vidal)");
+        quotes.add("Getting fired is nature's way of telling you that you had the wrong job in the first place. (Hal Lancaster)");
+        quotes.add("The future belongs to those who believe in the beauty of their dreams. (Eleanor Roosevelt)");
+        quotes.add("The only way to do great work is to love what you do. If you haven't found it yet, keep looking. Don't settle. (Steve Jobs)");
+        quotes.add("There is no passion to be found playing small—in settling for a life that is less than the one you are capable of living. (Nelson Mandela)");
+        quotes.add("Do the best you can in every task, no matter how unimportant it may seem at the time. No one learns more about a problem than the person at the bottom. (Sandra Day O'Connor)");
+        quotes.add("Whatever you decide to do, make sure it makes you happy. (Paulo Coelho)");
+        quotes.add("To avoid criticism, do nothing, say nothing, and be nothing. (Elbert Hubbard)");
+        quotes.add("If you’re offered a seat on a rocket ship, don't ask what seat! Just get on. (Sheryl Sandberg)");
+        quotes.add("Be yourself; everyone else is already taken. (Oscar Wilde)");
         // https://www.themuse.com/advice/50-inspirational-career-quotes
     }
 
