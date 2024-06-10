@@ -66,8 +66,15 @@ public class Quote {
         quotes.add("Do the best you can in every task, no matter how unimportant it may seem at the time. No one learns more about a problem than the person at the bottom. (Sandra Day O'Connor)");
         quotes.add("Whatever you decide to do, make sure it makes you happy. (Paulo Coelho)");
         quotes.add("To avoid criticism, do nothing, say nothing, and be nothing. (Elbert Hubbard)");
-        quotes.add("If you’re offered a seat on a rocket ship, don't ask what seat! Just get on. (Sheryl Sandberg)");
+        quotes.add("If you're offered a seat on a rocket ship, don't ask what seat! Just get on. (Sheryl Sandberg)");
         quotes.add("Be yourself; everyone else is already taken. (Oscar Wilde)");
+        quotes.add("Without leaps of imagination or dreaming, we lose the excitement of possibilities. Dreaming, after all, is a form of planning. (Gloria Steinem)");
+        quotes.add("A mind that is stretched by new experiences can never go back to its old dimensions. (Oliver Wendell Holmes, Jr.)");
+        quotes.add("Keep away from people who try to belittle your ambitions. Small people always do that, but the really great make you feel that you, too, can become great. (Mark Twain)");
+        quotes.add("He who never makes an effort, never risks a failure. (Anonymous)");
+        quotes.add("When I let go of what I am, I become what I might be. (Lao Tzu)");
+        quotes.add("You know, everybody has setbacks in their life, and everybody falls short of whatever goals they might set for themselves. That's part of living and coming to terms with who you are as a person. (Hillary Rodham Clinton)");
+        quotes.add("If it scares you, it might be a good thing to try. (Seth Godin)");
         // https://www.themuse.com/advice/50-inspirational-career-quotes
     }
 
