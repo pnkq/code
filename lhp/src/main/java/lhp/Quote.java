@@ -75,7 +75,24 @@ public class Quote {
         quotes.add("When I let go of what I am, I become what I might be. (Lao Tzu)");
         quotes.add("You know, everybody has setbacks in their life, and everybody falls short of whatever goals they might set for themselves. That's part of living and coming to terms with who you are as a person. (Hillary Rodham Clinton)");
         quotes.add("If it scares you, it might be a good thing to try. (Seth Godin)");
-        // https://www.themuse.com/advice/50-inspirational-career-quotes
+        quotes.add("Too many of us are not living our dreams because we are living our fears. (Les Brown)");
+        quotes.add("If you judge people, you have no time to love them. (Mother Teresa)");
+        quotes.add("When you get into a tight place and everything goes against you until it seems that you cannot hold on for a minute longer, never give up then, for that is just the place and time when the tide will turn. (Harriet Beecher Stowe)");
+        quotes.add("Make sure your own worst enemy doesn't live between your own two ears. (Laird Hamilton)");
+        quotes.add("There are many things in life that will catch your eye, but only a few will catch your heart. Pursue these. (Michael Nolan)");
+        quotes.add("When the grass looks greener on the other side of the fence, it may be that they take better care of it there. (Cecil Selig)");
+        quotes.add("The most difficult thing is the decision to act, the rest is merely tenacity. The fears are paper tigers. You can do anything you decide to do. You can act to change and control your life; and the procedure, the process is its own reward. (Amelia Earhart)");
+        quotes.add("Don't feel sorry for yourself, only assholes do that. (Haruki Murakami)");
+        quotes.add("I was once afraid of people saying \"Who does she think she is?\" Now I have the courage to stand and say, \"This is who I am.\" (Oprah)");
+        quotes.add("The best revenge is massive success. (Frank Sinatra)");
+        quotes.add("There are no shortcuts to any place worth going. (Beverly Sills)");
+        quotes.add("I am convinced that life is 10% what happens to me and 90% of how I react to it. (Charles Swindoll)");
+        quotes.add("If you want to achieve greatness, stop asking for permission. (Eddie Colla)");
+        quotes.add("I was always looking outside myself for strength and confidence, but it comes from within. It is there all the time. (Anna Freud)");
+        quotes.add("Whatever your life's work is, do it well. A man should do his job so well that the living, the dead, and the unborn could do it no better. (Martin Luther King Jr.)");
+        quotes.add("There isn't any great mystery about me. What I do is glamorous and has an awful lot of white-hot attention placed on it. But the actual work requires the same discipline and passion as any job you love doing, be it as a very good pipe fitter or a highly creative artist. (Tom Hanks)");
+        quotes.add("Act as if what you do makes a difference. It does. (William James)");
+        quotes.add("If you want to be a true professional, do something outside yourself. (Ruth Bader Ginsburg)");
     }
 
     public String getContent() {
