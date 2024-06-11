@@ -10,13 +10,12 @@ lazy val commonSettings = Seq(
   organization := "phuonglh.com",
   version := "1.0.0",
   libraryDependencies ++= Seq(
-    "org.apache.spark" %% "spark-core" % sparkVersion % "provided",
-    "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
-    "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
+    "org.apache.spark" %% "spark-core" % sparkVersion,
+    "org.apache.spark" %% "spark-sql" % sparkVersion,
+    "org.apache.spark" %% "spark-mllib" % sparkVersion,
     "com.intel.analytics.bigdl" % "bigdl-dllib-spark_3.1.2" % bigdlVersion,
     "com.intel.analytics.bigdl.core.native.mkl" % "mkl-java-x86_64-linux" % "2.0.0", 
     "com.intel.analytics.bigdl.core.native.mkl" % "mkl-java-mac" % "2.0.0",
-    "com.google.protobuf" % "protobuf-java" % "3.22.2",
     "com.github.scopt" %% "scopt" % "4.1.0",
     "com.johnsnowlabs.nlp" %% "spark-nlp" % sparkNLPVersion,
     "org.openjfx" % "javafx" % "22" pomOnly()
