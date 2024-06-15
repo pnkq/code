@@ -1,7 +1,10 @@
 package lhp;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.ws.rs.ApplicationPath;
+import jakarta.ws.rs.core.Application;
 
 @ApplicationScoped
-public class App {
+@ApplicationPath("/services")
+public class App extends Application  {
 }
