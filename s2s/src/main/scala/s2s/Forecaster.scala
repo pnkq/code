@@ -194,7 +194,7 @@ object Forecaster {
     val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
     val outputCols = (1 to config.horizon).map(c => s"y_$c").toArray
     val assemblerY = new VectorAssembler().setInputCols(outputCols).setOutputCol("output").setHandleInvalid("skip")
-    val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
+    val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features").setWithMean(true) // shift the input features
     val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
     val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
     val preprocessor = pipeline.fit(af)
@@ -242,8 +242,13 @@ object Forecaster {
       predictionV.select("label", "prediction").show(false)
     }
     if (config.save) {
+      // compute the mean and std of the "output" column (the original label column)
+      val Row(mean: Vector, std: Vector) = bf
+        .select(Summarizer.metrics("mean", "std").summary(col("output")).as("summary"))
+        .select("summary.mean", "summary.std")
+        .first()
       // save the unscaled prediction output on the validation set for investigation
-      val output = unscale(predictionV).repartition(1)
+      val output = unscale(predictionV, mean, std).repartition(1)
       output.write.mode("overwrite").parquet(s"$modelPath/${config.modelType.toString}/vfe")
       output.show(false)
     }
@@ -275,14 +280,11 @@ object Forecaster {
   /**
    * Restore/Unscale the prediction of a model.
    * @param df
+   * @param mean
+   * @param std
    * @return a df with "estimate" column
    */
-  private def unscale(df: DataFrame): DataFrame = {
-    // compute the mean and std of the "output" column (the original label column)
-    val Row(mean: Vector, std: Vector) = df
-      .select(Summarizer.metrics("mean", "std").summary(col("output")).as("summary"))
-      .select("summary.mean", "summary.std")
-      .first()
+  private def unscale(df: DataFrame, mean: Vector, std: Vector): DataFrame = {
     // create a udf to unscaled the prediction values
     val unscale = udf((prediction: Array[Float]) => {
       // if withShift
@@ -295,7 +297,7 @@ object Forecaster {
       }
       Vectors.dense(restore)
     })
-    val output = df.select("output", "prediction")
+    val output = df.select("label", "prediction", "output")
       .withColumn("estimate", unscale(col("prediction")))
     output
   }
