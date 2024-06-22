@@ -10,16 +10,17 @@ import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.MSECriterion
-import com.intel.analytics.bigdl.dllib.optim.{Loss, Or, Trigger, MinLoss, MaxEpoch}
+import com.intel.analytics.bigdl.dllib.optim.{Loss, MaxEpoch, MinLoss, Or, Trigger}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.feature.{StandardScaler, VectorAssembler}
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.SparkConf
 import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
 import org.apache.spark.ml.functions.array_to_vector
+import org.apache.spark.ml.stat.Summarizer
 import scopt.OptionParser
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -225,8 +226,8 @@ object Forecaster {
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
 //      .setMaxEpoch(config.epochs)
       .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(config.minLoss)))
+    val modelPath = s"bin/${config.station}/${config.data}"
     if (config.save) {
-      val modelPath = s"bin/${config.station}/${config.data}"
       uf.write.mode("overwrite").parquet(s"$modelPath/uf")
       vf.write.mode("overwrite").parquet(s"$modelPath/vf")
       bigdl.saveModel(s"$modelPath/${config.modelType}.bigdl", overWrite = true)
@@ -239,6 +240,12 @@ object Forecaster {
     val predictionV = model.transform(vf)
     if (config.verbose) {
       predictionV.select("label", "prediction").show(false)
+    }
+    if (config.save) {
+      // save the unscaled prediction output on the validation set for investigation
+      val output = unscale(predictionV).repartition(1)
+      output.write.mode("overwrite").parquet(s"$modelPath/${config.modelType.toString}/vfe")
+      output.show(false)
     }
     val errorU = computeError(predictionU)
     val maeU = errorU.head().getAs[DenseVector](0)
@@ -263,6 +270,34 @@ object Forecaster {
         heads = config.nHead, blocks = config.nBlock, intermediateSize = config.intermediateSize)
     }
     Result(maeU.toArray, mseU.toArray, maeV.toArray, mseV.toArray, trainingTime, experimentConfig)
+  }
+
+  /**
+   * Restore/Unscale the prediction of a model.
+   * @param df
+   * @return a df with "estimate" column
+   */
+  private def unscale(df: DataFrame): DataFrame = {
+    // compute the mean and std of the "output" column (the original label column)
+    val Row(mean: Vector, std: Vector) = df
+      .select(Summarizer.metrics("mean", "std").summary(col("output")).as("summary"))
+      .select("summary.mean", "summary.std")
+      .first()
+    // create a udf to unscaled the prediction values
+    val unscale = udf((prediction: Array[Float]) => {
+      // if withShift
+//      val restore = mean.toArray.zip(std.toArray).zip(prediction).map {
+//        case ((m, s), u) => m + s*u
+//      }
+      // we did not shift when training, only scale with std => no need to use mean
+      val restore = std.toArray.zip(prediction).map {
+        case (s, u) => s * u
+      }
+      Vectors.dense(restore)
+    })
+    val output = df.select("output", "prediction")
+      .withColumn("estimate", unscale(col("prediction")))
+    output
   }
 
   def main(args: Array[String]): Unit = {
@@ -337,7 +372,7 @@ object Forecaster {
             ff.show()
             af.show()
           case "lstm" =>
-            val horizons = Array(7)
+            val horizons = Array(7, 14)
             val lookBacks = Array(7)
             val layers = Array(2, 3, 4)
             val hiddenSizes = Array(128, 300, 400, 512)
@@ -358,7 +393,7 @@ object Forecaster {
               }
             }
           case "bert" =>
-            val horizons = Array(7)
+            val horizons = Array(7, 14)
             val lookBacks = Array(7)
             val layers = Array(5, 7)
             val hiddenSizes = Array(128, 300, 400, 512)
