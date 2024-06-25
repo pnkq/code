@@ -169,6 +169,7 @@ object Forecaster {
     val af = if (config.modelType == 2) {
       // BERT
       val bf = roll(ff, config.lookBack, config.horizon, featureCols, targetCol, dayOfYear = true)
+      bf.select("dayOfYear").show(50)
       bf.withColumn("typeA", array((0 until config.lookBack).map(_ => lit(0)) : _*))
         .withColumn("type", array_to_vector(col("typeA")))
         .withColumn("positionA", array((0 until config.lookBack).map(j => lit(j)) : _*))
@@ -194,7 +195,7 @@ object Forecaster {
     val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
     val outputCols = (1 to config.horizon).map(c => s"y_$c").toArray
     val assemblerY = new VectorAssembler().setInputCols(outputCols).setOutputCol("output").setHandleInvalid("skip")
-    val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features").setWithMean(true) // shift the input features
+    val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
     val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
     val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
     val preprocessor = pipeline.fit(af)
@@ -374,7 +375,7 @@ object Forecaster {
             ff.show()
             af.show()
           case "lstm" =>
-            val horizons = Array(7, 14)
+            val horizons = Array(14)
             val lookBacks = Array(7)
             val layers = Array(2, 3, 4)
             val hiddenSizes = Array(128, 300, 400, 512)
@@ -395,7 +396,7 @@ object Forecaster {
               }
             }
           case "bert" =>
-            val horizons = Array(7, 14)
+            val horizons = Array(14)
             val lookBacks = Array(7)
             val layers = Array(5, 7)
             val hiddenSizes = Array(128, 300, 400, 512)
