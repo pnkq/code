@@ -48,9 +48,9 @@ object Result {
           .withColumn("n", lit(1)) // for counting
       }
       val aggF = (1 to h).map(j => s"h$j" -> "mean") :+ ("n" -> "count")
-      val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize")
+      val cf = bf.groupBy("config.horizon", "config.layers", "config.hiddenSize")
         .agg(aggF.head, aggF.tail:_*)
-        .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize")
+        .sort("horizon", "avg(h1)", "layers", "hiddenSize")
       var ef = cf
       for (j <- 1 to h) {
         ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
@@ -71,9 +71,9 @@ object Result {
           .withColumn("n", lit(1)) // for counting
       }
       val aggF = (1 to h).map(j => s"h$j" -> "mean") :+ ("n" -> "count")
-      val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize", "config.heads", "config.blocks")
+      val cf = bf.groupBy("config.horizon", "config.layers", "config.hiddenSize", "config.heads", "config.blocks")
         .agg(aggF.head, aggF.tail:_*)
-        .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize", "heads", "blocks")
+        .sort("horizon", "avg(h1)", "layers", "hiddenSize", "heads", "blocks")
       var ef = cf
       for (j <- 1 to h) {
         ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
