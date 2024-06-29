@@ -169,7 +169,6 @@ object Forecaster {
     val af = if (config.modelType == 2) {
       // BERT
       val bf = roll(ff, config.lookBack, config.horizon, featureCols, targetCol, dayOfYear = true)
-      bf.select("dayOfYear").show(50)
       bf.withColumn("typeA", array((0 until config.lookBack).map(_ => lit(0)) : _*))
         .withColumn("type", array_to_vector(col("typeA")))
         .withColumn("positionA", array((0 until config.lookBack).map(j => lit(j)) : _*))
