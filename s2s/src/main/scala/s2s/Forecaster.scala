@@ -374,10 +374,10 @@ object Forecaster {
             ff.show()
             af.show()
           case "lstm" =>
-            val horizons = Array(14)
+            val horizons = Array(21, 28)
             val lookBacks = Array(7)
-            val layers = Array(2, 3, 4)
-            val hiddenSizes = Array(128, 300, 400, 512)
+            val layers = Array(2, 3)
+            val hiddenSizes = Array(400, 512)
             for {
               h <- horizons
               l <- lookBacks
