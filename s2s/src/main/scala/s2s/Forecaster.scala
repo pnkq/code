@@ -395,12 +395,12 @@ object Forecaster {
               }
             }
           case "bert" =>
-            val horizons = Array(14)
+            val horizons = Array(14, 21, 28)
             val lookBacks = Array(7)
             val layers = Array(5, 7)
-            val hiddenSizes = Array(128, 300, 400, 512)
-            val nBlocks = Array(2, 3, 4)
-            val nHeads = Array(2, 4, 8)
+            val hiddenSizes = Array(512)
+            val nBlocks = Array(4)
+            val nHeads = Array(2, 4)
             for {
               h <- horizons
               l <- lookBacks

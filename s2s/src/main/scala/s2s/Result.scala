@@ -76,7 +76,7 @@ object Result {
         .sort("horizon", "avg(h1)", "layers", "hiddenSize", "heads", "blocks")
       var ef = cf
       for (j <- 1 to h) {
-        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
+        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 4))
       }
       ef.show()
     }
