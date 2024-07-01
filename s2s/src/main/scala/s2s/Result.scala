@@ -53,7 +53,7 @@ object Result {
         .sort("horizon", "avg(h1)", "layers", "hiddenSize")
       var ef = cf
       for (j <- 1 to h) {
-        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
+        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 4))
       }
       ef.show()
     }
@@ -95,9 +95,8 @@ object Result {
         spark.sparkContext.setLogLevel("ERROR")
         println(f"Analyze results at station = ${config.station}: ")
         config.data match {
-          case "bert" => analyzeBERT(spark, config)    // LSTM+BERT
-          case "complex" => analyzeLSTM(spark, config) // LSTM on complex
-          case "simple" => analyzeLSTM(spark, config)  // LSTM on simple
+          case "bert" => analyzeBERT(spark, config) // LSTM+BERT
+          case "lstm" => analyzeLSTM(spark, config) // LSTM on complex
         }
         spark.stop()
 
