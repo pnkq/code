@@ -56,6 +56,9 @@ object Result {
         ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 4))
       }
       ef.show()
+      val n = ef.head.length
+      val x = (3 until n-1).map { i => (i-2, ef.head.getAs[String](i)) }.mkString(" ")
+      println(x) // for TikZ plot in the manuscript
     }
   }
 
