@@ -37,9 +37,9 @@ import org.apache.spark.sql.functions._
 object Result {
 
   private def analyzeLSTM(spark: SparkSession, config: Config): Unit = {
-    val df = spark.read.json(s"dat/result-${config.data}.jsonl")
+    val df = spark.read.json(s"dat/result-complex.jsonl")
     val station = df.filter(col("config.station") === config.station)
-    val horizons = Array(5, 7, 10, 14)
+    val horizons = Array(7, 14, 21, 28)
     for (h <- horizons) {
       val stationH = station.filter(s"config.horizon == $h")
       var bf = stationH
@@ -62,7 +62,7 @@ object Result {
   private def analyzeBERT(spark: SparkSession, config: Config): Unit = {
     val df = spark.read.json(s"dat/result-bert-${config.station}.jsonl")
     val station = df.filter(col("config.station") === config.station)
-    val horizons = Array(7)
+    val horizons = Array(7, 14, 21, 28)
     for (h <- horizons) {
       val stationH = station.filter(s"config.horizon == $h")
       var bf = stationH
