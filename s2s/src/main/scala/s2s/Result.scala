@@ -37,9 +37,9 @@ import org.apache.spark.sql.functions._
 object Result {
 
   private def analyzeLSTM(spark: SparkSession, config: Config): Unit = {
-    val df = spark.read.json(s"dat/result-${config.data}.jsonl")
+    val df = spark.read.json(s"dat/result-complex.jsonl")
     val station = df.filter(col("config.station") === config.station)
-    val horizons = Array(5, 7, 10, 14)
+    val horizons = Array(7, 14, 21, 28)
     for (h <- horizons) {
       val stationH = station.filter(s"config.horizon == $h")
       var bf = stationH
@@ -48,21 +48,24 @@ object Result {
           .withColumn("n", lit(1)) // for counting
       }
       val aggF = (1 to h).map(j => s"h$j" -> "mean") :+ ("n" -> "count")
-      val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize")
+      val cf = bf.groupBy("config.horizon", "config.layers", "config.hiddenSize")
         .agg(aggF.head, aggF.tail:_*)
-        .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize")
+        .sort("horizon", "avg(h1)", "layers", "hiddenSize")
       var ef = cf
       for (j <- 1 to h) {
-        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
+        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 4))
       }
       ef.show()
+      val n = ef.head.length
+      val x = (3 until n-1).map { i => (i-2, ef.head.getAs[String](i)) }.mkString(" ")
+      println(x) // for TikZ plot in the manuscript
     }
   }
 
   private def analyzeBERT(spark: SparkSession, config: Config): Unit = {
     val df = spark.read.json(s"dat/result-bert-${config.station}.jsonl")
     val station = df.filter(col("config.station") === config.station)
-    val horizons = Array(7)
+    val horizons = Array(7, 14, 21, 28)
     for (h <- horizons) {
       val stationH = station.filter(s"config.horizon == $h")
       var bf = stationH
@@ -71,14 +74,17 @@ object Result {
           .withColumn("n", lit(1)) // for counting
       }
       val aggF = (1 to h).map(j => s"h$j" -> "mean") :+ ("n" -> "count")
-      val cf = bf.groupBy("config.lookBack", "config.horizon", "config.layers", "config.hiddenSize", "config.heads", "config.blocks")
+      val cf = bf.groupBy("config.horizon", "config.layers", "config.hiddenSize", "config.heads", "config.blocks")
         .agg(aggF.head, aggF.tail:_*)
-        .sort("lookBack", "horizon", "avg(h1)", "layers", "hiddenSize", "heads", "blocks")
+        .sort("horizon", "avg(h1)", "layers", "hiddenSize", "heads", "blocks")
       var ef = cf
       for (j <- 1 to h) {
-        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 6))
+        ef = ef.withColumn(s"avg(h$j)", format_number(col(s"avg(h$j)"), 4))
       }
       ef.show()
+      val n = ef.head.length
+      val x = (5 until n-1).map { i => (i-4, ef.head.getAs[String](i)) }.mkString(" ")
+      println(x) // for TikZ plot in the manuscript
     }
 
   }
@@ -95,9 +101,8 @@ object Result {
         spark.sparkContext.setLogLevel("ERROR")
         println(f"Analyze results at station = ${config.station}: ")
         config.data match {
-          case "bert" => analyzeBERT(spark, config)    // LSTM+BERT
-          case "complex" => analyzeLSTM(spark, config) // LSTM on complex
-          case "simple" => analyzeLSTM(spark, config)  // LSTM on simple
+          case "bert" => analyzeBERT(spark, config) // LSTM+BERT
+          case "lstm" => analyzeLSTM(spark, config) // LSTM on complex
         }
         spark.stop()
 

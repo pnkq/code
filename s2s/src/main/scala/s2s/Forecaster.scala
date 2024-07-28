@@ -194,7 +194,7 @@ object Forecaster {
     val assemblerX = new VectorAssembler().setInputCols(inputCols).setOutputCol("input").setHandleInvalid("skip")
     val outputCols = (1 to config.horizon).map(c => s"y_$c").toArray
     val assemblerY = new VectorAssembler().setInputCols(outputCols).setOutputCol("output").setHandleInvalid("skip")
-    val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features").setWithMean(true) // shift the input features
+    val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
     val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
     val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
     val preprocessor = pipeline.fit(af)
@@ -374,10 +374,10 @@ object Forecaster {
             ff.show()
             af.show()
           case "lstm" =>
-            val horizons = Array(7, 14)
+            val horizons = Array(21, 28)
             val lookBacks = Array(7)
-            val layers = Array(2, 3, 4)
-            val hiddenSizes = Array(128, 300, 400, 512)
+            val layers = Array(2, 3)
+            val hiddenSizes = Array(400, 512)
             for {
               h <- horizons
               l <- lookBacks
@@ -395,12 +395,12 @@ object Forecaster {
               }
             }
           case "bert" =>
-            val horizons = Array(7, 14)
+            val horizons = Array(21, 28)
             val lookBacks = Array(7)
             val layers = Array(5, 7)
-            val hiddenSizes = Array(128, 300, 400, 512)
-            val nBlocks = Array(2, 3, 4)
-            val nHeads = Array(2, 4, 8)
+            val hiddenSizes = Array(512)
+            val nBlocks = Array(4)
+            val nHeads = Array(2, 4)
             for {
               h <- horizons
               l <- lookBacks
