@@ -112,6 +112,12 @@
       "category": ["kinh-doanh/", "doanh-nghiep/", "cong-nghe/"],
       "pattern": "/[\\p{Alnum}/-]+",
       "exclude": []
+    },
+    {
+      "site": "https://congthuong.vn",
+      "category": ["thuong-mai", "cong-nghiep", "thi-truong", "nang-luong", "tieu-dung-khuyen-mai"],
+      "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.html",
+      "exclude": []
     }
   ]
 }
