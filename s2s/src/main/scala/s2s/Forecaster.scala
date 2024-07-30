@@ -385,8 +385,8 @@ object Forecaster {
               .select(Summarizer.metrics("mean", "std").summary(col("output")).as("summary"))
               .select("summary.mean", "summary.std")
               .first()
-            println("mean = " + mean.toArray)
-            println("std = " + std.toArray)
+            println("mean = " + mean.toArray.mkString(", "))
+            println("std = " + std.toArray.mkString(", "))
             val output = unscale(prediction, mean, std).repartition(1).select("date", "output", "estimate")
             output.show(false)
             // extract result

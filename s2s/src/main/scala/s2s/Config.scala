@@ -6,7 +6,7 @@ case class Config(
   data: String = "clusterC", // {simple, complex, clusterC}
   lookBack: Int = 7,
   horizon: Int = 7,
-  epochs: Int = 20,
+  epochs: Int = 30,
   learningRate: Double = 1E-4,
   batchSize: Int = 64,
   plot: Boolean = false,
@@ -23,7 +23,7 @@ case class Config(
   bidirectional: Boolean = false,
   // BERT params
   nBlock: Int = 2,
-  nHead: Int = 2,
+  nHead: Int = 4,
   bertSize: Int = 32,
   intermediateSize: Int = 16,
   minLoss: Float = 0.2f // minLoss for early stopping
