@@ -195,7 +195,7 @@ object Forecaster {
     val outputCols = (1 to config.horizon).map(c => s"y_$c").toArray
     val assemblerY = new VectorAssembler().setInputCols(outputCols).setOutputCol("output").setHandleInvalid("skip")
     val scalerX = new StandardScaler().setInputCol("input").setOutputCol("features")
-    val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label")
+    val scalerY = new StandardScaler().setInputCol("output").setOutputCol("label").setWithMean(true) // scale output vectors
     val pipeline = new Pipeline().setStages(Array(assemblerX, assemblerY, scalerX, scalerY))
     val preprocessor = pipeline.fit(af)
 
@@ -252,6 +252,7 @@ object Forecaster {
       output.write.mode("overwrite").parquet(s"$modelPath/${config.modelType.toString}/vfe")
       output.show(false)
     }
+
     val errorU = computeError(predictionU)
     val maeU = errorU.head().getAs[DenseVector](0)
     val mseU = errorU.head().getAs[DenseVector](1)
@@ -278,7 +279,7 @@ object Forecaster {
   }
 
   /**
-   * Restore/Unscale the prediction of a model.
+   * Restore/unscale the prediction of a model.
    * @param df
    * @param mean
    * @param std
@@ -287,19 +288,28 @@ object Forecaster {
   private def unscale(df: DataFrame, mean: Vector, std: Vector): DataFrame = {
     // create a udf to unscaled the prediction values
     val unscale = udf((prediction: Array[Float]) => {
-      // if withShift
-//      val restore = mean.toArray.zip(std.toArray).zip(prediction).map {
-//        case ((m, s), u) => m + s*u
-//      }
-      // we did not shift when training, only scale with std => no need to use mean
-      val restore = std.toArray.zip(prediction).map {
-        case (s, u) => s * u
+      val restore = mean.toArray.zip(std.toArray).zip(prediction).map {
+        case ((m, s), u) => m + s*u
       }
       Vectors.dense(restore)
     })
-    val output = df.select("label", "prediction", "output")
+    val output = df.select("date", "label", "prediction", "output")
       .withColumn("estimate", unscale(col("prediction")))
     output
+  }
+
+  /**
+   * Extract result in the format of (ground truth, prediction value) pairs at the horizon time.
+   * The horizon time is the last element of each array.
+   * @param spark
+   * @param df a df with two columns (predicted, truth)
+   * @return an array of value pairs.
+   */
+  private def extractResult(spark: SparkSession, df: DataFrame): Array[(Double, Double)] = {
+    import spark.implicits._
+    df.select("estimate", "output").map { row =>
+      (row.getAs[Vector](0).toArray.last, row.getAs[Vector](1).toArray.last)
+    }.collect()
   }
 
   def main(args: Array[String]): Unit = {
@@ -354,19 +364,35 @@ object Forecaster {
             val json = write(result) + "\n"
             Files.write(Paths.get(s"dat/result-${config.data}-${config.station}.jsonl"), json.getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
           case "eval" =>
-            val modelPath = s"bin/${config.station}/" + (if (config.data == "complex") "c/" else "s/")
+            val modelPath = s"bin/${config.station}/clusterC/"
             val vf = spark.read.parquet(s"$modelPath/vf")
-            vf.show(10)
+            vf.select("date", "output", "label", "features").show()
             val bigdl = Models.loadModel[Float](s"$modelPath/${config.modelType}.bigdl")
             bigdl.summary()
             val prediction = bigdl.predict(vf, featureCols = Array("features"), predictionCol = "prediction")
-            prediction.select("label", "prediction").show(false)
+            val rf = prediction.select("label", "prediction")
+            rf.printSchema()
+            rf.show(false)
             if (config.plot) Plot.plot(spark, config, prediction)
             val error = computeError(prediction)
             val mae = error.head().getAs[DenseVector](0)
             val mse = error.head().getAs[DenseVector](1)
             println("avg(MAE) = " + mae)
             println("avg(MSE) = " + mse)
+
+            // compute the mean and std of the "output" column (the original label column)
+            val Row(mean: Vector, std: Vector) = prediction
+              .select(Summarizer.metrics("mean", "std").summary(col("output")).as("summary"))
+              .select("summary.mean", "summary.std")
+              .first()
+            println("mean = " + mean.toArray)
+            println("std = " + std.toArray)
+            val output = unscale(prediction, mean, std).repartition(1).select("date", "output", "estimate")
+            output.show(false)
+            // extract result
+            val result = extractResult(spark, output)
+            val outputSt = result.map { case (a, b) => a.toString + "\t" + b.toString }.mkString("\n")
+            Files.write(Paths.get(s"$modelPath/${config.modelType}.tsv"), outputSt.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
           case "roll" =>
             val ff = DataReader.readComplex(spark, s"dat/lnq/x.csv")
             val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")

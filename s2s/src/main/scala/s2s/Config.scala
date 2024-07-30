@@ -3,10 +3,10 @@ package s2s
 case class Config(
   station: String = "viet-tri",
   mode: String = "eval",
-  data: String = "simple", // {simple, complex, cluster}
+  data: String = "clusterC", // {simple, complex, clusterC}
   lookBack: Int = 7,
   horizon: Int = 7,
-  epochs: Int = 30,
+  epochs: Int = 20,
   learningRate: Double = 1E-4,
   batchSize: Int = 64,
   plot: Boolean = false,

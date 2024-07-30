@@ -72,7 +72,7 @@ Rainfall Prediction using LSTM and BERT
 
     Results are saved to `data/result-bert-viet-tri.jsonl`. Each line contains a model result.
 
-6. Run many experiments at a given region
+7. Run many experiments at a given region
 
     Use -m lstm and simple data
         bloop run -p s2s -m s2s.Forecaster -- -m lstm -d clusterS -s tay-bac
@@ -80,3 +80,16 @@ Rainfall Prediction using LSTM and BERT
         bloop run -p s2s -m s2s.Forecaster -- -m lstm -d clusterC -s tay-bac
     Use -m bert and complex data
         bloop run -p s2s -m s2s.Forecaster -- -m bert -d clusterC -s tay-bac
+
+8. Evaluate a model on a data set
+
+    bloop run -p s2s -m s2s.Forecaster -- -m eval -s dong-bac -d complexC -t 1
+
+
+8.1 Northeast:
+    dong-bac, modelType=1, 128 hidden units, 2 layers.
+        avg(MAE) = [0.5819589414629818,0.565427281436763,0.6153264698854685,0.611238412742756,0.5812697864527732,0.5857255701465901,0.5753226863314148]
+        avg(MSE) = [1.3085980953648695,1.2849396170712002,1.3564906686345564,1.3587250509808328,1.3015439738973635,1.3051810527228742,1.2466166082326]
+
+
+    after retraining on the best single encoder model, r=512
