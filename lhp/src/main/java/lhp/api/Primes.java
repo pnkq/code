@@ -1,4 +1,4 @@
-package lhp.services;
+package lhp.api;
 
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Application;

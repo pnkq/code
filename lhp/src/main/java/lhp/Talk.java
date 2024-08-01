@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 
 @Entity
-public class TalkEntity implements Serializable {
+public class Talk implements Serializable {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
