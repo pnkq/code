@@ -93,6 +93,15 @@ public class Quote {
         quotes.add("There isn't any great mystery about me. What I do is glamorous and has an awful lot of white-hot attention placed on it. But the actual work requires the same discipline and passion as any job you love doing, be it as a very good pipe fitter or a highly creative artist. (Tom Hanks)");
         quotes.add("Act as if what you do makes a difference. It does. (William James)");
         quotes.add("If you want to be a true professional, do something outside yourself. (Ruth Bader Ginsburg)");
+        quotes.add("Con người khôn ngoan không nhờ kinh nghiệm mà là nhờ khả năng trải nghiệm. (George Bernard Shaw)");
+        quotes.add("Live as if you were to die tomorrow. Learn as if you were to live forever. (Mahatma Gandhi)");
+        quotes.add("Life isn't about finding yourself. Life is about creating yourself. (George Bernard Shaw)");
+        quotes.add("The greatest lesson in life is to know that even fools are right sometimes. (Winston Churchill)");
+        quotes.add("Attitude is a choice. Happiness is a choice. Optimism is a choice. Kindness is a choice. Giving is a choice. Respect is a choice. Whatever choice you make makes you. Choose wisely. (Roy T. Bennett)");
+        quotes.add("Instead of worrying about what you cannot control, shift your energy to what you can create. (Roy T. Bennett)");
+        quotes.add("Accept yourself, love yourself, and keep moving forward. If you want to fly, you have to give up what weighs you down. (Roy T. Bennett)");
+        quotes.add("Live the Life of Your Dreams: Be brave enough to live the life of your dreams according to your vision and purpose instead of the expectations and opinions of others. (Roy T. Bennett)");
+        quotes.add("I've never fooled anyone. I've let people fool themselves. They didn't bother to find out who and what I was. Instead they would invent a character for me. I wouldn't argue with them. They were obviously loving somebody I wasn't. (Marilyn Monroe)");
     }
 
     public String getContent() {
