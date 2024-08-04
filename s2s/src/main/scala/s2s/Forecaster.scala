@@ -247,10 +247,19 @@ object Forecaster {
         .select(Summarizer.metrics("mean", "std").summary(col("output")).as("summary"))
         .select("summary.mean", "summary.std")
         .first()
+      println("mean = " + mean.toArray.mkString(", "))
+      println("std = " + std.toArray.mkString(", "))
       // save the unscaled prediction output on the validation set for investigation
       val output = unscale(predictionV, mean, std).repartition(1)
       output.write.mode("overwrite").parquet(s"$modelPath/${config.modelType.toString}/vfe")
       output.show(false)
+
+      val output2 = output.select("date", "output", "estimate")
+      output2.show(false)
+      // extract result
+      val result = extractResult(SparkSession.getActiveSession.get, output2)
+      val outputSt2 = result.map { case (a, b) => a.toString + "\t" + b.toString }.mkString("\n")
+      Files.write(Paths.get(s"$modelPath/${config.modelType}-0.tsv"), outputSt2.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
     }
 
     val errorU = computeError(predictionU)
@@ -263,6 +272,7 @@ object Forecaster {
       println("avg(validationMAE) = " + maeV)
       println("avg(validationMSE) = " + mseV)
     }
+
     if (config.plot) {
       val spark = SparkSession.getActiveSession.get
       Plot.plot(spark, config, predictionV)
@@ -392,7 +402,7 @@ object Forecaster {
             // extract result
             val result = extractResult(spark, output)
             val outputSt = result.map { case (a, b) => a.toString + "\t" + b.toString }.mkString("\n")
-            Files.write(Paths.get(s"$modelPath/${config.modelType}.tsv"), outputSt.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            Files.write(Paths.get(s"$modelPath/${config.modelType}-1.tsv"), outputSt.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
           case "roll" =>
             val ff = DataReader.readComplex(spark, s"dat/lnq/x.csv")
             val featureCols = Array("extra_0_0", "extra_0_1") ++ Array("month", "dayOfMonth")

@@ -18,7 +18,7 @@ case class Config(
   modelType: Int = 1, // 1=lstm, 2=lstm+bert
   // LSTM params
   nLayer: Int = 2,
-  hiddenSize: Int = 64,
+  hiddenSize: Int = 512, // best config on valid. set
   dropoutRate: Double = 0.1,
   bidirectional: Boolean = false,
   // BERT params
