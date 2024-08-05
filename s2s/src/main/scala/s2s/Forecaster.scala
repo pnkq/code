@@ -226,7 +226,7 @@ object Forecaster {
       .setValidation(Trigger.everyEpoch, vf, Array(new MAE[Float](), new Loss(new MSECriterion[Float]())), config.batchSize)
 //      .setMaxEpoch(config.epochs)
       .setEndWhen(Or(MaxEpoch(config.epochs), MinLoss(config.minLoss)))
-    val modelPath = s"bin/${config.station}/${config.data}"
+    val modelPath = s"bin/${config.horizon}/${config.station}/${config.data}"
     if (config.save) {
       uf.write.mode("overwrite").parquet(s"$modelPath/uf")
       vf.write.mode("overwrite").parquet(s"$modelPath/vf")

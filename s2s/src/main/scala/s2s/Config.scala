@@ -5,7 +5,7 @@ case class Config(
   mode: String = "eval",
   data: String = "clusterC", // {simple, complex, clusterC}
   lookBack: Int = 7,
-  horizon: Int = 7,
+  horizon: Int = 14,
   epochs: Int = 30,
   learningRate: Double = 1E-4,
   batchSize: Int = 64,
