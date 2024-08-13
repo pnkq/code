@@ -1,12 +1,11 @@
 package vlp.vdg;
 
-import java.io.Serializable;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * phuonglh
  */
-public class VieMap extends ConcurrentHashMap<Character, Character> implements Serializable {
+public class VieMap extends ConcurrentHashMap<Character, Character> {
 
   public VieMap() {
     // lowercase characters
