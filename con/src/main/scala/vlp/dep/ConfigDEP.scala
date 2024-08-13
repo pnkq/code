@@ -12,13 +12,14 @@ case class ConfigDEP(
     heads: Int = 2, // number of attention heads in BERT
     batchSize: Int = 128,
     maxSeqLen: Int = 30,
-    epochs: Int = 80,
-    learningRate: Double = 5E-3,
+    epochs: Int = 100,
+    learningRate: Double = 5E-4,
+    dropoutRate: Float = 0.1f,
     language: String = "vie", // [eng, ind, vie]
     modelPath: String = "bin/dep",
     outputPath: String = "out/dep/",
     scorePath: String = "dat/dep/scores.test.uas",
-    modelType: String = "t+p", // [t+p, tg+p, tn+p, b] // [t, tg, tn] model are simpler models and optional
+    modelType: String = "t+p", // [t+p, tg+p, tn+p, b] // [t, tg, tn]
     weightedLoss: Boolean = false,
     las: Boolean = false // labeled attachment score (LAS) or unlabeled attachment score (UAS)
 )

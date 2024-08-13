@@ -18,7 +18,8 @@ lazy val commonSettings = Seq(
     "com.intel.analytics.bigdl.core.native.mkl" % "mkl-java-mac" % "2.0.0",
     "com.github.scopt" %% "scopt" % "4.1.0",
     "com.johnsnowlabs.nlp" %% "spark-nlp" % sparkNLPVersion,
-    "org.openjfx" % "javafx" % "22" pomOnly()
+    "org.openjfx" % "javafx" % "22" pomOnly(),
+    "org.projectlombok" % "lombok" % "1.18.2" % "provided" // fix a bug wih Red Hat Fedora
   )
 )
 

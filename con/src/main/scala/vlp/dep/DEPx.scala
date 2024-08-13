@@ -350,7 +350,7 @@ object DEPx {
             val merge = Merge.merge(inputs = List(embeddingT, embeddingP), mode = "concat")
             val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
             val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
-            val dropout = Dropout(0.5).inputs(rnn2)
+            val dropout = Dropout(config.dropoutRate).inputs(rnn2)
             val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
             val bigdl = Model(input, output)
             val (featureSize, labelSize) = (Array(Array(2*config.maxSeqLen)), Array(config.maxSeqLen))
