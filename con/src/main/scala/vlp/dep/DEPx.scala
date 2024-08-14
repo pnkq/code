@@ -193,21 +193,21 @@ object DEPx {
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
         // determine the training and validation paths
         val (trainPath, validPath, testPath, gloveFile, numberbatchFile) = config.language match {
-          case "eng" => ("dat/dep/ud-treebanks-v2.13/UD_English-EWT/en_ewt-ud-train.conllu",
-            "dat/dep/ud-treebanks-v2.13/UD_English-EWT/en_ewt-ud-dev.conllu",
-            "dat/dep/ud-treebanks-v2.13/UD_English-EWT/en_ewt-ud-test.conllu",
+          case "eng" => ("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu",
+            "dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu",
+            "dat/dep/UD_English-EWT/en_ewt-ud-test.conllu",
             "dat/emb/glove.6B.100d.vocab.txt",
             "dat/emb/numberbatch-en-19.08.vocab.txt"
         )
-          case "ind" => ("dat/dep/ud-treebanks-v2.13/UD_Indonesian-GSD/id_gsd-ud-train.conllu",
-            "dat/dep/ud-treebanks-v2.13/UD_Indonesian-GSD/id_gsd-ud-dev.conllu",
-            "dat/dep/ud-treebanks-v2.13/UD_Indonesian-GSD/id_gsd-ud-test.conllu",
+          case "ind" => ("dat/dep/UD_Indonesian-GSD/id_gsd-ud-train.conllu",
+            "dat/dep/UD_Indonesian-GSD/id_gsd-ud-dev.conllu",
+            "dat/dep/UD_Indonesian-GSD/id_gsd-ud-test.conllu",
             "dat/emb/cc.id.300.vocab.vec",
             "dat/emb/numberbatch-id-19.08.vocab.txt"
         )
-          case "vie" => ("dat/dep/ud-treebanks-v2.13/UD_Vietnamese-VTB/vi_vtb-ud-train.conllu",
-            "dat/dep/ud-treebanks-v2.13/UD_Vietnamese-VTB/vi_vtb-ud-dev.conllu",
-            "dat/dep/ud-treebanks-v2.13/UD_Vietnamese-VTB/vi_vtb-ud-test.conllu",
+          case "vie" => ("dat/dep/UD_Vietnamese-VTB/vi_vtb-ud-train.conllu",
+            "dat/dep/UD_Vietnamese-VTB/vi_vtb-ud-dev.conllu",
+            "dat/dep/UD_Vietnamese-VTB/vi_vtb-ud-test.conllu",
             "dat/emb/cc.vi.300.vocab.vec",
             "dat/emb/numberbatch-vi-19.08.vocab.txt"
           )
@@ -405,10 +405,10 @@ object DEPx {
             estimator.setLabelCol("o").setFeaturesCol(featureColName)
               .setBatchSize(config.batchSize)
               .setOptimMethod(new Adam(config.learningRate))
-              .setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), config.batchSize)
+              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.5f))) // TODO: minLoss is a heuristic value
             // train
             estimator.fit(uf)
             // save the model
@@ -438,10 +438,10 @@ object DEPx {
             estimator.setLabelCol("o").setFeaturesCol(featureColName)
               .setBatchSize(config.batchSize)
               .setOptimMethod(new Adam(config.learningRate))
-              .setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), config.batchSize)
+              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.5f))) // TODO: minLoss is a heuristic value
             // train
             estimator.fit(uf)
             // save the model
