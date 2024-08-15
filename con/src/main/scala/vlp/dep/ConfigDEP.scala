@@ -14,7 +14,7 @@ case class ConfigDEP(
     maxSeqLen: Int = 30,
     epochs: Int = 50,
     learningRate: Double = 5E-4,
-    dropoutRate: Float = 0.1f,
+    dropoutRate: Float = 0f,
     language: String = "vie", // [eng, ind, vie]
     modelPath: String = "bin/dep",
     outputPath: String = "out/dep/",

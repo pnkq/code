@@ -3,7 +3,7 @@ package vlp.dep
 import com.intel.analytics.bigdl.dllib.NNContext
 import com.intel.analytics.bigdl.dllib.keras.Sequential
 import com.intel.analytics.bigdl.dllib.keras.layers._
-import com.intel.analytics.bigdl.dllib.keras.models.{Model, Models}
+import com.intel.analytics.bigdl.dllib.keras.models.{Model, Models, KerasNet}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedMaskCriterion}
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
@@ -107,6 +107,7 @@ object DEPx {
   /**
    * Evaluate a model on training data frame (uf) and validation data frame (vf) which have been preprocessed
    * by the training pipeline.
+   * @param bigdl the model
    * @param config config
    * @param uf training df
    * @param vf validation df
@@ -114,10 +115,7 @@ object DEPx {
    * @param offsetIndex map of index -> label
    * @param offsetMap map of label -> index (inverse of offsetIndex)
    */
-  private def eval(config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColName: String, offsetIndex: Map[Int, String], offsetMap: Map[String, Int]): Seq[Double] = {
-    val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}"
-    println(s"Loading model in the path: $modelPath...")
-    val bigdl = Models.loadModel(modelPath)
+  private def eval(bigdl: KerasNet[Float], config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColName: String, offsetIndex: Map[Int, String], offsetMap: Map[String, Int]): Seq[Double] = {
     // create a sequential model and add a custom ArgMax layer at the end of the model
     val sequential = Sequential()
     sequential.add(bigdl)
@@ -153,7 +151,7 @@ object DEPx {
         (os, p2)
       }
       // show the prediction, each row is a graph
-      zf.toDF("offsets", "prediction").show(5)
+      zf.toDF("offsets", "prediction").show(5, false)
       // flatten the prediction, convert to double for evaluation using Spark lib
       val yz = zf.flatMap(p => p._2.map(_.toDouble).zip(p._1.map(_.toDouble))).toDF("z", "y")
       yz.show(15)
@@ -305,7 +303,7 @@ object DEPx {
             bigdl.add(Embedding(numVocab + 1, config.tokenEmbeddingSize, inputLength = config.maxSeqLen))
             for (_ <- 1 to config.layers)
               bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
-            bigdl.add(Dropout(0.5))
+            bigdl.add(Dropout(config.dropoutRate))
             bigdl.add(Dense(numOffsets, activation = "softmax"))
             val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
             bigdl.summary()
@@ -316,7 +314,7 @@ object DEPx {
             bigdl.add(WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen))
             for (_ <- 1 to config.layers)
               bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
-            bigdl.add(Dropout(0.5))
+            bigdl.add(Dropout(config.dropoutRate))
             bigdl.add(Dense(numOffsets, activation = "softmax"))
             val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
             bigdl.summary()
@@ -327,7 +325,7 @@ object DEPx {
             bigdl.add(WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen))
             for (_ <- 1 to config.layers)
               bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
-            bigdl.add(Dropout(0.5))
+            bigdl.add(Dropout(config.dropoutRate))
             bigdl.add(Dense(numOffsets, activation = "softmax"))
             val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
             bigdl.summary()
@@ -393,7 +391,8 @@ object DEPx {
             tensor(j) = 1f/ws(j) // give higher weight to minority labels
           tensor
         }
-
+        val numCores = Runtime.getRuntime().availableProcessors()
+        val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         config.mode match {
           case "train" =>
             // create an estimator, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode
@@ -403,25 +402,30 @@ object DEPx {
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             estimator.setLabelCol("o").setFeaturesCol(featureColName)
-              .setBatchSize(config.batchSize)
+              .setBatchSize(batchSize)
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), config.batchSize)
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
               .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.5f))) // TODO: minLoss is a heuristic value
             // train
             estimator.fit(uf)
             // save the model
             bigdl.saveModel(s"${config.modelPath}/${config.language}-${config.modelType}", overWrite = true)
             // evaluate the model
-            val scores = eval(config, uf, vf, featureColName, offsetIndex, offsetMap)
+            val scores = eval(bigdl, config, uf, vf, featureColName, offsetIndex, offsetMap)
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "eval" =>
-            // write score on training/test set
-            val scores = eval(config, uf, wf, featureColName, offsetIndex, offsetMap)
+            // load the bigdl model
+            val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}"
+            println(s"Loading model in the path: $modelPath...")
+            val bigdl = Models.loadModel(modelPath)
+            bigdl.summary()
+            // write out training/test scores
+            val scores = eval(bigdl, config, uf, wf, featureColName, offsetIndex, offsetMap)
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
@@ -436,11 +440,11 @@ object DEPx {
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             estimator.setLabelCol("o").setFeaturesCol(featureColName)
-              .setBatchSize(config.batchSize)
+              .setBatchSize(batchSize)
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), config.batchSize)
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
               .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.5f))) // TODO: minLoss is a heuristic value
             // train
             estimator.fit(uf)
@@ -449,7 +453,7 @@ object DEPx {
             println(s"Save the model to $modelPath.")
             bigdl.saveModel(modelPath, overWrite = true)
             // evaluate the model on the training and test set
-            val scores = eval(config, uf, wf, featureColName, offsetIndex, offsetMap)
+            val scores = eval(bigdl, config, uf, wf, featureColName, offsetIndex, offsetMap)
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
