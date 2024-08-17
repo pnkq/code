@@ -71,8 +71,22 @@ object DEPx {
    * @return a data frame
    */
   private def readGraphs(spark: SparkSession, path: String, maxSeqLen: Int, las: Boolean = false): DataFrame = {
-    // read graphs and remove too-long sentences
-    val graphs = GraphReader.read(path).filter(_.sentence.tokens.size <= maxSeqLen).filter(_.sentence.tokens.size >= 5)
+    // read graphs and remove too-long or two-short sentences
+    // val graphs = GraphReader.read(path).filter(_.sentence.tokens.size <= maxSeqLen).filter(_.sentence.tokens.size >= 5)
+    // read graphs and split long graphs if necessary
+    val graphs = GraphReader.read(path).filter(_.sentence.tokens.size >= 5).flatMap { graph => 
+      if (graph.sentence.tokens.size <= maxSeqLen) Array(graph) else {
+        val (left, right) = graph.splitGraph(graph)
+        val (m, n) = (left.sentence.tokens.size, right.sentence.tokens.size)
+        if (m <= maxSeqLen && n <= maxSeqLen) {
+          Array(left, right) 
+        } else if (m > maxSeqLen && n <= maxSeqLen) {
+          Array(right)
+        } else if (m <= maxSeqLen && n > maxSeqLen) {
+          Array(left)
+        } else Array.empty[Graph]
+      }
+    }
     // linearize the graph
     val xs = graphs.map { graph => Row(linearize(graph, las): _*) } // need to scroll out the parts with :_*
     val schema = StructType(Array(
@@ -131,7 +145,7 @@ object DEPx {
     import spark.implicits._
     val scores = for (prediction <- predictions) yield {
       val zf = prediction.select("o", "z").map { row =>
-        val o = row.getAs[Vector](0).toArray
+        val o = row.getAs[Vector](0).toArray.filter(_ >= 0)
         val p = row.getSeq[Float](1).take(o.size)
         (o, p)
       }
@@ -449,6 +463,8 @@ object DEPx {
             val vocab = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary.toSet
             println("#(vocab) = " + vocab.size)
             println(vocab)
+          case "read" =>
+            // do nothing
         }
         spark.stop()
       case None => println("Invalid config!")

@@ -53,7 +53,7 @@ case class Graph(sentence: Sentence) {
   }
 
   override def toString: String = {
-    val seq = dependencies.toSeq.sortBy(_._1).tail
+    val seq = dependencies.toSeq.sortBy(_._1.toInt).tail
     seq.map(pair => {
       val sb = new StringBuilder()
       val u = pair._1
@@ -70,4 +70,19 @@ case class Graph(sentence: Sentence) {
       sb
     }).mkString("\n")
   }
+
+  /**
+   * Split a graph into 2 halves (leftGraph, rightGraph) using the root token.
+   * @param graph a graph to split
+   * @return two graphs (left, right), the ROOT token is shared between the two graphs
+   */ 
+  def splitGraph(graph: Graph): (Graph, Graph) = {
+    val tokens = graph.sentence.tokens
+    val rootToken = tokens.find(token => token.head == "0").get
+    val rootIndex = tokens.indexOf(rootToken)
+    // both left and right have the ROOT token
+    val (leftTokens, rightTokens) = (tokens.take(rootIndex + 1), tokens.takeRight(tokens.size - rootIndex + 1))
+    (Graph(Sentence(leftTokens)), Graph(Sentence(rightTokens)))
+  }
+
 }

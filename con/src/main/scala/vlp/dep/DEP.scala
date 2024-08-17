@@ -131,7 +131,7 @@ object DEP {
     import spark.implicits._
     val scores = for (prediction <- predictions) yield {
       val zf = prediction.select("o", "z").map { row =>
-        val o = row.getAs[Vector](0).toArray
+        val o = row.getAs[Vector](0).toArray.filter(_ >= 0)
         val p = row.getSeq[Float](1).take(o.size)
         (o, p)
       }
