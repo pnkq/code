@@ -11,10 +11,10 @@ case class ConfigDEP(
     layers: Int = 2, // number of LSTM layers or BERT blocks
     heads: Int = 2, // number of attention heads in BERT
     batchSize: Int = 64,
-    maxSeqLen: Int = 30,
+    maxSeqLen: Int = 20, // max 20 tokens for short sentences
     epochs: Int = 50,
     learningRate: Double = 5E-4,
-    dropoutRate: Float = 0f,
+    dropoutRate: Float = 0.2f,
     language: String = "vie", // [eng, ind, vie]
     modelPath: String = "bin/dep",
     outputPath: String = "out/dep/",
