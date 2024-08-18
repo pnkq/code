@@ -227,7 +227,6 @@ object DEPx {
         println("#(trainGraphs) = " + df.count())
         println("#(validGraphs) = " + dfV.count())
         println("#(testGraphs) = " + dfW.count())
-
         // array of offset labels, index -> label: offsets[i] is the label at index i:
         val offsets = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
         println(offsets.mkString(", "))
