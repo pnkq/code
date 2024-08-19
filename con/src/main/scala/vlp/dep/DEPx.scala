@@ -252,30 +252,6 @@ object DEPx {
         val gfW = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(efW)))
         gfV.select("t", "o").show(3, false)
 
-        // read graphX features from the training/dev split
-        val graphU = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
-        val graphV = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
-        import spark.implicits._
-        val graphUMap = graphU.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-        val graphVMap = graphV.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-        // join two maps
-        val graphMap = graphUMap ++ graphVMap
-        val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) })
-        val gfx = gf.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-        val gfxV = gfV.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-        // create a sequencer for graphX features
-        val sequencerX = new SequencerX(graphMap, config.maxSeqLen).setInputCol("t:p").setOutputCol("xs")
-        val gfy = sequencerX.transform(gfx)
-        val gfyV = sequencerX.transform(gfxV)
-        gfy.select("tokens", "uPoS", "t:p", "xs").show(3, false)
-        // flatten the "xs" column to get a vector x (of numberOfNetworkXFeatures * maxSeqLen elements)
-        val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
-        val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
-        val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
-        gfz.printSchema()
-        gfz.select("x").show(3, false)
-
-
         // prepare train/valid/test data frame for each model type:
         val (uf, vf, wf) = config.modelType match {
           case "t" => (gf, gfV, gfW)
@@ -317,6 +293,29 @@ object DEPx {
             val hfW = gfW.withColumn("tb", g(col("t")))
             (hf, hfV, hfW)
           case "x" =>
+            // read graphX features from the training/dev split
+            val graphU = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
+            val graphV = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
+            import spark.implicits._
+            val graphUMap = graphU.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+            val graphVMap = graphV.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+            // join two maps
+            val graphMap = graphUMap ++ graphVMap
+            val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) })
+            val gfx = gf.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+            val gfxV = gfV.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+            // create a sequencer for graphX features
+            val sequencerX = new SequencerX(graphMap, config.maxSeqLen).setInputCol("t:p").setOutputCol("xs")
+            val gfy = sequencerX.transform(gfx)
+            val gfyV = sequencerX.transform(gfxV)
+            gfy.select("tokens", "uPoS", "t:p", "xs").show(3, false)
+            // flatten the "xs" column to get a vector x (of numberOfNetworkXFeatures * maxSeqLen elements)
+            val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
+            val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
+            val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
+            gfz.printSchema()
+            gfz.select("x").show(3, false)
+
             // assemble the 3 input vectors into one of double maxSeqLen (for use in a combined model)
             val assembler = new VectorAssembler().setInputCols(Array("t", "p", "x")).setOutputCol("t+p+x")
             val hf = assembler.transform(gfz)
@@ -520,8 +519,6 @@ object DEPx {
             val vocab = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary.toSet
             println("#(vocab) = " + vocab.size)
             println(vocab)
-          case "read" =>
-            // do nothing
         }
         spark.stop()
       case None => println("Invalid config!")
