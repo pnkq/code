@@ -251,6 +251,14 @@ object DEPx {
         val gfW = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(efW)))
         gfV.select("t", "o").show()
 
+        // read graphX features from the training/dev split
+        val graphUf = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
+        val graphVf = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
+        import spark.implicits._
+        val graphUfMap = graphUf.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+        val graphVfMap = graphVf.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+        
+
         // prepare train/valid/test data frame for each model type:
         val (uf, vf, wf) = config.modelType match {
           case "t" => (gf, gfV, gfW)
