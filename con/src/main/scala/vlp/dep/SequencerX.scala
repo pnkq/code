@@ -1,4 +1,4 @@
-package vlp.ner
+package vlp.dep
 
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.UnaryTransformer
@@ -11,19 +11,20 @@ import org.apache.spark.sql.types.ArrayType
 
 
 /**
-  * A sequence vectorizer transforms a sequence of tokens into a sequence of vector
+  * A sequence vectorizer transforms a sequence of tokens into a sequence of vectors
   * using a dictionary. This transformer pads or truncate long sentence to a given `maxSequenceLength`.
   * If the dictionary does not contain a token, it returns a zero vector.
   *
-  * phuonglh@gmail.com
+  * <p>
+  * phuonglh@gmail.com, August 19, 2024.
   */
-class SequencerX(val uid: String, val dictionary: Map[String, List[Double]], val maxSequenceLength: Int) 
+class SequencerX(val uid: String, val dictionary: Map[String, Seq[Double]], val maxSequenceLength: Int) 
   extends UnaryTransformer[Seq[String], Seq[Vector], SequencerX] with DefaultParamsWritable {
 
-  var dictionaryBr: Option[Broadcast[Map[String, List[Double]]]] = None
+  var dictionaryBr: Option[Broadcast[Map[String, Seq[Double]]]] = None
   var maxSeqLen: Int = -1
 
-  def this(dictionary: Map[String, List[Double]], maxSequenceLength: Int) = {
+  def this(dictionary: Map[String, Seq[Double]], maxSequenceLength: Int) = {
     this(Identifiable.randomUID("seq"), dictionary, maxSequenceLength)
     val sparkContext = SparkSession.getActiveSession.get.sparkContext
     dictionaryBr = Some(sparkContext.broadcast(dictionary))
@@ -32,12 +33,13 @@ class SequencerX(val uid: String, val dictionary: Map[String, List[Double]], val
 
   override protected def createTransformFunc: Seq[String] => Seq[Vector] = {
     def f(xs: Seq[String]): Seq[Vector] = {
-      val ys = xs.map(x => dictionaryBr.get.value.getOrElse(x, List.empty[Double])).map(a => Vectors.dense(a.toArray))
+      // 3 is a "magic number"
+      val ys = xs.map(x => dictionaryBr.get.value.getOrElse(x, List.fill[Double](3)(0d))).map(a => Vectors.dense(a.toArray))
       // truncate or pad
       if (ys.size >= maxSeqLen) {
         ys.take(maxSeqLen)
       } else {
-        ys ++ Array.fill[Vector](maxSeqLen - ys.size)(Vectors.zeros(ys(0).size))        
+        ys ++ Array.fill[Vector](maxSeqLen - ys.size)(Vectors.zeros(3))        
       }
     }
 

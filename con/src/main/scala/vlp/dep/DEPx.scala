@@ -24,6 +24,7 @@ import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
 import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.sql.functions._
 
 /**
 * phuonglh, April 2024.
@@ -109,7 +110,7 @@ object DEPx {
   private def createPipeline(df: DataFrame, config: ConfigDEP): PipelineModel = {
     val vectorizerOffsets = new CountVectorizer().setInputCol("offsets").setOutputCol("off")
     val vectorizerTokens = new CountVectorizer().setInputCol("tokens").setOutputCol("tok").setVocabSize(config.maxVocabSize)
-    val vectorizerPartsOfSpeech = new CountVectorizer().setInputCol("partsOfSpeech").setOutputCol("pos") // may use "uPoS" instead of "partsOfSpeech"
+    val vectorizerPartsOfSpeech = new CountVectorizer().setInputCol("uPoS").setOutputCol("pos") // may use "uPoS" instead of "partsOfSpeech"
     val stages = Array(vectorizerOffsets, vectorizerTokens, vectorizerPartsOfSpeech)
     val pipeline = new Pipeline().setStages(stages)
     val model = pipeline.fit(df)
@@ -249,15 +250,31 @@ object DEPx {
         val gf = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(ef)))
         val gfV = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(efV)))
         val gfW = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(efW)))
-        gfV.select("t", "o").show()
+        gfV.select("t", "o").show(3, false)
 
         // read graphX features from the training/dev split
-        val graphUf = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
-        val graphVf = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
+        val graphU = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
+        val graphV = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
         import spark.implicits._
-        val graphUfMap = graphUf.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-        val graphVfMap = graphVf.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-        
+        val graphUMap = graphU.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+        val graphVMap = graphV.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+        // join two maps
+        val graphMap = graphUMap ++ graphVMap
+        val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) })
+        val gfx = gf.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+        val gfxV = gfV.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+        // create a sequencer for graphX features
+        val sequencerX = new SequencerX(graphMap, config.maxSeqLen).setInputCol("t:p").setOutputCol("xs")
+        val gfy = sequencerX.transform(gfx)
+        val gfyV = sequencerX.transform(gfxV)
+        gfy.select("tokens", "uPoS", "t:p", "xs").show(3, false)
+        // flatten the "xs" column to get a vector x (of numberOfNetworkXFeatures * maxSeqLen elements)
+        val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
+        val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
+        val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
+        gfz.printSchema()
+        gfz.select("x").show(3, false)
+
 
         // prepare train/valid/test data frame for each model type:
         val (uf, vf, wf) = config.modelType match {
@@ -274,8 +291,7 @@ object DEPx {
             (hf, hfV, hfW)
           case "b" =>
             // first, create a UDF g to make BERT input of size 4 x maxSeqLen
-            import org.apache.spark.sql.functions._
-            val g = udf((x: org.apache.spark.ml.linalg.Vector) => {
+            val g = udf((x: Vector) => {
               val v = x.toArray // x is a dense vector (produced by a Sequencer)
               // token type, all are 0 (0 for sentence A, 1 for sentence B -- here we have only one sentence)
               val types: Array[Double] = Array.fill[Double](v.length)(0)
@@ -300,6 +316,13 @@ object DEPx {
             val hfV = gfV.withColumn("tb", g(col("t")))
             val hfW = gfW.withColumn("tb", g(col("t")))
             (hf, hfV, hfW)
+          case "x" =>
+            // assemble the 3 input vectors into one of double maxSeqLen (for use in a combined model)
+            val assembler = new VectorAssembler().setInputCols(Array("t", "p", "x")).setOutputCol("t+p+x")
+            val hf = assembler.transform(gfz)
+            val hfV = assembler.transform(gfzV)
+            hfV.select("t+p+x", "o").show(3, false)
+            (hf, hfV, hfV)
         }
         // create a BigDL model corresponding to a model type:
         val (bigdl, featureSize, labelSize, featureColName) = config.modelType  match {
@@ -379,9 +402,36 @@ object DEPx {
             val dense = Dense(numOffsets).setName("dense").inputs(bertOutput)
             val output = SoftMax().setName("output").inputs(dense)
             val bigdl = Model(input, output)
-//            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen)), Array(config.maxSeqLen))
             val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(config.maxSeqLen))
             (bigdl, featureSize, labelSize, "tb")
+          case "x" =>
+            // A model for (token ++ uPoS ++ graphX) tensor
+            val input = Input(inputShape = Shape(2*config.maxSeqLen), name = "input") // 1 for token, 1 for uPoS
+            val reshape = Reshape(targetShape = Array(2, config.maxSeqLen)).setName("reshape").inputs(input)
+            val split = SplitTensor(1, 2).inputs(reshape)
+            val token = SelectTable(0).setName("inputT").inputs(split)
+            val inputT = Squeeze(1).inputs(token)
+            val partsOfSpeech = SelectTable(1).setName("inputP").inputs(split)
+            val inputP = Squeeze(1).inputs(partsOfSpeech)
+            val embeddingT = config.modelType match {
+              case "x" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName ("tokEmbedding").inputs(inputT)
+              case "t+p" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName ("tokEmbedding").inputs(inputT)
+              case "tg+p" => WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
+              case "tn+p" => WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
+            }
+            val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
+            // graphX input
+            val inputX = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX") // 3 for graphX 
+            val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX").inputs(inputX)
+
+            val merge = Merge.merge(inputs = List(embeddingT, embeddingP, reshapeX), mode = "concat")
+            val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
+            val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
+            val dropout = Dropout(config.dropoutRate).inputs(rnn2)
+            val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
+            val bigdl = Model(Array(input, inputX), output) // multiple inputs
+            val (featureSize, labelSize) = (Array(Array(2*config.maxSeqLen), Array(3*config.maxSeqLen)), Array(config.maxSeqLen))
+            (bigdl, featureSize, labelSize, "t+p+x")
         }
 
         def weights(): Tensor[Float] = {

@@ -6,6 +6,8 @@ import org.apache.spark.sql.functions._
 
 /**
   * Merges graph features in separate files into one file.
+  * <p>
+  * phuonglh@gmail.com, August 19, 2024.
   */
 object Merger {
   def main(args: Array[String]): Unit = {
