@@ -462,7 +462,7 @@ object DEPx {
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
-              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.5f))) // TODO: minLoss is a heuristic value
+              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.01f))) // TODO: minLoss is a heuristic value
             // train
             estimator.fit(uf)
             // save the model
