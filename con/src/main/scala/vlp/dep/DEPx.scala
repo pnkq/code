@@ -480,8 +480,8 @@ object DEPx {
             println(s"Loading model in the path: $modelPath...")
             val bigdl = Models.loadModel(modelPath)
             bigdl.summary()
-            // write out training/test scores
-            val scores = eval(bigdl, config, uf, wf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
+            // write out training/dev scores
+            val scores = eval(bigdl, config, uf, vf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
 
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
