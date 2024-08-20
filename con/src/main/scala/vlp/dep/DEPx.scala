@@ -129,7 +129,7 @@ object DEPx {
    * @param vf validation df
    * @param featureColName feature column name
    */
-  private def eval(bigdl: KerasNet[Float], config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColName: String): Seq[Double] = {
+  private def eval(bigdl: KerasNet[Float], config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColNames: Array[String]): Seq[Double] = {
     // create a sequential model and add a custom ArgMax layer at the end of the model
     val sequential = Sequential()
     sequential.add(bigdl)
@@ -137,8 +137,8 @@ object DEPx {
     sequential.add(ArgMaxLayer())
     // run prediction on the training set and validation set
     val predictions = Array(
-      sequential.predict(uf, featureCols = Array(featureColName), predictionCol = "z"),
-      sequential.predict(vf, featureCols = Array(featureColName), predictionCol = "z")
+      sequential.predict(uf, featureCols = featureColNames, predictionCol = "z"),
+      sequential.predict(vf, featureCols = featureColNames, predictionCol = "z")
     )
     sequential.summary()
     val spark = SparkSession.getActiveSession.get
@@ -317,9 +317,10 @@ object DEPx {
             gfz.select("x").show(3, false)
 
             // assemble the 3 input vectors into one of double maxSeqLen (for use in a combined model)
-            val assembler = new VectorAssembler().setInputCols(Array("t", "p", "x")).setOutputCol("t+p+x")
-            val hf = assembler.transform(gfz)
-            val hfV = assembler.transform(gfzV)
+            val assembler2 = new VectorAssembler().setInputCols(Array("t", "p")).setOutputCol("t+p")
+            val assembler3 = new VectorAssembler().setInputCols(Array("t", "p", "x")).setOutputCol("t+p+x")
+            val hf = assembler3.transform(assembler2.transform(gfz))
+            val hfV = assembler3.transform(assembler2.transform(gfzV))
             hfV.select("t+p+x", "o").show(3, false)
             (hf, hfV, hfV)
         }
@@ -468,7 +469,7 @@ object DEPx {
             // save the model
             bigdl.saveModel(s"${config.modelPath}/${config.language}-${config.modelType}", overWrite = true)
             // evaluate the model
-            val scores = eval(bigdl, config, uf, vf, featureColName)
+            val scores = eval(bigdl, config, uf, vf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
@@ -480,7 +481,8 @@ object DEPx {
             val bigdl = Models.loadModel(modelPath)
             bigdl.summary()
             // write out training/test scores
-            val scores = eval(bigdl, config, uf, wf, featureColName)
+            val scores = eval(bigdl, config, uf, wf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
+
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
@@ -508,7 +510,7 @@ object DEPx {
             println(s"Save the model to $modelPath.")
             bigdl.saveModel(modelPath, overWrite = true)
             // evaluate the model on the training and test set
-            val scores = eval(bigdl, config, uf, wf, featureColName)
+            val scores = eval(bigdl, config, uf, wf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)

@@ -28,7 +28,7 @@ class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNum
         k(Array(1)).toInt // k is a tensor => extract its value
       }
 //      println(zs.mkString(", ") + " :=: " + ys.toArray().mkString(", ")) // DEBUG
-      // filter the padded value (-1f) in the target before perform matching with the output
+      // filter the padded value (-1) in the target before perform matching with the output
       val c = ys.toArray().map(_.toInt).filter(e => e != paddingValue).zip(zs)
         .map(p => if (p._1 == p._2) 1 else 0)
       correct += c.sum
