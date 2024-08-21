@@ -252,7 +252,7 @@ object DEPx {
         val gfW = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(efW)))
         gfV.select("t", "o").show(3, false)
 
-        // prepare train/valid/test data frame for each model type:
+        // prepare train/valid/test data frame which are appropriate for each model type:
         val (uf, vf, wf) = config.modelType match {
           case "t" => (gf, gfV, gfW)
           case "tg" => (gf, gfV, gfW)
@@ -304,38 +304,38 @@ object DEPx {
             val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) })
             val gfx = gf.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
             val gfxV = gfV.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+            val gfxW = gfW.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
             // create a sequencer for graphX features
             val sequencerX = new SequencerX(graphMap, config.maxSeqLen).setInputCol("t:p").setOutputCol("xs")
             val gfy = sequencerX.transform(gfx)
             val gfyV = sequencerX.transform(gfxV)
+            val gfyW = sequencerX.transform(gfxW)
             gfy.select("tokens", "uPoS", "t:p", "xs").show(3, false)
             // flatten the "xs" column to get a vector x (of numberOfNetworkXFeatures * maxSeqLen elements)
             val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
             val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
             val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
-            gfz.printSchema()
-            gfz.select("x").show(3, false)
+            val gfzW = gfyW.withColumn("x", flattenFunc(col("xs")))
 
             // assemble the 3 input vectors into one of double maxSeqLen (for use in a combined model)
             val assembler2 = new VectorAssembler().setInputCols(Array("t", "p")).setOutputCol("t+p")
-            val assembler3 = new VectorAssembler().setInputCols(Array("t", "p", "x")).setOutputCol("t+p+x")
+            val assembler3 = new VectorAssembler().setInputCols(Array("t+p", "x")).setOutputCol("t+p+x")
             val hf = assembler3.transform(assembler2.transform(gfz))
             val hfV = assembler3.transform(assembler2.transform(gfzV))
-            hfV.select("t+p+x", "o").show(3, false)
-            (hf, hfV, hfV)
+            val hfW = assembler3.transform(assembler2.transform(gfzW))
+            (hf, hfV, hfW)
         }
         // create a BigDL model corresponding to a model type:
         val (bigdl, featureSize, labelSize, featureColName) = config.modelType  match {
           case "t" =>
             // 1. Sequential model with random token embeddings
             val bigdl = Sequential()
-            bigdl.add(Embedding(numVocab + 1, config.tokenEmbeddingSize, inputLength = config.maxSeqLen))
+            bigdl.add(Embedding(numVocab + 1, config.tokenEmbeddingSize, inputLength = config.maxSeqLen).setName("tokEmbedding"))
             for (_ <- 1 to config.layers)
               bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
             bigdl.add(Dropout(config.dropoutRate))
             bigdl.add(Dense(numOffsets, activation = "softmax"))
             val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
-            bigdl.summary()
             (bigdl, featureSize, labelSize, "t")
           case "tg" =>
             // 1.1 Sequential model with pretrained token embeddings (GloVe)
@@ -346,7 +346,6 @@ object DEPx {
             bigdl.add(Dropout(config.dropoutRate))
             bigdl.add(Dense(numOffsets, activation = "softmax"))
             val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
-            bigdl.summary()
             (bigdl, featureSize, labelSize, "t")
           case "tn" =>
             // 1.2 Sequential model with pretrained token embeddings (Numberbatch of ConceptNet)
@@ -357,7 +356,6 @@ object DEPx {
             bigdl.add(Dropout(config.dropoutRate))
             bigdl.add(Dense(numOffsets, activation = "softmax"))
             val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
-            bigdl.summary()
             (bigdl, featureSize, labelSize, "t")
           case "t+p"  | "tg+p" |  "tn+p" =>
             // A model for (token ++ partsOfSpeech) tensor
@@ -369,7 +367,7 @@ object DEPx {
             val partsOfSpeech = SelectTable(1).setName("inputP").inputs(split)
             val inputP = Squeeze(1).inputs(partsOfSpeech)
             val embeddingT = config.modelType match {
-              case "t+p" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName ("tokEmbedding").inputs(inputT)
+              case "t+p" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
               case "tg+p" => WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
               case "tn+p" => WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
             }
@@ -414,7 +412,7 @@ object DEPx {
             val partsOfSpeech = SelectTable(1).setName("inputP").inputs(split)
             val inputP = Squeeze(1).inputs(partsOfSpeech)
             val embeddingT = config.modelType match {
-              case "x" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName ("tokEmbedding").inputs(inputT)
+              case "x" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
               case "t+p" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName ("tokEmbedding").inputs(inputT)
               case "tg+p" => WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
               case "tn+p" => WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
@@ -449,6 +447,15 @@ object DEPx {
         }
         val numCores = Runtime.getRuntime().availableProcessors()
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
+        val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
+
+        def sanityCheckTokenEmbedding(bigdl: KerasNet[Float]): Unit = {
+          val weightsBias = bigdl.getSubModules().filter(p => p.getName() == "tokEmbedding").head.getWeightsBias().head
+          val Array(m, n) = weightsBias.size()
+          val weightsOfFirstRow = (1 to n).map(j => weightsBias(Array(1, j)))
+          println(s"posEmbedding layer size = $m x $n, sum of first row = ${weightsOfFirstRow.sum}")
+        }
+
         config.mode match {
           case "train" =>
             // create an estimator, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode
@@ -467,8 +474,9 @@ object DEPx {
             // train
             estimator.fit(uf)
             // save the model
-            bigdl.saveModel(s"${config.modelPath}/${config.language}-${config.modelType}", overWrite = true)
-            // evaluate the model
+            bigdl.saveModel(modelPath, overWrite = true)
+            // evaluate the model on the training/dev sets
+            sanityCheckTokenEmbedding(bigdl)
             val scores = eval(bigdl, config, uf, vf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
@@ -476,10 +484,12 @@ object DEPx {
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "eval" =>
             // load the bigdl model
-            val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}"
             println(s"Loading model in the path: $modelPath...")
-            val bigdl = Models.loadModel(modelPath)
+            val bigdl = Models.loadModel[Float](modelPath)
             bigdl.summary()
+            // sanity check of some parameters 
+            sanityCheckTokenEmbedding(bigdl)
+            
             // write out training/dev scores
             val scores = eval(bigdl, config, uf, vf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
 
@@ -502,12 +512,10 @@ object DEPx {
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
-              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.5f))) // TODO: minLoss is a heuristic value
+              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.01f))) // TODO: minLoss is a heuristic value
             // train
             estimator.fit(uf)
             // save the model
-            val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}"
-            println(s"Save the model to $modelPath.")
             bigdl.saveModel(modelPath, overWrite = true)
             // evaluate the model on the training and test set
             val scores = eval(bigdl, config, uf, wf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
