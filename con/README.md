@@ -14,7 +14,7 @@
 
   The graphs are saved into `dat/dep/*.tsv` files. 
 
-2. Run `network.ipynb` to read a graph and produce different kinds of nodes embeddings.
+2. Run `network.ipynb` to read a graph and produce different kinds of nodes embeddings. Each kind is in a separate file.
 
 For directed graph:
   - in-degree centrality
@@ -23,3 +23,13 @@ For directed graph:
 
 For undirected graph:
   - TODO 
+
+3. Run `vlp.dep.Merger` to merge different embeddings into a (parquet) file. Each node is associated with a vector 
+  of graph embeddings. 
+  
+4. Run `vlp.dep.DEPx` with the model type `x` (option `-t x`) to experiment with interested models. 
+   Here, the features include (token embeddings, part-of-speech embeddings) and (graph embeddings). This is a multi-input BigDL graph model.
+   In the inference stage, the `x` model needs to take as input an array of feature columns (`t+p` and `x`). 
+   NOTE: in the implementation of `x` model, we intentionally split a long graph (whose length > config.maxSeqLen) into two halves left and 
+   right using the ROOT token. Since we are concerned with projective dependency parsing, we assume that all the annotated graphs 
+   in the treebanks are projective. 
