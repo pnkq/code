@@ -7,7 +7,7 @@ import com.intel.analytics.bigdl.dllib.keras.models.{Model, Models, KerasNet}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedMaskCriterion}
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
-import com.intel.analytics.bigdl.dllib.optim.Trigger
+import com.intel.analytics.bigdl.dllib.optim.{Trigger, Loss}
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
@@ -25,6 +25,7 @@ import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
 import java.nio.file.{Files, Paths, StandardOpenOption}
 import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.sql.functions._
+
 
 /**
 * phuonglh, April 2024.
@@ -456,12 +457,22 @@ object DEPx {
           println(s"posEmbedding layer size = $m x $n, sum of first row = ${weightsOfFirstRow.sum}")
         }
 
+        // best maxIterations for each language which is validated on the dev. split:
+        val maxIterations = config.language match {
+          case "eng" => 1000
+          case "ind" => 1000
+          case "vie" => 600
+          case _ => 1000
+        }  
         config.mode match {
           case "train" =>
-            // create an estimator, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode
-            val estimator = if (config.weightedLoss)
-              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
-            else NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
+            // create an estimator, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode            
+            val criterion = if (config.weightedLoss) {
+              TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+            } else {
+              TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+            }
+            val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             estimator.setLabelCol("o").setFeaturesCol(featureColName)
@@ -469,8 +480,8 @@ object DEPx {
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
-              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.01f))) // TODO: minLoss is a heuristic value
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
             // train
             estimator.fit(uf)
             // save the model
@@ -497,13 +508,15 @@ object DEPx {
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
-          case "predict" =>
+          case "exp" =>
             // train the model on the training set (uf) using the best hyper-parameters which was tuned on the validation set (vf)
             // and run prediction it on the test set (wf) to collect scores
-            val estimator = if (config.weightedLoss)
-              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
-            else
-              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
+            val criterion = if (config.weightedLoss) {
+              TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+            } else {
+              TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+            }
+            val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             estimator.setLabelCol("o").setFeaturesCol(featureColName)
@@ -511,8 +524,8 @@ object DEPx {
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
-              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.minLoss(0.01f))) // TODO: minLoss is a heuristic value
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
             // train
             estimator.fit(uf)
             // save the model
