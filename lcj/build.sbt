@@ -4,9 +4,11 @@ lazy val root = project
   .in(file("."))
   .settings(
     name := "lcj",
-    version := "0.1.0-SNAPSHOT",
+    version := "1.0",
 
     scalaVersion := scala3Version,
 
-    libraryDependencies += "org.scalameta" %% "munit" % "1.0.0" % Test
+    libraryDependencies += "org.scalameta" %% "munit" % "1.0.0" % Test,
+    libraryDependencies += "dev.langchain4j" % "langchain4j-open-ai" % "0.33.0",
+    libraryDependencies += "dev.langchain4j" % "langchain4j" % "0.33.0",
   )
