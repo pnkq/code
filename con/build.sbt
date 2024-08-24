@@ -5,10 +5,12 @@ val sparkNLPVersion = "4.3.2"
 
 javacOptions ++= Seq("-encoding", "UTF-8")
 
-lazy val commonSettings = Seq(
+lazy val commonSettings = Seq(  
   name := "con",
   organization := "phuonglh.com",
   version := "1.0.0",
+  scalaVersion := "2.12.19",
+
   libraryDependencies ++= Seq(
     "org.apache.spark" %% "spark-core" % sparkVersion,
     "org.apache.spark" %% "spark-sql" % sparkVersion,

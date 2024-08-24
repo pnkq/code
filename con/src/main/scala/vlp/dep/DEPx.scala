@@ -196,20 +196,22 @@ object DEPx {
             "dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu",
             "dat/dep/UD_English-EWT/en_ewt-ud-test.conllu",
             "dat/emb/glove.6B.100d.vocab.txt",
-            "dat/emb/numberbatch-en-19.08.vocab.txt"
-        )
+            "dat/emb/numberbatch-en-19.08.vocab.txt")
+          case "fra" => ("dat/dep/UD_French-GSD/fr_gsd-ud-train.conllu",
+            "dat/dep/UD_French-GSD/fr_gsd-ud-dev.conllu",
+            "dat/dep/UD_French-GSD/fr_gsd-ud-test.conllu",
+            "dat/emb/cc.fr.300.vocab.vec",
+            "dat/emb/numberbatch-fr-19.08.vocab.txt")            
           case "ind" => ("dat/dep/UD_Indonesian-GSD/id_gsd-ud-train.conllu",
             "dat/dep/UD_Indonesian-GSD/id_gsd-ud-dev.conllu",
             "dat/dep/UD_Indonesian-GSD/id_gsd-ud-test.conllu",
             "dat/emb/cc.id.300.vocab.vec",
-            "dat/emb/numberbatch-id-19.08.vocab.txt"
-        )
+            "dat/emb/numberbatch-id-19.08.vocab.txt")
           case "vie" => ("dat/dep/UD_Vietnamese-VTB/vi_vtb-ud-train.conllu",
             "dat/dep/UD_Vietnamese-VTB/vi_vtb-ud-dev.conllu",
             "dat/dep/UD_Vietnamese-VTB/vi_vtb-ud-test.conllu",
             "dat/emb/cc.vi.300.vocab.vec",
-            "dat/emb/numberbatch-vi-19.08.vocab.txt"
-          )
+            "dat/emb/numberbatch-vi-19.08.vocab.txt")
           case _ =>
             println("Invalid language code!")
             ("", "", "", "", "")
@@ -459,8 +461,9 @@ object DEPx {
 
         // best maxIterations for each language which is validated on the dev. split:
         val maxIterations = config.language match {
-          case "eng" => 1000
-          case "ind" => 1000
+          case "eng" => 2000
+          case "fra" => 2000
+          case "ind" => 800
           case "vie" => 600
           case _ => 1000
         }  
