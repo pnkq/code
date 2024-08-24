@@ -34,7 +34,7 @@ import org.apache.spark.sql.functions._
 object DEPx {
 
   /**
-   * Linearize a graph into 4 sequences: Seq[word], Seq[PoS], Seq[labels], Seq[offsets].
+   * Linearize a graph into multiple sequences: Seq[word], Seq[PoS], Seq[uPos], Seq[fs], Seq[labels], Seq[offsets].
    * @param graph a dependency graph
    * @param las labeled attachment score
    * @return a sequence of sequences.
@@ -43,6 +43,7 @@ object DEPx {
     val tokens = graph.sentence.tokens.tail // remove the ROOT token at the beginning
     val words = tokens.map(_.word.toLowerCase()) // make all token lowercase
     val partsOfSpeech = tokens.map(_.partOfSpeech)
+    val featureStructure = tokens.map(_.featureStructure)
     val uPoS = tokens.map(_.universalPartOfSpeech)
     val labels = tokens.map(_.dependencyLabel)
     // compute the offset value to the head for each token
@@ -61,7 +62,7 @@ object DEPx {
     val offsetLabels = if (las) {
       offsets.zip(labels).map(pair => pair._1 + ":" + pair._2)
     } else offsets
-    Seq(words, partsOfSpeech, uPoS, labels, offsetLabels)
+    Seq(words, partsOfSpeech, uPoS, featureStructure, labels, offsetLabels)
   }
 
   /**
@@ -95,6 +96,7 @@ object DEPx {
       StructField("tokens", ArrayType(StringType, containsNull = true)),
       StructField("partsOfSpeech", ArrayType(StringType, containsNull = true)),
       StructField("uPoS", ArrayType(StringType, containsNull = true)),
+      StructField("featureStructure", ArrayType(StringType, containsNull = true)),
       StructField("labels", ArrayType(StringType, containsNull = true)),
       StructField("offsets", ArrayType(StringType, containsNull = true))
     ))
@@ -112,7 +114,8 @@ object DEPx {
     val vectorizerOffsets = new CountVectorizer().setInputCol("offsets").setOutputCol("off")
     val vectorizerTokens = new CountVectorizer().setInputCol("tokens").setOutputCol("tok").setVocabSize(config.maxVocabSize)
     val vectorizerPartsOfSpeech = new CountVectorizer().setInputCol("uPoS").setOutputCol("pos") // may use "uPoS" instead of "partsOfSpeech"
-    val stages = Array(vectorizerOffsets, vectorizerTokens, vectorizerPartsOfSpeech)
+    val vectorizerFeatureStructure = new CountVectorizer().setInputCol("featureStructure").setOutputCol("fst")
+    val stages = Array(vectorizerOffsets, vectorizerTokens, vectorizerPartsOfSpeech, vectorizerFeatureStructure)
     val pipeline = new Pipeline().setStages(stages)
     val model = pipeline.fit(df)
     model.write.overwrite().save(s"${config.modelPath}/${config.language}-pre")
@@ -243,16 +246,21 @@ object DEPx {
         val partsOfSpeech = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
         val partsOfSpeechMap = partsOfSpeech.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // 1-based index for BigDL
         val numPartsOfSpeech = partsOfSpeech.length
+        val featureStructure = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
+        val featureStructureMap = featureStructure.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // 1-based index for BigDL
+        val numFeatureStructure = featureStructure.length
         println("#(labels) = " + numOffsets)
         println(" #(vocab) = " + numVocab)
         println("   #(PoS) = " + numPartsOfSpeech)
+        println("    #(fs) = " + numFeatureStructure)
         // extract token, pos and offset indices (start from 1 to use in BigDL)
         val tokenSequencer = new Sequencer(tokensMap, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("t")
         val posSequencer = new Sequencer(partsOfSpeechMap, config.maxSeqLen, 0f).setInputCol("partsOfSpeech").setOutputCol("p")
+        val featureSequencer = new Sequencer(featureStructureMap, config.maxSeqLen, 0f).setInputCol("featureStructure").setOutputCol("f")
         val offsetsSequencer = new Sequencer(offsetMap, config.maxSeqLen, -1f).setInputCol("offsets").setOutputCol("o")
-        val gf = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(ef)))
-        val gfV = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(efV)))
-        val gfW = offsetsSequencer.transform(posSequencer.transform(tokenSequencer.transform(efW)))
+        val gf = offsetsSequencer.transform(featureSequencer.transform(posSequencer.transform(tokenSequencer.transform(ef))))
+        val gfV = offsetsSequencer.transform(featureSequencer.transform(posSequencer.transform(tokenSequencer.transform(efV))))
+        val gfW = offsetsSequencer.transform(featureSequencer.transform(posSequencer.transform(tokenSequencer.transform(efW))))
         gfV.select("t", "o").show(3, false)
 
         // prepare train/valid/test data frame which are appropriate for each model type:
@@ -461,8 +469,8 @@ object DEPx {
 
         // best maxIterations for each language which is validated on the dev. split:
         val maxIterations = config.language match {
-          case "eng" => 2000
-          case "fra" => 2000
+          case "eng" => 2500
+          case "fra" => 3000
           case "ind" => 800
           case "vie" => 600
           case _ => 1000
