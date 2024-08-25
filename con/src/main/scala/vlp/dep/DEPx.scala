@@ -345,121 +345,125 @@ object DEPx {
             val hfW = assembler.transform(gfzW)
             (hf, hfV, hfW)
         }
-        // create a BigDL model corresponding to a model type:
-        val (bigdl, featureSize, labelSize, featureColName) = config.modelType  match {
-          case "t" =>
-            // 1. Sequential model with random token embeddings
-            val bigdl = Sequential()
-            bigdl.add(Embedding(numVocab + 1, config.tokenEmbeddingSize, inputLength = config.maxSeqLen).setName("tokEmbedding"))
-            for (_ <- 1 to config.layers)
-              bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
-            bigdl.add(Dropout(config.dropoutRate))
-            bigdl.add(Dense(numOffsets, activation = "softmax"))
-            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
-            (bigdl, featureSize, labelSize, "t")
-          case "tg" =>
-            // 1.1 Sequential model with pretrained token embeddings (GloVe)
-            val bigdl = Sequential()
-            bigdl.add(WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen))
-            for (_ <- 1 to config.layers)
-              bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
-            bigdl.add(Dropout(config.dropoutRate))
-            bigdl.add(Dense(numOffsets, activation = "softmax"))
-            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
-            (bigdl, featureSize, labelSize, "t")
-          case "tn" =>
-            // 1.2 Sequential model with pretrained token embeddings (Numberbatch of ConceptNet)
-            val bigdl = Sequential()
-            bigdl.add(WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen))
-            for (_ <- 1 to config.layers)
-              bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
-            bigdl.add(Dropout(config.dropoutRate))
-            bigdl.add(Dense(numOffsets, activation = "softmax"))
-            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
-            (bigdl, featureSize, labelSize, "t")
-          case "t+p"  | "tg+p" |  "tn+p" =>
-            // A model for (token ++ partsOfSpeech) tensor
-            val input = Input(inputShape = Shape(2*config.maxSeqLen), name = "input")
-            val reshape = Reshape(targetShape = Array(2, config.maxSeqLen)).setName("reshape").inputs(input)
-            val split = SplitTensor(1, 2).inputs(reshape)
-            val token = SelectTable(0).setName("inputT").inputs(split)
-            val inputT = Squeeze(1).inputs(token)
-            val partsOfSpeech = SelectTable(1).setName("inputP").inputs(split)
-            val inputP = Squeeze(1).inputs(partsOfSpeech)
-            val embeddingT = config.modelType match {
-              case "t+p" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
-              case "tg+p" => WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
-              case "tn+p" => WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
-            }
-            val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
-            val merge = Merge.merge(inputs = List(embeddingT, embeddingP), mode = "concat")
-            val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
-            val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
-            val dropout = Dropout(config.dropoutRate).inputs(rnn2)
-            val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
-            val bigdl = Model(input, output)
-            val (featureSize, labelSize) = (Array(Array(2*config.maxSeqLen)), Array(config.maxSeqLen))
-            (bigdl, featureSize, labelSize, "t+p")
-          case "b" =>
-            // 4. BERT model using one input of 4*maxSeqLen elements
-            val input = Input(inputShape = Shape(4*config.maxSeqLen), name = "input")
-            val reshape = Reshape(targetShape = Array(4, config.maxSeqLen)).inputs(input)
-            val split = SplitTensor(1, 4).inputs(reshape)
-            val selectIds = SelectTable(0).setName("inputId").inputs(split)
-            val inputIds = Squeeze(1).inputs(selectIds)
-            val selectSegments = SelectTable(1).setName("segmentId").inputs(split)
-            val segmentIds = Squeeze(1).inputs(selectSegments)
-            val selectPositions = SelectTable(2).setName("positionId").inputs(split)
-            val positionIds = Squeeze(1).inputs(selectPositions)
-            val selectMasks = SelectTable(3).setName("masks").inputs(split)
-            val masksReshaped = Reshape(targetShape = Array(1, 1, config.maxSeqLen)).setName("mask").inputs(selectMasks)
-            val bert = BERT(vocab = numVocab + 1, hiddenSize = config.tokenEmbeddingSize, nBlock = config.layers, nHead = config.heads, maxPositionLen = config.maxSeqLen,
-              intermediateSize = config.tokenHiddenSize, outputAllBlock = false).setName("bert")
-            val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
-            val bertOutput = SelectTable(0).setName("firstBlock").inputs(bertNode)
-            val dense = Dense(numOffsets).setName("dense").inputs(bertOutput)
-            val output = SoftMax().setName("output").inputs(dense)
-            val bigdl = Model(input, output)
-            val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(config.maxSeqLen))
-            (bigdl, featureSize, labelSize, "tb")
-          case "f" => 
-            // A model for (token ++ uPoS ++ featureStructure) tensor
-            val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
-            val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
-            val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
-            val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
-            val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
-            val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
+        // create a BigDL model corresponding to a model type, return a tuple: (bigdl, featureSize, labelSize, featureColName)
+        def createBigDL(config: ConfigDEP): (KerasNet[Float], Array[Array[Int]], Array[Int], String) = {
+          config.modelType  match {      
+            case "t" =>
+              // 1. Sequential model with random token embeddings
+              val bigdl = Sequential()
+              bigdl.add(Embedding(numVocab + 1, config.tokenEmbeddingSize, inputLength = config.maxSeqLen).setName("tokEmbedding"))
+              for (_ <- 1 to config.layers)
+                bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
+              bigdl.add(Dropout(config.dropoutRate))
+              bigdl.add(Dense(numOffsets, activation = "softmax"))
+              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
+              (bigdl, featureSize, labelSize, "t")
+            case "tg" =>
+              // 1.1 Sequential model with pretrained token embeddings (GloVe)
+              val bigdl = Sequential()
+              bigdl.add(WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen))
+              for (_ <- 1 to config.layers)
+                bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
+              bigdl.add(Dropout(config.dropoutRate))
+              bigdl.add(Dense(numOffsets, activation = "softmax"))
+              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
+              (bigdl, featureSize, labelSize, "t")
+            case "tn" =>
+              // 1.2 Sequential model with pretrained token embeddings (Numberbatch of ConceptNet)
+              val bigdl = Sequential()
+              bigdl.add(WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen))
+              for (_ <- 1 to config.layers)
+                bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
+              bigdl.add(Dropout(config.dropoutRate))
+              bigdl.add(Dense(numOffsets, activation = "softmax"))
+              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(config.maxSeqLen))
+              (bigdl, featureSize, labelSize, "t")
+            case "t+p"  | "tg+p" |  "tn+p" =>
+              // A model for (token ++ partsOfSpeech) tensor
+              val input = Input(inputShape = Shape(2*config.maxSeqLen), name = "input")
+              val reshape = Reshape(targetShape = Array(2, config.maxSeqLen)).setName("reshape").inputs(input)
+              val split = SplitTensor(1, 2).inputs(reshape)
+              val token = SelectTable(0).setName("inputT").inputs(split)
+              val inputT = Squeeze(1).inputs(token)
+              val partsOfSpeech = SelectTable(1).setName("inputP").inputs(split)
+              val inputP = Squeeze(1).inputs(partsOfSpeech)
+              val embeddingT = config.modelType match {
+                case "t+p" => Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
+                case "tg+p" => WordEmbeddingP(gloveFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
+                case "tn+p" => WordEmbeddingP(numberbatchFile, tokensMap, inputLength = config.maxSeqLen).setName("tokenEmbedding").inputs(inputT)
+              }
+              val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
+              val merge = Merge.merge(inputs = List(embeddingT, embeddingP), mode = "concat")
+              val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
+              val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
+              val dropout = Dropout(config.dropoutRate).inputs(rnn2)
+              val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
+              val bigdl = Model(input, output)
+              val (featureSize, labelSize) = (Array(Array(2*config.maxSeqLen)), Array(config.maxSeqLen))
+              (bigdl, featureSize, labelSize, "t+p")
+            case "b" =>
+              // 4. BERT model using one input of 4*maxSeqLen elements
+              val input = Input(inputShape = Shape(4*config.maxSeqLen), name = "input")
+              val reshape = Reshape(targetShape = Array(4, config.maxSeqLen)).inputs(input)
+              val split = SplitTensor(1, 4).inputs(reshape)
+              val selectIds = SelectTable(0).setName("inputId").inputs(split)
+              val inputIds = Squeeze(1).inputs(selectIds)
+              val selectSegments = SelectTable(1).setName("segmentId").inputs(split)
+              val segmentIds = Squeeze(1).inputs(selectSegments)
+              val selectPositions = SelectTable(2).setName("positionId").inputs(split)
+              val positionIds = Squeeze(1).inputs(selectPositions)
+              val selectMasks = SelectTable(3).setName("masks").inputs(split)
+              val masksReshaped = Reshape(targetShape = Array(1, 1, config.maxSeqLen)).setName("mask").inputs(selectMasks)
+              val bert = BERT(vocab = numVocab + 1, hiddenSize = config.tokenEmbeddingSize, nBlock = config.layers, nHead = config.heads, maxPositionLen = config.maxSeqLen,
+                intermediateSize = config.tokenHiddenSize, outputAllBlock = false).setName("bert")
+              val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
+              val bertOutput = SelectTable(0).setName("firstBlock").inputs(bertNode)
+              val dense = Dense(numOffsets).setName("dense").inputs(bertOutput)
+              val output = SoftMax().setName("output").inputs(dense)
+              val bigdl = Model(input, output)
+              val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(config.maxSeqLen))
+              (bigdl, featureSize, labelSize, "tb")
+            case "f" => 
+              // A model for (token ++ uPoS ++ featureStructure) tensor
+              val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
+              val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
+              val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
+              val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
+              val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
+              val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
 
-            val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF), mode = "concat")
-            val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
-            val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
-            val dropout = Dropout(config.dropoutRate).inputs(rnn2)
-            val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
-            val bigdl = Model(Array(inputT, inputP, inputF), output) // multiple inputs
-            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen)), Array(config.maxSeqLen))
-            (bigdl, featureSize, labelSize, "t+p+f") 
-          case "x" =>
-            // A model for (token ++ uPoS ++ featureStructure ++ graphX) tensor
-            val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
-            val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
-            val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
-            val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
-            val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
-            val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
-            // graphX input
-            val inputX = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX") // 3 for graphX 
-            val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX").inputs(inputX)
+              val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF), mode = "concat")
+              val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
+              val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
+              val dropout = Dropout(config.dropoutRate).inputs(rnn2)
+              val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
+              val bigdl = Model(Array(inputT, inputP, inputF), output) // multiple inputs
+              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen)), Array(config.maxSeqLen))
+              (bigdl, featureSize, labelSize, "t+p+f") 
+            case "x" =>
+              // A model for (token ++ uPoS ++ featureStructure ++ graphX) tensor
+              val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
+              val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
+              val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
+              val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
+              val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
+              val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
+              // graphX input
+              val inputX = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX") // 3 for graphX 
+              val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX").inputs(inputX)
 
-            val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX), mode = "concat")
-            val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
-            val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
-            val dropout = Dropout(config.dropoutRate).inputs(rnn2)
-            val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
-            val bigdl = Model(Array(inputT, inputP, inputF, inputX), output) // multiple inputs
-            val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen)), Array(config.maxSeqLen))
-            (bigdl, featureSize, labelSize, "t+p+f+x")
+              val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX), mode = "concat")
+              val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
+              val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
+              val dropout = Dropout(config.dropoutRate).inputs(rnn2)
+              val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
+              val bigdl = Model(Array(inputT, inputP, inputF, inputX), output) // multiple inputs
+              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen)), Array(config.maxSeqLen))
+              (bigdl, featureSize, labelSize, "t+p+f+x")
+          }
         }
+        
+        val (bigdl, featureSize, labelSize, featureColName) = createBigDL(config)
 
         def weights(): Tensor[Float] = {
           // compute label weights for the loss function
@@ -500,14 +504,15 @@ object DEPx {
           case "vie" => 600
           case _ => 1000
         }  
+    
+        // create a training criterion, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode            
+        val criterion = if (config.weightedLoss) {
+          TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+        } else {
+          TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+        }
         config.mode match {
           case "train" =>
-            // create an estimator, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode            
-            val criterion = if (config.weightedLoss) {
-              TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
-            } else {
-              TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
-            }
             val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
@@ -544,14 +549,36 @@ object DEPx {
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
-          case "exp" =>
+          case "validate" => 
+            // perform a series of experiments to find the best hyper-params on the development set
+            val ws = Array(32, 64, 128, 200)
+            val hs = Array(64, 128, 200, 300)
+            for (_ <- 1 to 3) {
+              for (w <- ws; h <- hs) {
+                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
+                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
+                val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
+                val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                estimator.setLabelCol("o").setFeaturesCol(featureColName)
+                  .setBatchSize(batchSize)
+                  .setOptimMethod(new Adam(config.learningRate))
+                  .setTrainSummary(trainingSummary)
+                  .setValidationSummary(validationSummary)
+                  .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+                  .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
+                // train
+                estimator.fit(uf)
+                val scores = eval(bigdl, cfg, uf, vf, featureColNames)
+                val heads = if (cfg.modelType != "b") 0 else cfg.heads
+                val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+                println(result)
+                Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+              }
+            }
+          case "predict" =>
             // train the model on the training set (uf) using the best hyper-parameters which was tuned on the validation set (vf)
             // and run prediction it on the test set (wf) to collect scores
-            val criterion = if (config.weightedLoss) {
-              TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
-            } else {
-              TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
-            }
             val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
@@ -567,7 +594,7 @@ object DEPx {
             // save the model
             bigdl.saveModel(modelPath, overWrite = true)
             // evaluate the model on the training and test set
-            val scores = eval(bigdl, config, uf, wf, if (config.modelType == "x") Array("t+p", "x") else Array(featureColName))
+            val scores = eval(bigdl, config, uf, wf, featureColNames)
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
