@@ -8,6 +8,7 @@ case class ConfigDEP(
     tokenEmbeddingSize: Int = 32,
     tokenHiddenSize: Int = 64,
     partsOfSpeechEmbeddingSize: Int = 25,
+    featureStructureEmbeddingSize: Int = 25,
     layers: Int = 2, // number of LSTM layers or BERT blocks
     heads: Int = 2, // number of attention heads in BERT
     batchSize: Int = 64,
