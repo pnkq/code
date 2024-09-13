@@ -170,7 +170,8 @@ object DEPx {
     val opts = new OptionParser[ConfigDEP](getClass.getName) {
       head(getClass.getName, "1.0")
       opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
-      opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 8g")
+      opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
+      opt[String]('E', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either eval/train/predict")
       opt[String]('l', "language").action((x, conf) => conf.copy(language = x)).text("language (eng/ind/vie)")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
@@ -190,6 +191,7 @@ object DEPx {
       case Some(config) =>
         val conf = new SparkConf().setAppName(getClass.getName).setMaster(config.master)
           .set("spark.driver.memory", config.driverMemory)
+          .set("spark.executor.memory", config.executorMemory)
         // Creates or gets SparkContext with optimized configuration for BigDL performance.
         // The method will also initialize the BigDL engine.
         val sc = NNContext.initNNContext(conf)
@@ -550,30 +552,33 @@ object DEPx {
             println(result)
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "validate" => 
-            // perform a series of experiments to find the best hyper-params on the development set
-            val ws = Array(32, 64, 128, 200)
-            val hs = Array(64, 128, 200, 300)
-            for (_ <- 1 to 3) {
-              for (w <- ws; h <- hs) {
-                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
-                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
-                val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
-                val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
-                val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
-                estimator.setLabelCol("o").setFeaturesCol(featureColName)
-                  .setBatchSize(batchSize)
-                  .setOptimMethod(new Adam(config.learningRate))
-                  .setTrainSummary(trainingSummary)
-                  .setValidationSummary(validationSummary)
-                  .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
-                  .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
-                // train
-                estimator.fit(uf)
-                val scores = eval(bigdl, cfg, uf, vf, featureColNames)
-                val heads = if (cfg.modelType != "b") 0 else cfg.heads
-                val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
-                println(result)
-                Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+            // perform a series of experiments to find the best hyper-params on the development set for a language
+            // all model types will be run in a single call. The arguments are: -l <lang> -m validate
+            for (t <- Array("t", "t+p", "f", "x")) {
+              val ws = Array(64, 128, 200)
+              val hs = Array(64, 128, 200, 300)
+              for (_ <- 1 to 3) {
+                for (w <- ws; h <- hs) {
+                  val cfg = config.copy(modelType = t, tokenEmbeddingSize = w, tokenHiddenSize = h)
+                  val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
+                  val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
+                  val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                  val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                  estimator.setLabelCol("o").setFeaturesCol(featureColName)
+                    .setBatchSize(batchSize)
+                    .setOptimMethod(new Adam(config.learningRate))
+                    .setTrainSummary(trainingSummary)
+                    .setValidationSummary(validationSummary)
+                    .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+                    .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
+                  // train
+                  estimator.fit(uf)
+                  val scores = eval(bigdl, cfg, uf, vf, featureColNames)
+                  val heads = if (cfg.modelType != "b") 0 else cfg.heads
+                  val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+                  println(result)
+                  Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+                }
               }
             }
           case "predict" =>

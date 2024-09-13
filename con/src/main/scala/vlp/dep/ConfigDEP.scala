@@ -1,8 +1,9 @@
 package vlp.dep
 
 case class ConfigDEP(
-    master: String = "local[*]",
-    driverMemory: String = "8g", // D
+    master: String = "local[*]", // M
+    driverMemory: String = "16g", // D
+    executorMemory: String = "16g", // E
     mode: String = "eval",
     maxVocabSize: Int = 32768,
     tokenEmbeddingSize: Int = 32,
