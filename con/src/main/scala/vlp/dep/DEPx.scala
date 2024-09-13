@@ -553,32 +553,30 @@ object DEPx {
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "validate" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
-            // all model types will be run in a single call. The arguments are: -l <lang> -m validate
-            for (t <- Array("t", "t+p", "f", "x")) {
-              val ws = Array(64, 128, 200)
-              val hs = Array(64, 128, 200, 300)
-              for (_ <- 1 to 3) {
-                for (w <- ws; h <- hs) {
-                  val cfg = config.copy(modelType = t, tokenEmbeddingSize = w, tokenHiddenSize = h)
-                  val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
-                  val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
-                  val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
-                  val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
-                  estimator.setLabelCol("o").setFeaturesCol(featureColName)
-                    .setBatchSize(batchSize)
-                    .setOptimMethod(new Adam(config.learningRate))
-                    .setTrainSummary(trainingSummary)
-                    .setValidationSummary(validationSummary)
-                    .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
-                    .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
-                  // train
-                  estimator.fit(uf)
-                  val scores = eval(bigdl, cfg, uf, vf, featureColNames)
-                  val heads = if (cfg.modelType != "b") 0 else cfg.heads
-                  val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
-                  println(result)
-                  Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
-                }
+            // The arguments are: -l <lang> -t <modelType> -m validate
+            val ws = Array(64, 128, 200)
+            val hs = Array(64, 128, 200, 300)
+            for (_ <- 1 to 3) {
+              for (w <- ws; h <- hs) {
+                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
+                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
+                val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
+                val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                estimator.setLabelCol("o").setFeaturesCol(featureColName)
+                  .setBatchSize(batchSize)
+                  .setOptimMethod(new Adam(config.learningRate))
+                  .setTrainSummary(trainingSummary)
+                  .setValidationSummary(validationSummary)
+                  .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+                  .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
+                // train
+                estimator.fit(uf)
+                val scores = eval(bigdl, cfg, uf, vf, featureColNames)
+                val heads = if (cfg.modelType != "b") 0 else cfg.heads
+                val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+                println(result)
+                Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
             }
           case "predict" =>
