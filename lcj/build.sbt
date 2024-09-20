@@ -11,4 +11,5 @@ lazy val root = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.0.0" % Test,
     libraryDependencies += "dev.langchain4j" % "langchain4j-open-ai" % "0.34.0",
     libraryDependencies += "dev.langchain4j" % "langchain4j" % "0.34.0",
+    libraryDependencies += "dev.langchain4j" % "langchain4j-hugging-face" % "0.34.0",
   )

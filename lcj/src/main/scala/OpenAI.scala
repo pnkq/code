@@ -4,6 +4,7 @@ import dev.langchain4j.model.openai.OpenAiChatModel
 import dev.langchain4j.service.AiServices
 import dev.langchain4j.service.{SystemMessage, UserMessage}
 import java.time.LocalDate
+import dev.langchain4j.model.huggingface.HuggingFaceChatModel
 
 trait Assistant:
   def chat(userMessage: String): String
@@ -24,11 +25,11 @@ trait PersonExtractor:
   def extractPersonFrom(text: String): Person
 
 
-@main def hello(): Unit =
+@main def openai(): Unit =
   val model = OpenAiChatModel.withApiKey("demo")
   val personExtractor = AiServices.create(classOf[PersonExtractor], model)
   val text = """
-           In 1968, amidst the fading echoes of Independence Day,
+          In 1968, amidst the fading echoes of Independence Day,
             a child named John arrived under the calm evening sky.
             This newborn, bearing the surname Doe, marked the start of a new journey.
             He was welcomed into the world at 345 Whispering Pines Avenue
@@ -37,6 +38,7 @@ trait PersonExtractor:
   """
   val person = personExtractor.extractPersonFrom(text)
   print(person)
+
   // val assistant = AiServices.create(classOf[Assistant], model)
   // val answerFr = assistant.chat("Bonjour, enchanter de vous voir!")
   // println(answerFr)
