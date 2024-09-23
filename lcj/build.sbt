@@ -12,4 +12,5 @@ lazy val root = project
     libraryDependencies += "dev.langchain4j" % "langchain4j-open-ai" % "0.34.0",
     libraryDependencies += "dev.langchain4j" % "langchain4j" % "0.34.0",
     libraryDependencies += "dev.langchain4j" % "langchain4j-hugging-face" % "0.34.0",
+    libraryDependencies += "dev.langchain4j" % "langchain4j-easy-rag" % "0.34.0",
   )
