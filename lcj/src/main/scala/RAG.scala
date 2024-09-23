@@ -13,7 +13,11 @@ import dev.langchain4j.data.segment.TextSegment
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor
 import dev.langchain4j.memory.chat.MessageWindowChatMemory
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever
+import dev.langchain4j.service.Result
 
+
+trait AssistantCNN:
+  def chat(userMessage: String): Result[String]
 
 @main def rag(): Unit =
   val model = HuggingFaceChatModel.builder()
@@ -30,14 +34,18 @@ import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever
   EmbeddingStoreIngestor.ingest(documents, embeddingStore)
 
 
-  val assistant = AiServices.builder(classOf[Assistant])
+  val assistant = AiServices.builder(classOf[AssistantCNN])
     .chatLanguageModel(model)
     .chatMemory(MessageWindowChatMemory.withMaxMessages(10))
     .contentRetriever(EmbeddingStoreContentRetriever.from(embeddingStore))
     .build()
 
-  var answer = assistant.chat("What were exploded?")
-  println(answer)
-  answer = assistant.chat("What did military urge the civilians to do?")
-  println(answer)
+  var result = assistant.chat("How many people are killed?")
+  println("CONTENT:")
+  println(result.content())
+
+  println("SOURCES:")
+  var sources = result.sources()
+  sources.forEach(println)
+  
 
