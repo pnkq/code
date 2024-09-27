@@ -608,6 +608,12 @@ object DEPx {
             val vocab = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary.toSet
             println("#(vocab) = " + vocab.size)
             println(vocab)
+          case "statistic" => 
+            val graphs = GraphReader.read(trainPath)
+            val lengths = graphs.map(g => g.sentence.tokens.size)
+            val gs = lengths.groupBy(identity).map { case (k, v) => (k, v.size) }.toList
+            val hs = gs.sortBy(_._1)
+            hs.foreach(println)
         }
         spark.stop()
       case None => println("Invalid config!")
