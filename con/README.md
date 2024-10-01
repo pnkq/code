@@ -2,7 +2,7 @@
 
 1. Run `vlp.dep.NetworkX` to read a UD treebank and export its graph edges to a TSV file for a language:
    
-   `bloop run -p con -m vlp.dep.NetworkX`
+   `bloop run -p con -m vlp.dep.NetworkX -- fra`
    
   The statistic of nodes and edges for 3 treebanks is as follows:
 
@@ -11,6 +11,7 @@
   | vie VTB | 3,874   | 16,399  | 4,963 | 21,029 | 2,537 | 9,591  |  
   | ind GSD | 19,260  | 75,181  | 4,568 | 11,318 | 4,348 | 10,495 |
   | eng EWT | 22,069  | 132,497 | 5,899 | 20,163 | 5,961 | 19,913 |
+  | fra GSD | 46,317  | 234,884 | 9,685 | 30,463 | 3,397 | 9,209 |
 
   The graphs are saved into `dat/dep/*.tsv` files. 
 
@@ -33,3 +34,4 @@ For undirected graph:
    NOTE: in the implementation of `x` model, we intentionally split a long graph (whose length > config.maxSeqLen) into two halves left and 
    right using the ROOT token. Since we are concerned with projective dependency parsing, we assume that all the annotated graphs 
    in the treebanks are projective. 
+

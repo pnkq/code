@@ -9,7 +9,8 @@ case class Edge(src: String, tar: String, label: String)
 
 /**
 * phuonglh, April 2024. 
-
+* Create a merged graph from a treebank split.
+* 
 */
 object NetworkX {
 
@@ -66,12 +67,13 @@ object NetworkX {
 
   def main(args: Array[String]): Unit = {
     if (args.length == 0) {
-      println("Need an argument of language: eng/ind/vie.")
+      println("Need an argument of language: eng/fra/ind/vie.")
     }
-    var basePath = "dat/dep/ud-treebanks-v2.13/" 
+    var basePath = "dat/dep/" 
     val language = args(0)
     language match {
       case "eng" => basePath += "UD_English-EWT/en_ewt-ud-"
+      case "fra" => basePath += "UD_French-GSD/fr_gsd-ud-"
       case "ind" => basePath += "UD_Indonesian-GSD/id_gsd-ud-"
       case "vie" => basePath += "UD_Vietnamese-VTB/vi_vtb-ud-"
     }
