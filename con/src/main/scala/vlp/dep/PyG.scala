@@ -15,7 +15,7 @@ import _root_.java.nio.file.StandardOpenOption
     - the first line contains source vertex indices us of M edges (M integers)
     - the second line contains target vertex indices vs of M edges (M integers). (us[i], vs[i]) constitutes an arc of the graph.
     - the third line contains the label indices ys of N nodes. We use the uPOS as labels for each node.
-    - [next N lines contain features of N nodes in the graph. Each node has an array of features. (This part is currently empty.) ]
+    - next N lines contain features of N nodes in the graph. Each node has an array of features.
   */
 object PyG {
   def main(args: Array[String]): Unit = {
