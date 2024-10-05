@@ -334,7 +334,7 @@ object DEPx {
             val gfy = sequencerX.transform(gfx)
             val gfyV = sequencerX.transform(gfxV)
             val gfyW = sequencerX.transform(gfxW)
-            // flatten the "xs" column to get a vector x (of numberOfNetworkXFeatures * maxSeqLen elements)
+            // flatten the "xs" column to get a vector x1 (of numberOfNetworkXFeatures * maxSeqLen elements)
             val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
             val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
             val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
@@ -469,7 +469,7 @@ object DEPx {
               val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen)), Array(config.maxSeqLen))
               (bigdl, featureSize, labelSize, "t+p+f") 
             case "x" =>
-              // A model for (token ++ uPoS ++ featureStructure ++ graphX) tensor
+              // A model for (token ++ uPoS ++ featureStructure ++ graphX ++ Node2Vec) tensor
               val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
               val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
               val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
@@ -477,16 +477,21 @@ object DEPx {
               val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
               val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
               // graphX input
-              val inputX = Input(inputShape = Shape(35*config.maxSeqLen), name = "inputX") // 3 for graphX, 32 for Node2Vec
-              val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 35)).setName("reshapeX").inputs(inputX)
+              val inputX = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX") // 3 for graphX
+              val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX").inputs(inputX)
+              // Node2Vec input
+              val inputX2 = Input(inputShape = Shape(32*config.maxSeqLen), name = "inputX2") // 32 for node2vec
+              val reshapeX2 = Reshape(targetShape = Array(config.maxSeqLen, 32)).setName("reshapeX2").inputs(inputX2)
 
-              val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX), mode = "concat")
+              val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX, reshapeX2), mode = "concat")
               val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
               val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
               val dropout = Dropout(config.dropoutRate).inputs(rnn2)
               val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
-              val bigdl = Model(Array(inputT, inputP, inputF, inputX), output) // multiple inputs
-              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(35*config.maxSeqLen)), Array(config.maxSeqLen))
+              val bigdl = Model(Array(inputT, inputP, inputF, inputX, inputX2), output) // multiple inputs
+              val (featureSize, labelSize) = (
+                Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), 
+                Array(config.maxSeqLen))
               (bigdl, featureSize, labelSize, "t+p+f+x")
           }
         }
