@@ -134,7 +134,7 @@ object DEPx {
    * @param config config
    * @param uf training df
    * @param vf validation df
-   * @param featureColName feature column name
+   * @param featureColNames feature column names
    */
   private def eval(bigdl: KerasNet[Float], config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColNames: Array[String]): Seq[Double] = {
     // create a sequential model and add a custom ArgMax layer at the end of the model
@@ -520,7 +520,7 @@ object DEPx {
         // eval() needs an array of feature column names for a proper reshaping input tensors
         val featureColNames = config.modelType match {
           case "f" => Array("t", "p", "f")
-          case "x" => Array("t", "p", "f", "x")
+          case "x" => Array("t", "p", "f", "x", "x2")
           case _ => Array(featureColName)
         }
 
@@ -586,6 +586,7 @@ object DEPx {
             for (_ <- 1 to 3) {
               for (w <- ws; h <- hs) {
                 val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
+                println(cfg)
                 val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
                 val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
                 val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
