@@ -25,6 +25,7 @@ import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
 import java.nio.file.{Files, Paths, StandardOpenOption}
 import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.expressions.Window
 
 
 /**
@@ -329,22 +330,47 @@ object DEPx {
             val gfxV = gfV.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
             val gfxW = gfW.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
             // create a sequencer for graphX features
-            val sequencerX = new SequencerX(graphMap, config.maxSeqLen).setInputCol("t:p").setOutputCol("xs")
+            val sequencerX = new SequencerX(graphMap, config.maxSeqLen, 3).setInputCol("t:p").setOutputCol("xs")
             val gfy = sequencerX.transform(gfx)
             val gfyV = sequencerX.transform(gfxV)
             val gfyW = sequencerX.transform(gfxW)
-            gfy.select("tokens", "uPoS", "t:p", "xs").show(3, false)
             // flatten the "xs" column to get a vector x (of numberOfNetworkXFeatures * maxSeqLen elements)
             val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
             val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
             val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
             val gfzW = gfyW.withColumn("x", flattenFunc(col("xs")))
 
+            // extended features (32-dim embedding of Node2Vec)
+            // read Node2Vec features from the training split (-nodeId.txt and -nodeVec.txt)
+            val graphNodeId = spark.read.csv(s"dat/dep/${config.language}-nodeId.txt").toDF("t:p")
+            val graphNodeVec = spark.read.csv(s"dat/dep/${config.language}-nodeVec.txt").toDF("s")
+            // convert "s" string column to a Seq[Double] column
+            val splitFunc = udf((s: String) => s.split(" ").map(_.toDouble))
+            val graphNodeVecSeq = graphNodeVec.withColumn("z", splitFunc(col("s")))
+            // add an index column to two dfs 
+            val windowSpec = Window.orderBy(monotonically_increasing_id())
+            val graphNodeIdWithIndex = graphNodeId.withColumn("id", row_number().over(windowSpec))
+            val graphNodeVecSeqWithIndex = graphNodeVecSeq.withColumn("id", row_number().over(windowSpec))
+            // now join two dfs by the index column
+            val graphNode = graphNodeIdWithIndex.join(graphNodeVecSeqWithIndex, Seq("id")).select("t:p", "z")
+            // convert to a map
+            val graphNodeMap = graphNode.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+            // create a sequencer for Node2Vec features
+            val sequencerX2 = new SequencerX(graphNodeMap, config.maxSeqLen, 32).setInputCol("t:p").setOutputCol("xs2")
+            val gfy2 = sequencerX2.transform(gfz)
+            val gfyV2 = sequencerX2.transform(gfzV)
+            val gfyW2 = sequencerX2.transform(gfzW)
+            gfy2.select("tokens", "uPoS", "t:p", "xs", "xs2").show(3)
+            // flatten the "xs2" column to get a vector x2 (of numberOfNode2VecFeatures * maxSeqLen elements)
+            val gfz2 = gfy2.withColumn("x2", flattenFunc(col("xs2")))
+            val gfzV2 = gfyV2.withColumn("x2", flattenFunc(col("xs2")))
+            val gfzW2 = gfyW2.withColumn("x2", flattenFunc(col("xs2")))
+
             // assemble the input vectors into one 
-            val assembler = new VectorAssembler().setInputCols(Array("t", "p", "f", "x")).setOutputCol("t+p+f+x")
-            val hf = assembler.transform(gfz)
-            val hfV = assembler.transform(gfzV)
-            val hfW = assembler.transform(gfzW)
+            val assembler = new VectorAssembler().setInputCols(Array("t", "p", "f", "x", "x2")).setOutputCol("t+p+f+x")
+            val hf = assembler.transform(gfz2)
+            val hfV = assembler.transform(gfzV2)
+            val hfW = assembler.transform(gfzW2)
             (hf, hfV, hfW)
         }
         // create a BigDL model corresponding to a model type, return a tuple: (bigdl, featureSize, labelSize, featureColName)
@@ -451,8 +477,8 @@ object DEPx {
               val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
               val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
               // graphX input
-              val inputX = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX") // 3 for graphX 
-              val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX").inputs(inputX)
+              val inputX = Input(inputShape = Shape(35*config.maxSeqLen), name = "inputX") // 3 for graphX, 32 for Node2Vec
+              val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 35)).setName("reshapeX").inputs(inputX)
 
               val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX), mode = "concat")
               val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
@@ -460,7 +486,7 @@ object DEPx {
               val dropout = Dropout(config.dropoutRate).inputs(rnn2)
               val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
               val bigdl = Model(Array(inputT, inputP, inputF, inputX), output) // multiple inputs
-              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen)), Array(config.maxSeqLen))
+              val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(35*config.maxSeqLen)), Array(config.maxSeqLen))
               (bigdl, featureSize, labelSize, "t+p+f+x")
           }
         }
@@ -515,6 +541,7 @@ object DEPx {
         }
         config.mode match {
           case "train" =>
+            println("config = " + config)
             val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
