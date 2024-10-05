@@ -14,7 +14,7 @@ case class ConfigDEP(
     heads: Int = 2, // number of attention heads in BERT
     batchSize: Int = 64,
     maxSeqLen: Int = 20, // max 20 tokens for short sentences
-    epochs: Int = 50,
+    epochs: Int = 20,
     learningRate: Double = 5E-4,
     dropoutRate: Float = 0.2f,
     language: String = "vie", // [eng, ind, vie]

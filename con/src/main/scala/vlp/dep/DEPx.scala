@@ -531,8 +531,8 @@ object DEPx {
 
         // best maxIterations for each language which is validated on the dev. split:
         val maxIterations = config.language match {
-          case "eng" => 4000
-          case "fra" => 4000
+          case "eng" => 2000
+          case "fra" => 2000
           case "ind" => 800
           case "vie" => 600
           case _ => 1000
