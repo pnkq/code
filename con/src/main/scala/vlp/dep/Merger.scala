@@ -18,7 +18,7 @@ object Merger {
       val splits = Array("train", "dev", "test")
       val graphFeatures = Array("eigenvector-centrality", "indegree-centrality", "pagerank")
 
-      for (lang <- Array("eng", "ind", "vie")) {
+      for (lang <- Array("eng", "fra", "ind", "vie")) {
         val graphPaths = splits.map { split => graphFeatures.map(x => s"dat/dep/$lang-$x-$split.tsv") }
         graphPaths.foreach(a => println(a.mkString("\t")))
         val dfs = graphPaths.map { paths =>

@@ -20,7 +20,7 @@ import _root_.java.nio.file.StandardOpenOption
 object PyG {
   def main(args: Array[String]): Unit = {
     if (args.length == 0) {
-      println("Need an argument of language: eng/fra/ind/vie.")
+      println("Need an argument of language: eng/fra/ind/vie")
     }
     var basePath = "dat/dep/" 
     val language = args(0)
