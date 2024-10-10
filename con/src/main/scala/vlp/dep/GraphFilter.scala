@@ -3,7 +3,7 @@ package vlp.dep
 
 object GraphFilter {
 
-  val words = Set("announced", "created", "troops", "analysis")
+  val words = Set("troops", "fired")
 
   def main(args: Array[String]): Unit = {
     val path = "dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu"
