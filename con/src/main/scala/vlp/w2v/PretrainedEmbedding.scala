@@ -9,7 +9,7 @@ import org.apache.spark.sql.types.DataType
 
 
 /**
- * A Spark transformer which computes text representation using embedding vectors.
+ * A Spark transformer which computes text representation using pretrained embedding vectors.
  * phuonglh@gmail.com
  * </p>
  * @param uid
@@ -23,7 +23,7 @@ class PretrainedEmbedding(override val uid: String, val dictionary: Map[String, 
   val zero: Seq[Double] = Array.fill(dimension)(0d)
 
   def this(dictionary: Map[String, Seq[Double]], dimension: Int) = {
-    this(Identifiable.randomUID("glove"), dictionary, dimension)
+    this(Identifiable.randomUID("embedding"), dictionary, dimension)
     val sparkContext = SparkSession.getActiveSession.get.sparkContext
     dictionaryBr = Some(sparkContext.broadcast(dictionary))
   }
