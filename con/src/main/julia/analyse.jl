@@ -3,11 +3,11 @@ using Statistics
 using Plots
 plotly()
 
-path = "/home/phuonglh/code/con/dat/depx-scores-uas-ind.tsv"
+path = "/home/phuonglh/code/con/dat/depx-scores-uas-sun-2.tsv"
 
 A = readdlm(path, ';')
 
-language = "ind"
+language = "fra"
 ts = ["t", "t+p", "f", "x"]
 
 function filter(modelType::String, w::Int, h::Int)
