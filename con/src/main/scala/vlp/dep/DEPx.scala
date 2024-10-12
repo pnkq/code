@@ -588,9 +588,10 @@ object DEPx {
             // The arguments are: -l <lang> -t <modelType> -m validate
             val ws = Array(64, 128, 200)
             val hs = Array(64, 128, 200, 300)
+            val js = Array(2, 3)
             for (_ <- 1 to 3) {
-              for (w <- ws; h <- hs) {
-                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
+              for (w <- ws; h <- hs; j <- js) {
+                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h, layers = j)
                 println(cfg)
                 val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
                 val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
@@ -606,8 +607,7 @@ object DEPx {
                 // train
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
-                val heads = if (cfg.modelType != "b") 0 else cfg.heads
-                val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+                val result = f"\n${cfg.language};${cfg.modelType};$w;$h;$j;0;${scores(0)}%.4g;${scores(1)}%.4g"
                 println(result)
                 Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
@@ -637,7 +637,7 @@ object DEPx {
                 // train
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
-                val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$n;${scores(0)}%.4g;${scores(1)}%.4g"
+                val result = f"\n${cfg.language};b;$w;$h;$j;$n;${scores(0)}%.4g;${scores(1)}%.4g"
                 println(result)
                 Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
