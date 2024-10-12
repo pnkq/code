@@ -612,6 +612,36 @@ object DEPx {
                 Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
             }
+          case "validate-b" => 
+            // perform a series of experiments to find the best hyper-params on the development set for a language
+            // The arguments are: -l <lang> -t b/bx -m validate
+            val ws = Array(64, 128, 200)
+            val hs = Array(64, 128, 200, 300)
+            val js = Array(2, 3)
+            val nHeads = Array(2, 4, 8)
+            for (_ <- 1 to 3) {
+              for (w <- ws; h <- hs; j <- js; n <- nHeads) {
+                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h, layers = j, heads = n)
+                println(cfg)
+                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
+                val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
+                val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+                estimator.setLabelCol("o").setFeaturesCol(featureColName)
+                  .setBatchSize(batchSize)
+                  .setOptimMethod(new Adam(config.learningRate))
+                  .setTrainSummary(trainingSummary)
+                  .setValidationSummary(validationSummary)
+                  .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+                  .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
+                // train
+                estimator.fit(uf)
+                val scores = eval(bigdl, cfg, uf, vf, featureColNames)
+                val result = f"\n${cfg.language};${cfg.modelType};${cfg.tokenEmbeddingSize};${cfg.tokenHiddenSize};${cfg.layers};$n;${scores(0)}%.4g;${scores(1)}%.4g"
+                println(result)
+                Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+              }
+            }
           case "predict" =>
             // train the model on the training set (uf) using the best hyper-parameters which was tuned on the validation set (vf)
             // and run prediction it on the test set (wf) to collect scores
