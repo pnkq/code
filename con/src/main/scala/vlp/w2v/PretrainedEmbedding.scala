@@ -29,12 +29,14 @@ class PretrainedEmbedding(override val uid: String, val dictionary: Map[String, 
   }
 
   override protected def createTransformFunc: Seq[String] => Vector = {
+    val dict = dictionaryBr.get.value
+
     def avg(tokens: Seq[String]): Vector = {
-      val dict = dictionaryBr.get.value
       val vs = tokens.map { token => dict.getOrElse(token, zero) }
       val s = vs.reduce { (u, v) => u.zip(v).map { p => p._1 + p._2 }}
       Vectors.dense(s.toArray.map(v => v/tokens.size))
     }
+    
     avg(_)
   }
   override protected def outputDataType: DataType = SQLDataTypes.VectorType
