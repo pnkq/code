@@ -372,7 +372,7 @@ object DEPx {
             val hfV = assembler.transform(gfzV2)
             val hfW = assembler.transform(gfzW2)            
             (hf, hfV, hfW)
-          case "xb" => 
+          case "bx" => 
             // first, create a UDF g to make BERT input of size 4 x maxSeqLen
             val g = udf((x: Vector) => {
               val v = x.toArray // x is a dense vector (produced by a Sequencer)
@@ -572,7 +572,7 @@ object DEPx {
                 Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), 
                 Array(config.maxSeqLen))
               (bigdl, featureSize, labelSize, "t+p+f+x")
-            case "xb" => 
+            case "bx" => 
               // A model for (token ++ graphX ++ Node2Vec) tensor using BERT 
               // BERT model using one input of 4*maxSeqLen elements
               val input = Input(inputShape = Shape(4*config.maxSeqLen), name = "input")
@@ -637,7 +637,7 @@ object DEPx {
         val featureColNames = config.modelType match {
           case "f" => Array("t", "p", "f")
           case "x" => Array("t", "p", "f", "x", "x2")
-          case "xb" => Array("tb", "x", "x2")
+          case "bx" => Array("tb", "x", "x2")
           case _ => Array(featureColName)
         }
 
