@@ -749,7 +749,7 @@ object DEPx {
                 // train
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
-                val result = f"\n${cfg.language};b;$w;$h;$j;$n;${scores(0)}%.4g;${scores(1)}%.4g"
+                val result = f"\n${cfg.language};${cfg.modelType};$w;$h;$j;$n;${scores(0)}%.4g;${scores(1)}%.4g"
                 println(result)
                 Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
