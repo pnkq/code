@@ -4,6 +4,11 @@ import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
+import org.apache.spark.ml.feature.{RegexTokenizer, CountVectorizer}
+import org.apache.spark.ml.feature.IDF
+import org.apache.spark.ml.classification.LogisticRegression
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 
 /**
   * phuonglh@gmail.com
@@ -53,6 +58,35 @@ object VPB {
     ff.show()
     println(ff.select("merged").head)
 
+    // extract bot text from each conversation
+    val extractBotText = udf((ts: Array[Turn]) => {
+      ts.filter(p => p.channel == "Bot").map(_.trans.trim).filter(_.nonEmpty).mkString("|")
+    })
+    val bf = ff.withColumn("bot", extractBotText(col("merged")))
+    bf.show(5)
+    println(bf.select("bot").head)
+
+    // extract label from file_name
+    val extractLabel = udf((x: String) => {
+      if (x.contains("goodcall")) 0d else 1d
+    })
+    val cf = bf.withColumn("label", extractLabel(col("file_name")))
+    cf.select("bot", "label").show
+    cf.groupBy("label").count.show()
+
+    // create a classification pipeline
+    val tokenizer = new RegexTokenizer().setInputCol("bot").setOutputCol("tokens").setPattern("""[\s|]+""")
+    val vectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vector").setMinDF(2)
+    val idf = new IDF().setInputCol("vector").setOutputCol("features")
+    val classifier = new LogisticRegression()
+    val pipeline = new Pipeline().setStages(Array(tokenizer, vectorizer, idf, classifier))
+
+    val Array(training, test) = cf.randomSplit(Array(0.8, 0.2), seed=1234)
+    val model = pipeline.fit(training)
+    val vf = model.transform(test)
+    val evaluator = new BinaryClassificationEvaluator().setLabelCol("label")
+    val score = evaluator.evaluate(vf)
+    println(s"score = $score")
 
     spark.stop()
   }
