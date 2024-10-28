@@ -22,7 +22,7 @@ trait AssistantCNN:
 @main def rag(): Unit =
   val model = HuggingFaceChatModel.builder()
                 .accessToken(System.getenv("HF_API_KEY"))
-                .modelId(TII_UAE_FALCON_7B_INSTRUCT)
+                .modelId("google/flan-t5-large")
                 .timeout(ofSeconds(15))
                 .temperature(0.7)
                 .maxNewTokens(20)
@@ -40,12 +40,14 @@ trait AssistantCNN:
     .contentRetriever(EmbeddingStoreContentRetriever.from(embeddingStore))
     .build()
 
-  var result = assistant.chat("How many people are killed?")
-  println("CONTENT:")
+  // var result = assistant.chat("Who was killed?")
+  // println(result.content())
+
+  val result = assistant.chat("List all named entities in the text.")
   println(result.content())
 
-  println("SOURCES:")
-  var sources = result.sources()
-  sources.forEach(println)
+  // println("SOURCES:")
+  // var sources = result.sources()
+  // sources.forEach(println)
   
 
