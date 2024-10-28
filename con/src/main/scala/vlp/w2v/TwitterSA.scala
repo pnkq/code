@@ -42,8 +42,9 @@ object TwitterSA {
 
     val indexer = new StringIndexer().setInputCol("sentiment").setOutputCol("label")
     val embedding = new PretrainedEmbedding(reducedDictionary, 50).setInputCol("tokens").setOutputCol("features")
-    val classifier = new LogisticRegression()
-    val pipeline = new Pipeline().setStages(Array(indexer, tokenizer, embedding, classifier))
+    val classifier = new LogisticRegression().setFeaturesCol("vector")
+    // val pipeline = new Pipeline().setStages(Array(indexer, tokenizer, embedding, classifier))
+    val pipeline = new Pipeline().setStages(Array(indexer, tokenizer, counter, classifier))
     val model = pipeline.fit(trainingData)
     // model.save("bin/tsa")
     val predictionTest = model.transform(testData)

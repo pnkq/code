@@ -7,6 +7,21 @@ import org.apache.spark.sql.{SparkSession, DataFrame}
 import org.apache.spark.ml._
 import org.apache.spark.ml.feature._
 
+import com.intel.analytics.bigdl.numeric.NumericFloat
+import com.intel.analytics.bigdl.dllib.keras.Sequential
+import com.intel.analytics.bigdl.dllib.keras.layers._
+import com.intel.analytics.bigdl.dllib.keras.models.{Model, Models, KerasNet}
+import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
+import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedMaskCriterion}
+import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
+import com.intel.analytics.bigdl.dllib.optim.{Trigger, Loss}
+import com.intel.analytics.bigdl.dllib.tensor.Tensor
+import com.intel.analytics.bigdl.dllib.utils.Shape
+import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
+
+import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
+
+
 /**
   * Label-Offset Prediction Dependency Parser.
   * <p/>
@@ -44,35 +59,43 @@ object LOP {
     val vectorizerOffsets = new CountVectorizer().setInputCol("offsets").setOutputCol("off")
     val vectorizerLabels = new CountVectorizer().setInputCol("labels").setOutputCol("dep")
     val vectorizerTokens = new CountVectorizer().setInputCol("tokens").setOutputCol("tok").setVocabSize(config.maxVocabSize)
-    val vectorizerPartsOfSpeech = new CountVectorizer().setInputCol("uPoS").setOutputCol("pos") // may use "uPoS" instead of "partsOfSpeech"
+    val vectorizerPartsOfSpeech = new CountVectorizer().setInputCol("uPoS").setOutputCol("pos")
     val vectorizerFeatureStructure = new CountVectorizer().setInputCol("featureStructure").setOutputCol("fst")
     val stages = Array(vectorizerOffsets, vectorizerLabels, vectorizerTokens, vectorizerPartsOfSpeech, vectorizerFeatureStructure)
     val pipeline = new Pipeline().setStages(stages)
     pipeline.fit(df)
   }
 
-  def main(args: Array[String]): Unit = {
-    val opts = new OptionParser[ConfigDEP](getClass.getName) {
-      head(getClass.getName, "1.0")
-      opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
-      opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
-      opt[String]('E', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 16g")
-      opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either eval/train/predict")
-      opt[String]('l', "language").action((x, conf) => conf.copy(language = x)).text("language (eng/ind/vie)")
-      opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
-      opt[Int]('n', "maxSeqLength").action((x, conf) => conf.copy(maxSeqLen = x)).text("max sequence length")
-      opt[Int]('j', "layers").action((x, conf) => conf.copy(layers = x)).text("number of RNN layers or Transformer blocks")
-      opt[Int]('u', "heads").action((x, conf) => conf.copy(heads = x)).text("number of Transformer heads")
-      opt[Int]('w', "tokenEmbeddingSize").action((x, conf) => conf.copy(tokenEmbeddingSize = x)).text("token embedding size")
-      opt[Int]('h', "tokenHiddenSize").action((x, conf) => conf.copy(tokenHiddenSize = x)).text("encoder hidden size")
-      opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
-      opt[Double]('a', "alpha").action((x, conf) => conf.copy(learningRate = x)).text("learning rate, default value is 5E-3")
-      opt[String]('p', "modelPath").action((x, conf) => conf.copy(modelPath = x)).text("model folder, default is 'bin/'")
-      opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
-      opt[String]('o', "outputPath").action((x, conf) => conf.copy(outputPath = x)).text("output path")
-      opt[String]('s', "scorePath").action((x, conf) => conf.copy(scorePath = x)).text("score path")
+  /**
+    * create a BigDL model corresponding to a model type, return 
+    *
+    * @param config configuration
+    * @param numVocab number of input tokens
+    * @param numOffsets number of offsets
+    * @param numLabels number of dependency labels
+    * @return a tuple: (bigdl, featureSize, labelSize, featureColName) 
+  */
+  def createBigDL(config: ConfigDEP, numVocab: Int, numOffsets: Int, numLabels: Int): (KerasNet[Float], Array[Array[Int]], Array[Int], String) = {
+    config.modelType  match {      
+      case "t" =>
+        // 1. Sequential model with random token embeddings
+        val bigdl = Sequential()
+        bigdl.add(Embedding(numVocab + 1, config.tokenEmbeddingSize, inputLength = config.maxSeqLen).setName("tokEmbedding"))
+        for (_ <- 1 to config.layers)
+          bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
+        bigdl.add(Dropout(config.dropoutRate))
+        bigdl.add(Dense(numOffsets + numLabels, activation = "softmax"))
+        val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
+        (bigdl, featureSize, labelSize, "t")
+      case "b" => 
+        val bigdl = Sequential()
+        val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
+        (bigdl, featureSize, labelSize, "t")
     }
-    opts.parse(args, ConfigDEP()) match {
+  }
+
+  def main(args: Array[String]): Unit = {
+    DEPx.parseOptions.parse(args, ConfigDEP()) match {
       case Some(config) =>
         val conf = new SparkConf().setAppName(getClass.getName).setMaster(config.master)
           .set("spark.driver.memory", config.driverMemory)
@@ -109,6 +132,18 @@ object LOP {
         println(" #(labels) = " + numDependencies)
         println("  #(vocab) = " + numVocab)
         println("    #(PoS) = " + numPartsOfSpeech)
+        // 
+        // sequencer tokens, pos, offsets and labels; then concatenate offsets and labels
+        val tokenSequencer = new Sequencer(tokensMap, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("t")
+        val posSequencer = new Sequencer(partsOfSpeechMap, config.maxSeqLen, 0f).setInputCol("uPoS").setOutputCol("p")
+        val offsetSequencer = new Sequencer(offsetMap, config.maxSeqLen, -1f).setInputCol("offsets").setOutputCol("o")
+        val labelSequencer = new Sequencer(dependencyMap, config.maxSeqLen, -1f).setInputCol("labels").setOutputCol("d")
+        val outputAssembler = new VectorAssembler().setInputCols(Array("o", "d")).setOutputCol("o+d")
+        val pipeline = new Pipeline().setStages(Array(tokenSequencer, posSequencer, offsetSequencer, labelSequencer, outputAssembler))
+        val pipelineModel = pipeline.fit(df)
+
+        val (ff, ffV, ffW) = (pipelineModel.transform(ef), pipelineModel.transform(efV), pipelineModel.transform(efW))
+        ff.show(5)
 
       case None => {}
     }

@@ -167,8 +167,8 @@ object DEPx {
     scores
   }
 
-  def main(args: Array[String]): Unit = {
-    val opts = new OptionParser[ConfigDEP](getClass.getName) {
+  def parseOptions: OptionParser[ConfigDEP] = {
+    new OptionParser[ConfigDEP](getClass.getName) {
       head(getClass.getName, "1.0")
       opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
@@ -188,7 +188,10 @@ object DEPx {
       opt[String]('o', "outputPath").action((x, conf) => conf.copy(outputPath = x)).text("output path")
       opt[String]('s', "scorePath").action((x, conf) => conf.copy(scorePath = x)).text("score path")
     }
-    opts.parse(args, ConfigDEP()) match {
+  }
+
+  def main(args: Array[String]): Unit = {
+    parseOptions.parse(args, ConfigDEP()) match {
       case Some(config) =>
         val conf = new SparkConf().setAppName(getClass.getName).setMaster(config.master)
           .set("spark.driver.memory", config.driverMemory)
@@ -259,7 +262,7 @@ object DEPx {
         println("    #(fs) = " + numFeatureStructure)
         // extract token, pos and offset indices (start from 1 to use in BigDL)
         val tokenSequencer = new Sequencer(tokensMap, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("t")
-        val posSequencer = new Sequencer(partsOfSpeechMap, config.maxSeqLen, 0f).setInputCol("partsOfSpeech").setOutputCol("p")
+        val posSequencer = new Sequencer(partsOfSpeechMap, config.maxSeqLen, 0f).setInputCol("uPoS").setOutputCol("p")
         val featureSequencer = new Sequencer(featureStructureMap, config.maxSeqLen, 0f).setInputCol("featureStructure").setOutputCol("f")
         val offsetsSequencer = new Sequencer(offsetMap, config.maxSeqLen, -1f).setInputCol("offsets").setOutputCol("o")
         val gf = offsetsSequencer.transform(featureSequencer.transform(posSequencer.transform(tokenSequencer.transform(ef))))
