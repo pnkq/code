@@ -76,7 +76,7 @@ object DEPx {
    * @param las LAS or UAS
    * @return a data frame
    */
-  private def readGraphs(spark: SparkSession, path: String, maxSeqLen: Int, las: Boolean = false): DataFrame = {
+  def readGraphs(spark: SparkSession, path: String, maxSeqLen: Int, las: Boolean = false): DataFrame = {
     // read graphs and remove too-long or two-short sentences
     // val graphs = GraphReader.read(path).filter(_.sentence.tokens.size <= maxSeqLen).filter(_.sentence.tokens.size >= 5)
     // read graphs and split long graphs if necessary
@@ -224,7 +224,7 @@ object DEPx {
             println("Invalid language code!")
             ("", "", "", "", "")
         }
-        // read the training the data set
+        // read the training data set
         val df = readGraphs(spark, trainPath, config.maxSeqLen, config.las)
         // train a preprocessor and use it to transform training/dev data sets
         val preprocessor = createPipeline(df, config)
