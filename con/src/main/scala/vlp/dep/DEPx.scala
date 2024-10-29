@@ -136,7 +136,7 @@ object DEPx {
    * @param vf validation df
    * @param featureColNames feature column names
    */
-  private def eval(bigdl: KerasNet[Float], config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColNames: Array[String]): Seq[Double] = {
+  def eval(bigdl: KerasNet[Float], config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColNames: Array[String]): Seq[Double] = {
     // create a sequential model and add a custom ArgMax layer at the end of the model
     val sequential = Sequential()
     sequential.add(bigdl)
