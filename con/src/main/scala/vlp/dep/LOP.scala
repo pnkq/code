@@ -20,6 +20,10 @@ import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 
 import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
+import com.intel.analytics.bigdl.dllib.nn.Concat
 
 
 /**
@@ -78,13 +82,16 @@ object LOP {
   def createBigDL(config: ConfigDEP, numVocab: Int, numOffsets: Int, numLabels: Int): (KerasNet[Float], Array[Array[Int]], Array[Int], String) = {
     config.modelType  match {      
       case "t" =>
-        // 1. Sequential model with random token embeddings
-        val bigdl = Sequential()
-        bigdl.add(Embedding(numVocab + 1, config.tokenEmbeddingSize, inputLength = config.maxSeqLen).setName("tokEmbedding"))
-        for (_ <- 1 to config.layers)
-          bigdl.add(Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true)))
-        bigdl.add(Dropout(config.dropoutRate))
-        bigdl.add(Dense(numOffsets + numLabels, activation = "softmax"))
+        val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT")
+        val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
+        val offsetRNN1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-o1")).inputs(embeddingT)
+        val offsetRNN2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-o2")).inputs(offsetRNN1)
+        val labelRNN1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-d1")).inputs(embeddingT)
+        val labelRNN2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-d2")).inputs(labelRNN1)
+        val offsetOutput = Dense(numOffsets, activation = "softmax").setName("denseO").inputs(offsetRNN2)
+        val labelOutput =  Dense(numLabels, activation = "softmax").setName("denseD").inputs(labelRNN2)
+        val merge = Merge.merge(inputs = List(offsetOutput, labelOutput), mode = "concat", concatAxis = -1)
+        val bigdl = Model(inputT, merge)
         val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t")
       case "b" => 
@@ -144,6 +151,56 @@ object LOP {
 
         val (ff, ffV, ffW) = (pipelineModel.transform(ef), pipelineModel.transform(efV), pipelineModel.transform(efW))
         ff.show(5)
+
+        val (uf, vf, wf) = config.modelType match {
+          case "t" => (ff, ffV, ffW)
+        }
+        val (bigdl, featureSize, labelSize, featureColName) = createBigDL(config, numVocab, numOffsets, numDependencies)
+        val numCores = Runtime.getRuntime().availableProcessors()
+        val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
+        val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
+        val criterion = TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+        // eval() needs an array of feature column names for a proper reshaping input tensors
+        config.mode match {
+          case "train" =>
+            println("config = " + config)
+            val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
+            val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+            val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+            // best maxIterations for each language which is validated on the dev. split:
+            val maxIterations = config.language match {
+              case "eng" => 2000
+              case "fra" => 2000
+              case "ind" => 800
+              case "vie" => 600
+              case _ => 1000
+            }  
+            estimator.setLabelCol("o+d").setFeaturesCol(featureColName)
+              .setBatchSize(batchSize)
+              .setOptimMethod(new Adam(config.learningRate))
+              .setTrainSummary(trainingSummary)
+              .setValidationSummary(validationSummary)
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+              .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
+            estimator.fit(uf)
+            bigdl.saveModel(modelPath, overWrite = true)
+            // evaluate the model on the training/dev sets
+            val scores = DEPx.eval(bigdl, config, uf, vf, Array(featureColName))
+            val heads = if (config.modelType != "b") 0 else config.heads
+            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+            println(result)
+            Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+          case "eval" =>
+            println(s"Loading model in the path: $modelPath...")
+            val bigdl = Models.loadModel[Float](modelPath)
+            bigdl.summary()
+            val scores = DEPx.eval(bigdl, config, uf, vf, Array(featureColName))
+
+            val heads = if (config.modelType != "b") 0 else config.heads
+            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+            println(result)
+            Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+        }
 
       case None => {}
     }
