@@ -13,6 +13,7 @@ import com.intel.analytics.bigdl.dllib.keras.layers._
 import com.intel.analytics.bigdl.dllib.keras.models.{Model, Models, KerasNet}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedMaskCriterion}
+import com.intel.analytics.bigdl.phuonglh.JointClassNLLCriterion
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.optim.{Trigger, Loss}
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
@@ -23,7 +24,8 @@ import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
-import com.intel.analytics.bigdl.dllib.nn.Concat
+import com.intel.analytics.bigdl.dllib.nn.Transpose
+
 
 
 /**
@@ -90,16 +92,36 @@ object LOP {
         val labelRNN2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-d2")).inputs(labelRNN1)
         val offsetOutput = Dense(numOffsets, activation = "softmax").setName("denseO").inputs(offsetRNN2)
         val labelOutput =  Dense(numLabels, activation = "softmax").setName("denseD").inputs(labelRNN2)
-        val merge = Merge.merge(inputs = List(offsetOutput, labelOutput), mode = "concat", concatAxis = -1)
-        val bigdl = Model(inputT, merge)
+        // transpose in order to apply zeroPadding
+        val transposeOffset = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(offsetOutput)
+        val transposeLabel = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(labelOutput)
+        // right-pad the smaller size
+        val padSize = Math.abs(numOffsets - numLabels)
+        val zeroPadding = if (numOffsets < numLabels) {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeOffset) 
+        } else {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeLabel)
+        }
+        val transposeBack = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPadding)
+        val merge = if (numOffsets < numLabels) {
+          Merge.merge(inputs = List(transposeBack, labelOutput), mode = "concat", concatAxis = -1)
+        } else {
+          Merge.merge(inputs = List(offsetOutput, transposeBack), mode = "concat", concatAxis = -1)
+        }
+        // output size is maxSeqLen x (2*max(numOffsets, numLabels))
+        // val bigdl = Model(inputT, merge)
+        val duplicate = Merge.merge(inputs = List(merge, merge), mode = "concat", concatAxis = 1)
+        // output size is (2*maxSeqLen) x (2*max(numOffsets, numLabels))
+        val bigdl = Model(inputT, duplicate)
         val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t")
       case "b" => 
         val bigdl = Sequential()
-        val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
+        val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(2*config.maxSeqLen)) // TODO
         (bigdl, featureSize, labelSize, "t")
     }
   }
+
 
   def main(args: Array[String]): Unit = {
     DEPx.parseOptions.parse(args, ConfigDEP()) match {
@@ -150,7 +172,7 @@ object LOP {
         val pipelineModel = pipeline.fit(df)
 
         val (ff, ffV, ffW) = (pipelineModel.transform(ef), pipelineModel.transform(efV), pipelineModel.transform(efW))
-        ff.show(5)
+        ff.select("t", "o+d").show(5, false)
 
         val (uf, vf, wf) = config.modelType match {
           case "t" => (ff, ffV, ffW)
@@ -159,11 +181,14 @@ object LOP {
         val numCores = Runtime.getRuntime().availableProcessors()
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
-        val criterion = TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+        val loss = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1)
+        val n = Math.max(numOffsets, numDependencies)
+        val criterion = TimeDistributedMaskCriterion(new JointClassNLLCriterion[Float](loss, loss, config.maxSeqLen, n), paddingValue = -1)
         // eval() needs an array of feature column names for a proper reshaping input tensors
         config.mode match {
           case "train" =>
             println("config = " + config)
+            bigdl.summary()
             val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
@@ -180,7 +205,7 @@ object LOP {
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
+              .setValidation(Trigger.everyEpoch, vf, Array(new Loss[Float](criterion)), batchSize) // new TimeDistributedTop1Accuracy(-1), 
               .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
             estimator.fit(uf)
             bigdl.saveModel(modelPath, overWrite = true)

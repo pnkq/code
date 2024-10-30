@@ -21,7 +21,7 @@ case class ConfigDEP(
     modelPath: String = "bin/dep",
     outputPath: String = "out/dep/",
     scorePath: String = "dat/depx-scores.tsv",
-    modelType: String = "t+p", // [t+p, tg+p, tn+p, b, x, bx] // [t, tg, tn]
+    modelType: String = "t", // [t+p, tg+p, tn+p, b, x, bx] // [t, tg, tn]
     weightedLoss: Boolean = false,
     las: Boolean = false // labeled attachment score (LAS) or unlabeled attachment score (UAS)
 )
