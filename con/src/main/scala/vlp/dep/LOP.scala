@@ -27,9 +27,9 @@ import java.nio.file.StandardOpenOption
 import com.intel.analytics.bigdl.dllib.nn.Transpose
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import com.intel.analytics.bigdl.dllib.nn.ParallelTable
 import com.intel.analytics.bigdl.dllib.nn.{Sequential => NSequential}
-import com.intel.analytics.bigdl.dllib.nn.{JoinTable, Echo}
+import com.intel.analytics.bigdl.dllib.nn.JoinTable
+import com.intel.analytics.bigdl.dllib.nn.MapTable
 
 
 
@@ -146,12 +146,10 @@ object LOP {
     // split the tensor into 2 halves: (20 x 74) => (20 x 37) and (20 x 37)
     val transpose = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3))))
     val split = SplitTensor(1, 2)
-    val transposeBack1 = new Transpose[Float](permutations = Array((2, 3)))
-    val transposeBack2 = new Transpose[Float](permutations = Array((2, 3)))
-    // pass the table of 2 elements into a parallel table, each entry has the same sequential module
-    val module1 = NSequential[Float]().add(transposeBack1).add(vlp.ner.ArgMax())
-    val module2 = NSequential[Float]().add(transposeBack2).add(vlp.ner.ArgMax())
-    val parallelTable = new KerasLayerWrapper(ParallelTable[Float]().add(module1).add(module2))
+    val transposeBack = new Transpose[Float](permutations = Array((2, 3)))
+    // pass the table of 2 elements into a map table, each entry has the same sequential module
+    val module = NSequential[Float]().add(transposeBack).add(vlp.ner.ArgMax())
+    val parallelTable = new KerasLayerWrapper(MapTable[Float]().add(module))
     val joinTable = new KerasLayerWrapper(JoinTable[Float](2, 3))
     sequential.add(transpose).add(split).add(parallelTable).add(joinTable)
     sequential.summary()
@@ -161,25 +159,23 @@ object LOP {
       sequential.predict(uf, featureCols = featureColNames, predictionCol = "z"),
       sequential.predict(vf, featureCols = featureColNames, predictionCol = "z")
     )
-    predictions(0).select("o+d", "z").show(5, false)
-    // val spark = SparkSession.getActiveSession.get
-    // val evaluator = new MulticlassClassificationEvaluator().setLabelCol("y").setPredictionCol("z").setMetricName("accuracy")
-    // import spark.implicits._
-    // val scores = for (prediction <- predictions) yield {
-    //   val zf = prediction.select("o+d", "z").map { row =>
-    //     val o = row.getAs[linalg.Vector](0).toArray.filter(_ >= 0)
-    //     val p = row.getSeq[Float](1).take(o.size)
-    //     (o, p)
-    //   }
-    //   // show the prediction, each row is a graph
-    //   zf.toDF("offsets", "prediction").show(5, false)
-    //   // flatten the prediction, convert to double for evaluation using Spark lib
-    //   val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z")
-    //   yz.show(15)
-    //   evaluator.evaluate(yz)
-    // }
-    // scores
-    Array(0d, 0d)
+    val spark = SparkSession.getActiveSession.get
+    val evaluator = new MulticlassClassificationEvaluator().setLabelCol("y").setPredictionCol("z").setMetricName("accuracy")
+    import spark.implicits._
+    val scores = for (prediction <- predictions) yield {
+      val zf = prediction.select("o+d", "z").map { row =>
+        val o = row.getAs[linalg.Vector](0).toArray.filter(_ >= 0)
+        val p = row.getSeq[Float](1).take(o.size)
+        (o, p)
+      }
+      // show the prediction, each row is a graph
+      zf.toDF("label", "prediction").show(5, false)
+      // flatten the prediction, convert to double for evaluation using Spark lib
+      val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z")
+      yz.show(15)
+      evaluator.evaluate(yz)
+    }
+    scores
   }
 
   def main(args: Array[String]): Unit = {
@@ -226,13 +222,15 @@ object LOP {
         val posSequencer = new Sequencer(partsOfSpeechMap, config.maxSeqLen, 0f).setInputCol("uPoS").setOutputCol("p")
         val offsetSequencer = new Sequencer(offsetMap, config.maxSeqLen, -1f).setInputCol("offsets").setOutputCol("o")
         val labelSequencer = new Sequencer(dependencyMap, config.maxSeqLen, -1f).setInputCol("labels").setOutputCol("d")
+        val outputAssembler = new VectorAssembler().setInputCols(Array("o", "d")).setOutputCol("o+d")
         val labelShifter = new Shifter(numOffsets, -1f).setInputCol("d").setOutputCol("d1")
-        val outputAssembler = new VectorAssembler().setInputCols(Array("o", "d1")).setOutputCol("o+d")
-        val pipeline = new Pipeline().setStages(Array(tokenSequencer, posSequencer, offsetSequencer, labelSequencer, labelShifter, outputAssembler))
+        val outputAssembler1 = new VectorAssembler().setInputCols(Array("o", "d1")).setOutputCol("o+d1")
+        val pipeline = new Pipeline().setStages(Array(tokenSequencer, posSequencer, offsetSequencer, 
+          labelSequencer, labelShifter, outputAssembler, outputAssembler1))
         val pipelineModel = pipeline.fit(df)
 
         val (ff, ffV, ffW) = (pipelineModel.transform(ef), pipelineModel.transform(efV), pipelineModel.transform(efW))
-        ff.select("t", "o+d").show(5, false)
+        ff.select("t", "o+d1").show(5, false)
 
         val (uf, vf, wf) = config.modelType match {
           case "t" => (ff, ffV, ffW)
@@ -260,7 +258,7 @@ object LOP {
               case "vie" => 600
               case _ => 1000
             }  
-            estimator.setLabelCol("o+d").setFeaturesCol(featureColName)
+            estimator.setLabelCol("o+d1").setFeaturesCol(featureColName)
               .setBatchSize(batchSize) // global batch size
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
