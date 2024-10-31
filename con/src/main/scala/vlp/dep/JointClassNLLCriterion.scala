@@ -23,22 +23,21 @@ class JointClassNLLCriterion[@specialized(Float, Double) T: ClassTag](
 
   def this(firstLoss: ClassNLLCriterion[T], secondLoss: ClassNLLCriterion[T], m: Int, n: Int)(implicit ev: TensorNumeric[T]) = {
     this(firstLoss, secondLoss)
-    // remove a duplicate half of the input: split into two sequences, each of m time steps
+    // split a tensor of shape (2m, 2n) into two tensors of shape (m, 2n)
     val splitXa = SplitTensor[Float](1, 2, inputShape=Shape(2*m, 2*n))
     val selectXa = SelectTable[Float](0)
-    // b version is a copy of a
+    // b is exactly similar to a (they are duplicates)
     val splitXb = SplitTensor[Float](1, 2, inputShape=Shape(2*m, 2*n))
     val selectXb = SelectTable[Float](0)
-    // split input (the first half) of shape m x (2n)
+    // split a tensor of shape m x (2n) to 2 tensors of shape (m x n)
     val splitX1 = SplitTensor[Float](1, 2)
     val selectX1 = SelectTable[Float](0)
     sequentialX1.add(splitXa).add(selectXa).add(splitX1).add(selectX1)
 
     val splitX2 = SplitTensor[Float](1, 2)
     val selectX2 = SelectTable[Float](1)
-    val squeezeX2 = Squeeze[Float](1)
     sequentialX2.add(splitXb).add(selectXb).add(splitX2).add(selectX2)
-    // split target of this loss
+    // split target of this loss into two tensors of shape (1, m)
     val splitY1 = SplitTensor[Float](0, 2, inputShape=Shape(2*m))
     val selectY1 = SelectTable[Float](0)
     sequentialY1.add(splitY1).add(selectY1)
@@ -53,6 +52,8 @@ class JointClassNLLCriterion[@specialized(Float, Double) T: ClassTag](
     val output2 = sequentialX2.forward(input).asInstanceOf[Tensor[T]]
     val target1 = sequentialY1.forward(target).asInstanceOf[Tensor[T]]
     val target2 = sequentialY2.forward(target).asInstanceOf[Tensor[T]]
+    print(output2)
+    print(target2)
     ev.plus(firstLoss.updateOutput(output1, target1), secondLoss.updateOutput(output2, target2))
   }
   override def updateGradInput(input: Tensor[T], target: Tensor[T]): Tensor[T] = {
