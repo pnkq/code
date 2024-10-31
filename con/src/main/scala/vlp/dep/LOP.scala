@@ -182,8 +182,7 @@ object LOP {
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
         val loss = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1)
-        val n = Math.max(numOffsets, numDependencies)
-        val criterion = TimeDistributedMaskCriterion(new JointClassNLLCriterion[Float](loss, loss, config.maxSeqLen, n), paddingValue = -1)
+        val criterion = TimeDistributedMaskCriterion(new JointClassNLLCriterion[Float](loss, loss, batchSize, numOffsets, numDependencies), paddingValue = -1)
         // eval() needs an array of feature column names for a proper reshaping input tensors
         config.mode match {
           case "train" =>
