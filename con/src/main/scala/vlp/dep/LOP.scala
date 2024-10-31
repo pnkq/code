@@ -25,6 +25,8 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
 import com.intel.analytics.bigdl.dllib.nn.Transpose
+import org.apache.spark.sql.functions._
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 
 
 
@@ -109,19 +111,57 @@ object LOP {
           Merge.merge(inputs = List(offsetOutput, transposeBack), mode = "concat", concatAxis = -1)
         }
         // output size is maxSeqLen x (2*max(numOffsets, numLabels))
-        // val bigdl = Model(inputT, merge)
+        // duplicate to have the same seqLen as labels (for TimeDistributedCriterion to work)
         val duplicate = Merge.merge(inputs = List(merge, merge), mode = "concat", concatAxis = 1)
-        // output size is (2*maxSeqLen) x (2*max(numOffsets, numLabels))
         val bigdl = Model(inputT, duplicate)
         val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t")
       case "b" => 
         val bigdl = Sequential()
-        val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(2*config.maxSeqLen)) // TODO
+        val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t")
     }
   }
 
+  /**
+   * Evaluate a model on training data frame (uf) and validation data frame (vf) which have been preprocessed
+   * by the training pipeline.
+   * @param bigdl the model
+   * @param config config
+   * @param uf training df
+   * @param vf validation df
+   * @param featureColNames feature column names
+   */
+  def eval(bigdl: KerasNet[Float], config: ConfigDEP, uf: DataFrame, vf: DataFrame, featureColNames: Array[String]): Seq[Double] = {
+    // create a sequential model and add a custom ArgMax layer at the end of the model
+    val sequential = Sequential()
+    sequential.add(bigdl)
+    // bigdl produces 3-d output results (including batch dimension), we need to convert it to 2-d results.
+    sequential.add(ArgMaxLayer())
+    // run prediction on the training set and validation set
+    val predictions = Array(
+      sequential.predict(uf, featureCols = featureColNames, predictionCol = "z"),
+      sequential.predict(vf, featureCols = featureColNames, predictionCol = "z")
+    )
+    sequential.summary()
+    val spark = SparkSession.getActiveSession.get
+    val evaluator = new MulticlassClassificationEvaluator().setLabelCol("y").setPredictionCol("z").setMetricName("accuracy")
+    import spark.implicits._
+    val scores = for (prediction <- predictions) yield {
+      val zf = prediction.select("o", "z").map { row =>
+        val o = row.getAs[linalg.Vector](0).toArray.filter(_ >= 0)
+        val p = row.getSeq[Float](1).take(o.size)
+        (o, p)
+      }
+      // show the prediction, each row is a graph
+      zf.toDF("offsets", "prediction").show(5, false)
+      // flatten the prediction, convert to double for evaluation using Spark lib
+      val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z")
+      yz.show(15)
+      evaluator.evaluate(yz)
+    }
+    scores
+  }
 
   def main(args: Array[String]): Unit = {
     DEPx.parseOptions.parse(args, ConfigDEP()) match {
@@ -167,8 +207,9 @@ object LOP {
         val posSequencer = new Sequencer(partsOfSpeechMap, config.maxSeqLen, 0f).setInputCol("uPoS").setOutputCol("p")
         val offsetSequencer = new Sequencer(offsetMap, config.maxSeqLen, -1f).setInputCol("offsets").setOutputCol("o")
         val labelSequencer = new Sequencer(dependencyMap, config.maxSeqLen, -1f).setInputCol("labels").setOutputCol("d")
-        val outputAssembler = new VectorAssembler().setInputCols(Array("o", "d")).setOutputCol("o+d")
-        val pipeline = new Pipeline().setStages(Array(tokenSequencer, posSequencer, offsetSequencer, labelSequencer, outputAssembler))
+        val labelShifter = new Shifter(numOffsets, -1f).setInputCol("d").setOutputCol("d1")
+        val outputAssembler = new VectorAssembler().setInputCols(Array("o", "d1")).setOutputCol("o+d")
+        val pipeline = new Pipeline().setStages(Array(tokenSequencer, posSequencer, offsetSequencer, labelSequencer, labelShifter, outputAssembler))
         val pipelineModel = pipeline.fit(df)
 
         val (ff, ffV, ffW) = (pipelineModel.transform(ef), pipelineModel.transform(efV), pipelineModel.transform(efW))
@@ -182,15 +223,16 @@ object LOP {
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
         val loss = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1)
-        val criterion = TimeDistributedMaskCriterion(new JointClassNLLCriterion[Float](loss, loss, batchSize, numOffsets, numDependencies), paddingValue = -1)
+        // val criterion = TimeDistributedMaskCriterion(new JointClassNLLCriterion[Float](loss, loss, numCores, numOffsets, numDependencies), paddingValue = -1)
+        val criterion = TimeDistributedMaskCriterion(loss, paddingValue = -1)
         // eval() needs an array of feature column names for a proper reshaping input tensors
         config.mode match {
           case "train" =>
             println("config = " + config)
             bigdl.summary()
             val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
-            val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
-            val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
+            val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/lop/${config.language}")
+            val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/lop/${config.language}")
             // best maxIterations for each language which is validated on the dev. split:
             val maxIterations = config.language match {
               case "eng" => 2000
@@ -200,7 +242,7 @@ object LOP {
               case _ => 1000
             }  
             estimator.setLabelCol("o+d").setFeaturesCol(featureColName)
-              .setBatchSize(batchSize)
+              .setBatchSize(batchSize) // global batch size
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
@@ -209,7 +251,7 @@ object LOP {
             estimator.fit(uf)
             bigdl.saveModel(modelPath, overWrite = true)
             // evaluate the model on the training/dev sets
-            val scores = DEPx.eval(bigdl, config, uf, vf, Array(featureColName))
+            val scores = eval(bigdl, config, uf, vf, Array(featureColName))
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
@@ -218,7 +260,7 @@ object LOP {
             println(s"Loading model in the path: $modelPath...")
             val bigdl = Models.loadModel[Float](modelPath)
             bigdl.summary()
-            val scores = DEPx.eval(bigdl, config, uf, vf, Array(featureColName))
+            val scores = eval(bigdl, config, uf, vf, Array(featureColName))
 
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
