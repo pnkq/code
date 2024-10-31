@@ -164,14 +164,14 @@ object LOP {
     import spark.implicits._
     val scores = for (prediction <- predictions) yield {
       val zf = prediction.select("o+d", "z").map { row =>
-        val o = row.getAs[linalg.Vector](0).toArray.filter(_ >= 0)
-        val p = row.getSeq[Float](1).take(o.size)
+        val o = row.getAs[linalg.Vector](0).toArray
+        val p = row.getSeq[Float](1)
         (o, p)
       }
       // show the prediction, each row is a graph
       zf.toDF("label", "prediction").show(5, false)
       // flatten the prediction, convert to double for evaluation using Spark lib
-      val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z")
+      val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z").filter(col("y") !== -1d)
       yz.show(15)
       evaluator.evaluate(yz)
     }
@@ -230,7 +230,7 @@ object LOP {
         val pipelineModel = pipeline.fit(df)
 
         val (ff, ffV, ffW) = (pipelineModel.transform(ef), pipelineModel.transform(efV), pipelineModel.transform(efW))
-        ff.select("t", "o+d1").show(5, false)
+        ff.select("o+d", "o+d1").show(5, false)
 
         val (uf, vf, wf) = config.modelType match {
           case "t" => (ff, ffV, ffW)
