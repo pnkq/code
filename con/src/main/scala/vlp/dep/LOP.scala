@@ -28,6 +28,7 @@ import com.intel.analytics.bigdl.dllib.nn.Transpose
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import com.intel.analytics.bigdl.dllib.nn.ParallelTable
+import com.intel.analytics.bigdl.dllib.nn.{Sequential => NSequential}
 import com.intel.analytics.bigdl.dllib.nn.{JoinTable, Echo}
 
 
@@ -138,15 +139,21 @@ object LOP {
     // create a sequential model and add a custom ArgMax layer at the end of the model
     val sequential = Sequential()
     sequential.add(bigdl)
-    // split the tensor into 2 halves: (40 x 74) => (20 x 74) and (20 x 74)
-    val split1 = SplitTensor(1, 2)
-    val select1 = SelectTable(0)
+    // the output of bigdl contains duplicates (2 similar halves). First, select only the first half
+    val half = SplitTensor(1, 2)
+    val select = SelectTable(0)
+    sequential.add(half).add(select)
     // split the tensor into 2 halves: (20 x 74) => (20 x 37) and (20 x 37)
-    val split2 = SplitTensor(2, 2) // ??
-    // select the argmax 
-    val parallelTable = new KerasLayerWrapper(ParallelTable[Float]().add(vlp.ner.ArgMax()).add(Echo()))
-    val joinTable = new KerasLayerWrapper(JoinTable[Float](1, -1))
-    sequential.add(split1).add(select1).add(split2).add(parallelTable)//.add(joinTable)
+    val transpose = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3))))
+    val split = SplitTensor(1, 2)
+    val transposeBack1 = new Transpose[Float](permutations = Array((2, 3)))
+    val transposeBack2 = new Transpose[Float](permutations = Array((2, 3)))
+    // pass the table of 2 elements into a parallel table, each entry has the same sequential module
+    val module1 = NSequential[Float]().add(transposeBack1).add(vlp.ner.ArgMax())
+    val module2 = NSequential[Float]().add(transposeBack2).add(vlp.ner.ArgMax())
+    val parallelTable = new KerasLayerWrapper(ParallelTable[Float]().add(module1).add(module2))
+    val joinTable = new KerasLayerWrapper(JoinTable[Float](2, 3))
+    sequential.add(transpose).add(split).add(parallelTable).add(joinTable)
     sequential.summary()
 
     // run prediction on the training set and validation set
@@ -154,23 +161,25 @@ object LOP {
       sequential.predict(uf, featureCols = featureColNames, predictionCol = "z"),
       sequential.predict(vf, featureCols = featureColNames, predictionCol = "z")
     )
-    val spark = SparkSession.getActiveSession.get
-    val evaluator = new MulticlassClassificationEvaluator().setLabelCol("y").setPredictionCol("z").setMetricName("accuracy")
-    import spark.implicits._
-    val scores = for (prediction <- predictions) yield {
-      val zf = prediction.select("o", "z").map { row =>
-        val o = row.getAs[linalg.Vector](0).toArray.filter(_ >= 0)
-        val p = row.getSeq[Float](1).take(o.size)
-        (o, p)
-      }
-      // show the prediction, each row is a graph
-      zf.toDF("offsets", "prediction").show(5, false)
-      // flatten the prediction, convert to double for evaluation using Spark lib
-      val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z")
-      yz.show(15)
-      evaluator.evaluate(yz)
-    }
-    scores
+    predictions(0).select("o+d", "z").show(5, false)
+    // val spark = SparkSession.getActiveSession.get
+    // val evaluator = new MulticlassClassificationEvaluator().setLabelCol("y").setPredictionCol("z").setMetricName("accuracy")
+    // import spark.implicits._
+    // val scores = for (prediction <- predictions) yield {
+    //   val zf = prediction.select("o+d", "z").map { row =>
+    //     val o = row.getAs[linalg.Vector](0).toArray.filter(_ >= 0)
+    //     val p = row.getSeq[Float](1).take(o.size)
+    //     (o, p)
+    //   }
+    //   // show the prediction, each row is a graph
+    //   zf.toDF("offsets", "prediction").show(5, false)
+    //   // flatten the prediction, convert to double for evaluation using Spark lib
+    //   val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z")
+    //   yz.show(15)
+    //   evaluator.evaluate(yz)
+    // }
+    // scores
+    Array(0d, 0d)
   }
 
   def main(args: Array[String]): Unit = {
