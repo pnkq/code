@@ -27,6 +27,8 @@ import java.nio.file.StandardOpenOption
 import com.intel.analytics.bigdl.dllib.nn.Transpose
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+import com.intel.analytics.bigdl.dllib.nn.ParallelTable
+import com.intel.analytics.bigdl.dllib.nn.{JoinTable, Echo}
 
 
 
@@ -136,14 +138,22 @@ object LOP {
     // create a sequential model and add a custom ArgMax layer at the end of the model
     val sequential = Sequential()
     sequential.add(bigdl)
-    // bigdl produces 3-d output results (including batch dimension), we need to convert it to 2-d results.
-    sequential.add(ArgMaxLayer())
+    // split the tensor into 2 halves: (40 x 74) => (20 x 74) and (20 x 74)
+    val split1 = SplitTensor(1, 2)
+    val select1 = SelectTable(0)
+    // split the tensor into 2 halves: (20 x 74) => (20 x 37) and (20 x 37)
+    val split2 = SplitTensor(2, 2) // ??
+    // select the argmax 
+    val parallelTable = new KerasLayerWrapper(ParallelTable[Float]().add(vlp.ner.ArgMax()).add(Echo()))
+    val joinTable = new KerasLayerWrapper(JoinTable[Float](1, -1))
+    sequential.add(split1).add(select1).add(split2).add(parallelTable)//.add(joinTable)
+    sequential.summary()
+
     // run prediction on the training set and validation set
     val predictions = Array(
       sequential.predict(uf, featureCols = featureColNames, predictionCol = "z"),
       sequential.predict(vf, featureCols = featureColNames, predictionCol = "z")
     )
-    sequential.summary()
     val spark = SparkSession.getActiveSession.get
     val evaluator = new MulticlassClassificationEvaluator().setLabelCol("y").setPredictionCol("z").setMetricName("accuracy")
     import spark.implicits._
