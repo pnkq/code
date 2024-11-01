@@ -160,20 +160,25 @@ object LOP {
       sequential.predict(vf, featureCols = featureColNames, predictionCol = "z")
     )
     val spark = SparkSession.getActiveSession.get
-    val evaluator = new MulticlassClassificationEvaluator().setLabelCol("y").setPredictionCol("z").setMetricName("accuracy")
     import spark.implicits._
     val scores = for (prediction <- predictions) yield {
       val zf = prediction.select("o+d", "z").map { row =>
         val o = row.getAs[linalg.Vector](0).toArray
         val p = row.getSeq[Float](1)
-        (o, p)
+        // split o and p into two halves, zip the correct/prediction arrays, remove padding values and compute matches
+        val offsetMatch = o.take(o.size/2).zip(p.take(o.size/2)).filter(p => p._1 > 0).map(p => p._1 == p._2)
+        val labelMatch =  o.takeRight(p.size/2).zip(p.takeRight(p.size/2)).filter(p => p._1 > 0).map(p => p._1 == p._2)
+        val correct = offsetMatch.zip(labelMatch).map(p => if (p._1 && p._2) 1 else 0).sum
+        val total = offsetMatch.size
+        (correct, total)
       }
-      // show the prediction, each row is a graph
-      zf.toDF("label", "prediction").show(5, false)
-      // flatten the prediction, convert to double for evaluation using Spark lib
-      val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z").filter(col("y") !== -1d)
-      yz.show(15)
-      evaluator.evaluate(yz)
+      // show the result
+      val af = zf.toDF("correct", "total")
+      af.show()
+      val agg = af.agg(sum("correct"), sum("total")).first
+      val c = agg.getLong(0)
+      val t = agg.getLong(1)
+      c.toDouble/t
     }
     scores
   }
@@ -255,7 +260,7 @@ object LOP {
               case "eng" => 2000
               case "fra" => 2000
               case "ind" => 800
-              case "vie" => 600
+              case "vie" => 800
               case _ => 1000
             }  
             estimator.setLabelCol("o+d1").setFeaturesCol(featureColName)
