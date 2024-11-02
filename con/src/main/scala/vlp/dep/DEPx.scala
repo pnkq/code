@@ -636,7 +636,7 @@ object DEPx {
           println(s"tokEmbedding layer size = $m x $n, sum of first row = ${weightsOfFirstRow.sum}")
         }
 
-        // eval() needs an array of feature column names for a proper reshaping input tensors
+        // eval() needs an array of feature column names for a proper reshaping of input tensors
         val featureColNames = config.modelType match {
           case "f" => Array("t", "p", "f")
           case "x" => Array("t", "p", "f", "x", "x2")
@@ -682,7 +682,7 @@ object DEPx {
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
-            Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+            Files.write(Paths.get(s"${config.scorePath}-uas.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "eval" =>
             // load the bigdl model
             println(s"Loading model in the path: $modelPath...")
@@ -697,34 +697,27 @@ object DEPx {
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
-            Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+            Files.write(Paths.get(s"${config.scorePath}-uas.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "validate" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t <modelType> -m validate
             val ws = Array(64, 128, 200)
             val hs = Array(64, 128, 200, 300)
-            val js = Array(2, 3)
             for (_ <- 1 to 3) {
-              for (w <- ws; h <- hs; j <- js) {
-                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h, layers = j)
+              for (w <- ws; h <- hs) {
+                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
                 println(cfg)
                 val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
                 val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
-                val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
-                val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
                 estimator.setLabelCol("o").setFeaturesCol(featureColName)
                   .setBatchSize(batchSize)
                   .setOptimMethod(new Adam(config.learningRate))
-                  .setTrainSummary(trainingSummary)
-                  .setValidationSummary(validationSummary)
-                  .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
                   .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
                 // train
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
-                val result = f"\n${cfg.language};${cfg.modelType};$w;$h;$j;0;${scores(0)}%.4g;${scores(1)}%.4g"
-                println(result)
-                Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+                val result = f"\n${cfg.language};${cfg.modelType};$w;$h;2;0;${scores(0)}%.4g;${scores(1)}%.4g"
+                Files.write(Paths.get(s"${config.scorePath}-uas.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
             }
           case "validate-b" => 
@@ -740,21 +733,15 @@ object DEPx {
                 println(cfg)
                 val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg)
                 val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
-                val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
-                val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
                 estimator.setLabelCol("o").setFeaturesCol(featureColName)
                   .setBatchSize(batchSize)
                   .setOptimMethod(new Adam(config.learningRate))
-                  .setTrainSummary(trainingSummary)
-                  .setValidationSummary(validationSummary)
-                  .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize)
                   .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
                 // train
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
                 val result = f"\n${cfg.language};${cfg.modelType};$w;$h;$j;$n;${scores(0)}%.4g;${scores(1)}%.4g"
-                println(result)
-                Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+                Files.write(Paths.get(s"${config.scorePath}-uas.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
             }
           case "predict" =>
@@ -779,7 +766,7 @@ object DEPx {
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
-            Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+            Files.write(Paths.get(s"${config.scorePath}-uas.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "preprocess" =>
             val af = df.union(dfV).union(dfW)
             val preprocessor = createPipeline(af, config)

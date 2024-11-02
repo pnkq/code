@@ -245,9 +245,21 @@ object LOP {
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
         val loss = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1)
-        // val criterion = TimeDistributedMaskCriterion(new JointClassNLLCriterion[Float](loss, loss, numCores, numOffsets, numDependencies), paddingValue = -1)
         val criterion = TimeDistributedMaskCriterion(loss, paddingValue = -1)
-        // eval() needs an array of feature column names for a proper reshaping input tensors
+        // eval() needs an array of feature column names for a proper reshaping of input tensors
+        val featureColNames = config.modelType match {
+          case "x" => Array("t", "p", "f", "x", "x2") // TODO
+          case "bx" => Array("tb", "x", "x2") // TODO
+          case _ => Array(featureColName)
+        }
+        // best maxIterations for each language which is validated on the dev. split:
+        val maxIterations = config.language match {
+          case "eng" => 2000
+          case "fra" => 2000
+          case "ind" => 800
+          case "vie" => 800
+          case _ => 1000
+        }
         config.mode match {
           case "train" =>
             println("config = " + config)
@@ -255,29 +267,21 @@ object LOP {
             val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/lop/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/lop/${config.language}")
-            // best maxIterations for each language which is validated on the dev. split:
-            val maxIterations = config.language match {
-              case "eng" => 2000
-              case "fra" => 2000
-              case "ind" => 800
-              case "vie" => 800
-              case _ => 1000
-            }  
             estimator.setLabelCol("o+d1").setFeaturesCol(featureColName)
               .setBatchSize(batchSize) // global batch size
               .setOptimMethod(new Adam(config.learningRate))
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new Loss[Float](criterion)), batchSize) // new TimeDistributedTop1Accuracy(-1), 
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1), new Loss[Float](criterion)), batchSize) 
               .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
             estimator.fit(uf)
             bigdl.saveModel(modelPath, overWrite = true)
             // evaluate the model on the training/dev sets
-            val scores = eval(bigdl, config, uf, vf, Array(featureColName))
+            val scores = eval(bigdl, config, uf, vf, featureColNames)
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
-            Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+            Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "eval" =>
             println(s"Loading model in the path: $modelPath...")
             val bigdl = Models.loadModel[Float](modelPath)
@@ -287,9 +291,30 @@ object LOP {
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
-            Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
-        }
-
+            Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+          case "validate" => 
+            // perform a series of experiments to find the best hyper-params on the development set for a language
+            // The arguments are: -l <lang> -t <modelType> -m validate
+            val ws = Array(128, 200)
+            val hs = Array(128, 200, 300)
+            for (_ <- 1 to 3) {
+              for (w <- ws; h <- hs) {
+                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
+                println(cfg)
+                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg, numVocab, numOffsets, numDependencies)
+                val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
+                estimator.setLabelCol("o+d1").setFeaturesCol(featureColName)
+                  .setBatchSize(batchSize)
+                  .setOptimMethod(new Adam(config.learningRate))
+                  .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
+                // train
+                estimator.fit(uf)
+                val scores = eval(bigdl, cfg, uf, vf, featureColNames)
+                val result = f"\n${cfg.language};${cfg.modelType};$w;$h;2;0;${scores(0)}%.4g;${scores(1)}%.4g"
+                Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+              }
+            }
+          }
       case None => {}
     }
   }

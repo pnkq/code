@@ -1,0 +1,46 @@
+import com.intel.analytics.bigdl.dllib.tensor.Tensor
+import com.intel.analytics.bigdl.dllib.utils.Shape
+import com.intel.analytics.bigdl.dllib.keras.Sequential
+import com.intel.analytics.bigdl.dllib.keras.layers._
+
+
+
+Exo 1: Recurrent layer returns 1 vector
+
+val x = Tensor[Float](1, 10, 5).rand()
+val gru = GRU[Float](3)
+gru.build(Shape(-1, 10, 5))
+val y = gru.forward(x) // y should be of size 1x3
+
+
+Exo 2: Recurrent layer returns a seq of vectors
+
+val x = Tensor[Float](1, 10, 5).rand()
+val gru = GRU[Float](3, returnSequences=true)
+gru.build(Shape(-1, 10, 5))
+val y = gru.forward(x) // y should be of size 1x10x3
+
+
+Exo 3: [gru -> dense] on 2d data
+
+val seq = Sequential[Float]()
+val gru = GRU[Float](3,  inputShape=Shape(10, 5))
+val dense = Dense[Float](2)
+seq.add(gru).add(dense)
+val y = seq.forward(x) // y should be of size 1x2
+
+Exo 4: [gru -> dense] on 3d data
+
+val seq = Sequential[Float]()
+val gru = GRU[Float](3, returnSequences=true, inputShape=Shape(10, 5))
+val dense = Dense[Float](2)
+seq.add(gru).add(dense)
+val y = seq.forward(x) // y should be of size 1x10x2
+
+Exo 5: [lstm -> dense] on 3d data
+
+val seq = Sequential[Float]()
+val lstm = LSTM[Float](3, returnSequences=true, inputShape=Shape(10, 5))
+val dense = Dense[Float](2)
+seq.add(lstm).add(dense)
+val y = seq.forward(x) // y should be of size 1x10x2

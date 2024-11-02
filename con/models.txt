@@ -1,0 +1,25 @@
+LOP (Label - Offset Parser)
+
+This is a parser which utilizes a joint sequence prediction approach for label dependency parsing. 
+
+Given an input seq of tokens [t_1, t_2,..., t_n], we predict a sequence of tokens [o_1,..., o_n, l_1,..., l_n], where o_j is an relative offset of the head position of token t_j and l_j is its dependency label. All tokens t_j, o_j, l_j are integer indices of the corresponding vocabularies.
+
+Suppose that there are numTokens, numOffsets and numLabels, numLabels < numOffsets, k = numOffsets-numLabels.
+
+The input token sequence [t_1,...,t_n] is run through a neural model as follows:
+
+                                                    |--> Dense(numOffsets) --> SoftMax -----------------> \
+Embedding(numVocab+1) --> BiLSTM(h) --> BiLSTM(h) --                                                       Concat(-1) 
+                                                    |--> Dense(numOffsets) --> SoftMax --> ZeroPad(k) --> /
+
+Zero padding is necessary in order for concatenating to work. The output tensor after Concat(-1) is of shape (n, 2*numOffsets).
+
+Since the target has a length of (2*n), the original TimeDistributedMasked(ClassNLLCriterion) does not work. We need to make the two sequences to have the same length. It is easy with a simple trick of duplicating the output so that it has two similar halves and of shape (2*n, 2*numOffsets). The Merge layer is used for this trick.
+
+The second necessary trick is to shift the (non-pad) indices l_j (l_j != -1) by increasing them by numOffsets so that the NLL by softmax works properly when training. Each class index, either offset or label index is correctly selected when computing the cross-entropy loss.
+
+This way, we have a joint model for predicting both the offset and its corresponding label at the same time. 
+
+When predicting, the output tensor of shape (2n, 2*numOffsets) need to be split and only the first half is selected, which has a shape of (n, 2*numOffsets). Now we need to split this tensor into two halves, each of shape (n, numOffsets) and then pass them to the ArgMax layer to select the most-probable offset/label index. Since we use zero-padding for the label half, the softmax operation never selects an out-of-index for label. And the predicted labels do not need to be shifted--they simply can be compared to the original correct labels. When a tensor is split, it produces a table, and the two resulting elements of the table can be processed by a MapTable which includes the same sequential module. See the code for this elegant implementation. 
+
+Note that when evaluating the LAS, we need to zip both the offset prediction and the label prediction at each position before performing equal matching. 
