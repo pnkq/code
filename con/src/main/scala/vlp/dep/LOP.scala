@@ -30,6 +30,7 @@ import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import com.intel.analytics.bigdl.dllib.nn.{Sequential => NSequential}
 import com.intel.analytics.bigdl.dllib.nn.JoinTable
 import com.intel.analytics.bigdl.dllib.nn.MapTable
+import org.apache.spark.ml.linalg.{Vectors, Vector}
 
 
 
@@ -120,9 +121,48 @@ object LOP {
         val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t")
       case "b" => 
-        val bigdl = Sequential()
+        // BERT model using one input of 4*maxSeqLen elements
+        val input = Input(inputShape = Shape(4*config.maxSeqLen), name = "input")
+        val reshape = Reshape(targetShape = Array(4, config.maxSeqLen)).inputs(input)
+        val split = SplitTensor(1, 4).inputs(reshape)
+        val selectIds = SelectTable(0).setName("inputId").inputs(split)
+        val inputIds = Squeeze(1).inputs(selectIds)
+        val selectSegments = SelectTable(1).setName("segmentId").inputs(split)
+        val segmentIds = Squeeze(1).inputs(selectSegments)
+        val selectPositions = SelectTable(2).setName("positionId").inputs(split)
+        val positionIds = Squeeze(1).inputs(selectPositions)
+        val selectMasks = SelectTable(3).setName("masks").inputs(split)
+        val masksReshaped = Reshape(targetShape = Array(1, 1, config.maxSeqLen)).setName("mask").inputs(selectMasks)
+        val bert = BERT(vocab = numVocab + 1, hiddenSize = config.tokenEmbeddingSize, nBlock = config.layers, nHead = config.heads, maxPositionLen = config.maxSeqLen,
+          intermediateSize = config.tokenHiddenSize, outputAllBlock = false).setName("bert")
+        val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
+        val bertOutput = SelectTable(0).setName("firstBlock").inputs(bertNode)
+        // pass the bert output to two branches for offset and label separately
+        val offsetOutput = Dense(numOffsets, activation = "softmax").setName("denseO").inputs(bertOutput)
+        val labelOutput =  Dense(numLabels, activation = "softmax").setName("denseD").inputs(bertOutput)
+        // transpose in order to apply zeroPadding
+        val transposeOffset = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(offsetOutput)
+        val transposeLabel = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(labelOutput)
+        // right-pad the smaller size
+        val padSize = Math.abs(numOffsets - numLabels)
+        val zeroPadding = if (numOffsets < numLabels) {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeOffset) 
+        } else {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeLabel)
+        }
+        val transposeBack = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPadding)
+        val merge = if (numOffsets < numLabels) {
+          Merge.merge(inputs = List(transposeBack, labelOutput), mode = "concat", concatAxis = -1)
+        } else {
+          Merge.merge(inputs = List(offsetOutput, transposeBack), mode = "concat", concatAxis = -1)
+        }
+        // output size is maxSeqLen x (2*max(numOffsets, numLabels))
+        // duplicate to have the same seqLen as labels (for TimeDistributedCriterion to work)
+        val duplicate = Merge.merge(inputs = List(merge, merge), mode = "concat", concatAxis = 1)
+
+        val bigdl = Model(input, duplicate)
         val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(2*config.maxSeqLen))
-        (bigdl, featureSize, labelSize, "t")
+        (bigdl, featureSize, labelSize, "b")
     }
   }
 
@@ -239,6 +279,33 @@ object LOP {
 
         val (uf, vf, wf) = config.modelType match {
           case "t" => (ff, ffV, ffW)
+          case "b" =>
+            // first, create a UDF g to make BERT input of size 4 x maxSeqLen
+            val g = udf((x: Vector) => {
+              val v = x.toArray // x is a dense vector (produced by a Sequencer)
+              // token type, all are 0 (0 for sentence A, 1 for sentence B -- here we have only one sentence)
+              val types: Array[Double] = Array.fill[Double](v.length)(0)
+              // positions, start from 0
+              val positions = Array.fill[Double](v.length)(0)
+              for (j <- v.indices)
+                positions(j) = j
+              // attention mask with indices in [0, 1]
+              // It's a mask to be used if the input sequence length is smaller than maxSeqLen
+              // find the last non-zero element index
+              var n = v.length - 1
+              while (n >= 0 && v(n) == 0) n = n - 1
+              val masks = Array.fill[Double](v.length)(1)
+              // padded positions have a mask value of 0 (which are not attended to)
+              for (j <- n + 1 until v.length) {
+                masks(j) = 0
+              }
+              Vectors.dense(v ++ types ++ positions ++ masks)
+            })
+            // then transform the token index column
+            val hf = ff.withColumn("b", g(col("t")))
+            val hfV = ffV.withColumn("b", g(col("t")))
+            val hfW = ffW.withColumn("b", g(col("t")))
+            (hf, hfV, hfW)
         }
         val (bigdl, featureSize, labelSize, featureColName) = createBigDL(config, numVocab, numOffsets, numDependencies)
         val numCores = Runtime.getRuntime().availableProcessors()
@@ -249,7 +316,7 @@ object LOP {
         // eval() needs an array of feature column names for a proper reshaping of input tensors
         val featureColNames = config.modelType match {
           case "x" => Array("t", "p", "x", "x2") // TODO
-          case "bx" => Array("tb", "x", "x2") // TODO
+          case "bx" => Array("b", "x", "x2") // TODO
           case _ => Array(featureColName)
         }
         // best maxIterations for each language which is validated on the dev. split:
@@ -311,6 +378,30 @@ object LOP {
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
                 val result = f"\n${cfg.language};${cfg.modelType};$w;$h;2;0;${scores(0)}%.4g;${scores(1)}%.4g"
+                Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+              }
+            }
+          case "validate-b" => 
+            // perform a series of experiments to find the best hyper-params on the development set for a language
+            // The arguments are: -l <lang> -t b/bx -m validate
+            val ws = Array(64, 128, 200)
+            val hs = Array(64, 128, 200, 300)
+            val js = Array(2, 3)
+            val nHeads = Array(2, 4, 8)
+            for (_ <- 1 to 3) {
+              for (w <- ws; h <- hs; j <- js; n <- nHeads) {
+                val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h, layers = j, heads = n)
+                println(cfg)
+                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg, numVocab, numOffsets, numDependencies)
+                val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
+                estimator.setLabelCol("o+d1").setFeaturesCol(featureColName)
+                  .setBatchSize(batchSize)
+                  .setOptimMethod(new Adam(config.learningRate))
+                  .setEndWhen(Trigger.or(Trigger.maxEpoch(config.epochs), Trigger.maxIteration(maxIterations)))
+                // train
+                estimator.fit(uf)
+                val scores = eval(bigdl, cfg, uf, vf, featureColNames)
+                val result = f"\n${cfg.language};${cfg.modelType};$w;$h;$j;$n;${scores(0)}%.4g;${scores(1)}%.4g"
                 Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
             }

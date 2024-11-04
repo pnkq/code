@@ -8,9 +8,9 @@ Suppose that there are numTokens, numOffsets and numLabels, numLabels < numOffse
 
 The input token sequence [t_1,...,t_n] is run through a neural model as follows:
 
-                                                    |--> Dense(numOffsets) --> SoftMax -----------------> \
-Embedding(numVocab+1) --> BiLSTM(h) --> BiLSTM(h) --                                                       Concat(-1) 
-                                                    |--> Dense(numOffsets) --> SoftMax --> ZeroPad(k) --> /
+                          |--> [BiLSTM(h)] --> Dense(numOffsets) --> SoftMax -----------------> \
+Embedding(numVocab+1) ----                                                                        Concat(-1) 
+                          |--> [BiLSTM(h)] --> Dense(numOffsets) --> SoftMax --> ZeroPad(k) --> /
 
 Zero padding is necessary in order for concatenating to work. The output tensor after Concat(-1) is of shape (n, 2*numOffsets).
 
