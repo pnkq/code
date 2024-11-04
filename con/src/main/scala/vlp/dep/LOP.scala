@@ -248,7 +248,7 @@ object LOP {
         val criterion = TimeDistributedMaskCriterion(loss, paddingValue = -1)
         // eval() needs an array of feature column names for a proper reshaping of input tensors
         val featureColNames = config.modelType match {
-          case "x" => Array("t", "p", "f", "x", "x2") // TODO
+          case "x" => Array("t", "p", "x", "x2") // TODO
           case "bx" => Array("tb", "x", "x2") // TODO
           case _ => Array(featureColName)
         }
@@ -256,8 +256,8 @@ object LOP {
         val maxIterations = config.language match {
           case "eng" => 2000
           case "fra" => 2000
-          case "ind" => 800
-          case "vie" => 800
+          case "ind" => 1000
+          case "vie" => 1000
           case _ => 1000
         }
         config.mode match {
@@ -296,7 +296,7 @@ object LOP {
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t <modelType> -m validate
             val ws = Array(128, 200)
-            val hs = Array(128, 200, 300)
+            val hs = Array(128, 200, 300, 400)
             for (_ <- 1 to 3) {
               for (w <- ws; h <- hs) {
                 val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)

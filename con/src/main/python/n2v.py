@@ -19,7 +19,7 @@ def read(path):
     return data
 
 basePath = "/home/phuonglh/code/con/dat/dep"
-language = "fra"
+language = "ind"
 
 data = read(f"{basePath}/{language}-pyg.tsv")
 print(data)
