@@ -307,9 +307,9 @@ object DEPx {
               Vectors.dense(v ++ types ++ positions ++ masks)
             })
             // then transform the token index column
-            val hf = gf.withColumn("tb", g(col("t")))
-            val hfV = gfV.withColumn("tb", g(col("t")))
-            val hfW = gfW.withColumn("tb", g(col("t")))
+            val hf = gf.withColumn("b", g(col("t")))
+            val hfV = gfV.withColumn("b", g(col("t")))
+            val hfW = gfW.withColumn("b", g(col("t")))
             (hf, hfV, hfW)
           case "f" => 
             // assemble the three input vectors into one
@@ -408,9 +408,9 @@ object DEPx {
             // join two maps
             val graphMap = graphUMap ++ graphVMap
             val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) })
-            val gfx = gf.withColumn("tb", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            val gfxV = gfV.withColumn("tb", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            val gfxW = gfW.withColumn("tb", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+            val gfx = gf.withColumn("b", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+            val gfxV = gfV.withColumn("b", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+            val gfxW = gfW.withColumn("b", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
             // create a sequencer for graphX features
             val sequencerX = new SequencerX(graphMap, config.maxSeqLen, 3).setInputCol("t:p").setOutputCol("xs")
             val gfy = sequencerX.transform(gfx)
@@ -448,7 +448,7 @@ object DEPx {
             val gfzW2 = gfyW2.withColumn("x2", flattenFunc(col("xs2")))
 
             // assemble the input vectors into one
-            val assembler = new VectorAssembler().setInputCols(Array("tb", "x", "x2")).setOutputCol("tbx")
+            val assembler = new VectorAssembler().setInputCols(Array("b", "x", "x2")).setOutputCol("bx")
             val hf = assembler.transform(gfz2)
             val hfV = assembler.transform(gfzV2)
             val hfW = assembler.transform(gfzW2)
@@ -532,7 +532,7 @@ object DEPx {
               val output = SoftMax().setName("output").inputs(dense)
               val bigdl = Model(input, output)
               val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(config.maxSeqLen))
-              (bigdl, featureSize, labelSize, "tb")
+              (bigdl, featureSize, labelSize, "b")
             case "f" => 
               // A model for (token ++ uPoS ++ featureStructure) tensor
               val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
@@ -605,7 +605,7 @@ object DEPx {
               val output = SoftMax().setName("output").inputs(dense)
               val bigdl = Model(Array(input, inputX, inputX2), output)
               val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(config.maxSeqLen))
-              (bigdl, featureSize, labelSize, "tbx")
+              (bigdl, featureSize, labelSize, "bx")
 
           }
         }
@@ -640,7 +640,7 @@ object DEPx {
         val featureColNames = config.modelType match {
           case "f" => Array("t", "p", "f")
           case "x" => Array("t", "p", "f", "x", "x2")
-          case "bx" => Array("tb", "x", "x2")
+          case "bx" => Array("b", "x", "x2")
           case _ => Array(featureColName)
         }
 
