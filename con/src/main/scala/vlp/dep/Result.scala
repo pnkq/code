@@ -14,7 +14,7 @@ object Result {
     spark.sparkContext.setLogLevel("WARN")
 
     val path = "dat/depx-scores-uas-sun-4.tsv"
-    val modelType = "t+p" // [t, t+p, f, x, b, bx]
+    val modelType = "x" // [t, t+p, f, x, b, bx]
     val df = spark.read.options(Map("delimiter" -> ";", "inferSchema" -> "true")).csv(path).toDF("lang", "model", "w", "h", "j", "b", "train", "valid")
     val languages = Array("eng" , "fra", "ind", "vie")
     val maxScores = languages.map { lang =>

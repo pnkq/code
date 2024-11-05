@@ -116,7 +116,7 @@ object DEPx {
   private def createPipeline(df: DataFrame, config: ConfigDEP): PipelineModel = {
     val vectorizerOffsets = new CountVectorizer().setInputCol("offsets").setOutputCol("off")
     val vectorizerTokens = new CountVectorizer().setInputCol("tokens").setOutputCol("tok").setVocabSize(config.maxVocabSize)
-    val vectorizerPartsOfSpeech = new CountVectorizer().setInputCol("uPoS").setOutputCol("pos") // may use "uPoS" instead of "partsOfSpeech"
+    val vectorizerPartsOfSpeech = new CountVectorizer().setInputCol("uPoS").setOutputCol("pos") 
     val vectorizerFeatureStructure = new CountVectorizer().setInputCol("featureStructure").setOutputCol("fst")
     val stages = Array(vectorizerOffsets, vectorizerTokens, vectorizerPartsOfSpeech, vectorizerFeatureStructure)
     val pipeline = new Pipeline().setStages(stages)
@@ -190,6 +190,84 @@ object DEPx {
     }
   }
 
+  def createSequencerX(spark: SparkSession, config: ConfigDEP) = {
+    val graphU = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
+    val graphV = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
+    import spark.implicits._
+    val graphUMap = graphU.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+    val graphVMap = graphV.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+    // join two maps
+    val graphMap = graphUMap ++ graphVMap
+    val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) }) // t:p = tokens:uPoS
+    // create a sequencer for graphX features
+    val sequencerX1 = new SequencerX(graphMap, config.maxSeqLen, 3).setInputCol("t:p").setOutputCol("xs1")
+    // flatten the "xs1" column to get a vector x1 (of numberOfNetworkXFeatures * maxSeqLen elements)
+    val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
+
+    // extended features (32-dim embedding of Node2Vec)
+    // read Node2Vec features from the training split (-nodeId.txt and -nodeVec.txt)
+    val graphNodeId = spark.read.csv(s"dat/dep/${config.language}-nodeId.txt").toDF("t:p")
+    val graphNodeVec = spark.read.csv(s"dat/dep/${config.language}-nodeVec.txt").toDF("s")
+    // convert "s" string column to a Seq[Double] column
+    val splitFunc = udf((s: String) => s.split(" ").map(_.toDouble))
+    val graphNodeVecSeq = graphNodeVec.withColumn("z", splitFunc(col("s")))
+    // add an index column to two dfs 
+    val windowSpec = Window.orderBy(monotonically_increasing_id())
+    val graphNodeIdWithIndex = graphNodeId.withColumn("id", row_number().over(windowSpec))
+    val graphNodeVecSeqWithIndex = graphNodeVecSeq.withColumn("id", row_number().over(windowSpec))
+    // now join two dfs by the index column
+    val graphNode = graphNodeIdWithIndex.join(graphNodeVecSeqWithIndex, Seq("id")).select("t:p", "z")
+    // convert to a map
+    val graphNodeMap = graphNode.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
+    // create a sequencer for Node2Vec features
+    val sequencerX2 = new SequencerX(graphNodeMap, config.maxSeqLen, 32).setInputCol("t:p").setOutputCol("xs2")
+
+    (zipFunc, sequencerX1, flattenFunc, sequencerX2)
+  }
+
+  def addNodeEmbeddingFeatures(spark: SparkSession, config: ConfigDEP, dfs: Array[DataFrame]): Array[DataFrame] = {
+    val (zipFunc, sequencerX1, flattenFunc, sequencerX2) = createSequencerX(spark, config)
+    dfs.map { df => 
+      val gfx = df.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
+      val gfy = sequencerX1.transform(gfx)
+      // flatten the "xs1" column to get a vector x1 (of numberOfNetworkXFeatures * maxSeqLen elements)
+      val gfz = gfy.withColumn("x1", flattenFunc(col("xs1")))
+      val gfy2 = sequencerX2.transform(gfz)
+      // flatten the "xs2" column to get a vector x2 (of numberOfNode2VecFeatures * maxSeqLen elements)
+      val gfz2 = gfy2.withColumn("x2", flattenFunc(col("xs2")))
+      // assemble the input vectors into one 
+      val assembler = if (config.modelType.startsWith("b")) {
+        new VectorAssembler().setInputCols(Array("b", "x1", "x2")).setOutputCol("bx")
+      } else { 
+        new VectorAssembler().setInputCols(Array("t", "p", "f", "x1", "x2")).setOutputCol("t+p+f+x")
+      }
+      assembler.transform(gfz2)
+    }
+  }
+
+  // user-defined function for creating BERT input from a token index vector
+  val createInputBERT = udf((x: Vector) => {
+    val v = x.toArray // x is a dense vector (produced by a Sequencer)
+    // token type, all are 0 (0 for sentence A, 1 for sentence B -- here we have only one sentence)
+    val types: Array[Double] = Array.fill[Double](v.length)(0)
+    // positions, start from 0
+    val positions = Array.fill[Double](v.length)(0)
+    for (j <- v.indices)
+      positions(j) = j
+    // attention mask with indices in [0, 1]
+    // It's a mask to be used if the input sequence length is smaller than maxSeqLen
+    // find the last non-zero element index
+    var n = v.length - 1
+    while (n >= 0 && v(n) == 0) n = n - 1
+    val masks = Array.fill[Double](v.length)(1)
+    // padded positions have a mask value of 0 (which are not attended to)
+    for (j <- n + 1 until v.length) {
+      masks(j) = 0
+    }
+    Vectors.dense(v ++ types ++ positions ++ masks)
+  })
+  
+
   def main(args: Array[String]): Unit = {
     parseOptions.parse(args, ConfigDEP()) match {
       case Some(config) =>
@@ -252,14 +330,14 @@ object DEPx {
         val partsOfSpeech = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
         val partsOfSpeechMap = partsOfSpeech.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // 1-based index for BigDL
         val numPartsOfSpeech = partsOfSpeech.length
-        val featureStructure = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
-        val featureStructureMap = featureStructure.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // 1-based index for BigDL
-        val numFeatureStructure = featureStructure.length
+        val featureStructures = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
+        val featureStructureMap = featureStructures.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // 1-based index for BigDL
+        val numFeatureStructures = featureStructures.length
         println("   labels = " + offsets.mkString(", "))
         println("#(labels) = " + numOffsets)
         println(" #(vocab) = " + numVocab)
         println("   #(PoS) = " + numPartsOfSpeech)
-        println("    #(fs) = " + numFeatureStructure)
+        println("    #(fs) = " + numFeatureStructures)
         // extract token, pos and offset indices (start from 1 to use in BigDL)
         val tokenSequencer = new Sequencer(tokensMap, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("t")
         val posSequencer = new Sequencer(partsOfSpeechMap, config.maxSeqLen, 0f).setInputCol("uPoS").setOutputCol("p")
@@ -285,31 +363,9 @@ object DEPx {
             val hfW = assembler.transform(gfW)
             (hf, hfV, hfW)
           case "b" =>
-            // first, create a UDF g to make BERT input of size 4 x maxSeqLen
-            val g = udf((x: Vector) => {
-              val v = x.toArray // x is a dense vector (produced by a Sequencer)
-              // token type, all are 0 (0 for sentence A, 1 for sentence B -- here we have only one sentence)
-              val types: Array[Double] = Array.fill[Double](v.length)(0)
-              // positions, start from 0
-              val positions = Array.fill[Double](v.length)(0)
-              for (j <- v.indices)
-                positions(j) = j
-              // attention mask with indices in [0, 1]
-              // It's a mask to be used if the input sequence length is smaller than maxSeqLen
-              // find the last non-zero element index
-              var n = v.length - 1
-              while (n >= 0 && v(n) == 0) n = n - 1
-              val masks = Array.fill[Double](v.length)(1)
-              // padded positions have a mask value of 0 (which are not attended to)
-              for (j <- n + 1 until v.length) {
-                masks(j) = 0
-              }
-              Vectors.dense(v ++ types ++ positions ++ masks)
-            })
-            // then transform the token index column
-            val hf = gf.withColumn("b", g(col("t")))
-            val hfV = gfV.withColumn("b", g(col("t")))
-            val hfW = gfW.withColumn("b", g(col("t")))
+            val hf = gf.withColumn("b", createInputBERT(col("t")))
+            val hfV = gfV.withColumn("b", createInputBERT(col("t")))
+            val hfW = gfW.withColumn("b", createInputBERT(col("t")))
             (hf, hfV, hfW)
           case "f" => 
             // assemble the three input vectors into one
@@ -320,140 +376,14 @@ object DEPx {
             hfV.select("t+p+f", "o").show(5)
             (hf, hfV, hfW)
           case "x" =>
-            // read graphX features from the training/dev split
-            val graphU = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
-            val graphV = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
-            import spark.implicits._
-            val graphUMap = graphU.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-            val graphVMap = graphV.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-            // join two maps
-            val graphMap = graphUMap ++ graphVMap
-            val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) })
-            val gfx = gf.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            val gfxV = gfV.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            val gfxW = gfW.withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            // create a sequencer for graphX features
-            val sequencerX = new SequencerX(graphMap, config.maxSeqLen, 3).setInputCol("t:p").setOutputCol("xs")
-            val gfy = sequencerX.transform(gfx)
-            val gfyV = sequencerX.transform(gfxV)
-            val gfyW = sequencerX.transform(gfxW)
-            // flatten the "xs" column to get a vector x1 (of numberOfNetworkXFeatures * maxSeqLen elements)
-            val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
-            val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
-            val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
-            val gfzW = gfyW.withColumn("x", flattenFunc(col("xs")))
-
-            // extended features (32-dim embedding of Node2Vec)
-            // read Node2Vec features from the training split (-nodeId.txt and -nodeVec.txt)
-            val graphNodeId = spark.read.csv(s"dat/dep/${config.language}-nodeId.txt").toDF("t:p")
-            val graphNodeVec = spark.read.csv(s"dat/dep/${config.language}-nodeVec.txt").toDF("s")
-            // convert "s" string column to a Seq[Double] column
-            val splitFunc = udf((s: String) => s.split(" ").map(_.toDouble))
-            val graphNodeVecSeq = graphNodeVec.withColumn("z", splitFunc(col("s")))
-            // add an index column to two dfs 
-            val windowSpec = Window.orderBy(monotonically_increasing_id())
-            val graphNodeIdWithIndex = graphNodeId.withColumn("id", row_number().over(windowSpec))
-            val graphNodeVecSeqWithIndex = graphNodeVecSeq.withColumn("id", row_number().over(windowSpec))
-            // now join two dfs by the index column
-            val graphNode = graphNodeIdWithIndex.join(graphNodeVecSeqWithIndex, Seq("id")).select("t:p", "z")
-            // convert to a map
-            val graphNodeMap = graphNode.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-            // create a sequencer for Node2Vec features
-            val sequencerX2 = new SequencerX(graphNodeMap, config.maxSeqLen, 32).setInputCol("t:p").setOutputCol("xs2")
-            val gfy2 = sequencerX2.transform(gfz)
-            val gfyV2 = sequencerX2.transform(gfzV)
-            val gfyW2 = sequencerX2.transform(gfzW)
-            gfy2.select("tokens", "uPoS", "t:p", "xs", "xs2").show(3)
-            // flatten the "xs2" column to get a vector x2 (of numberOfNode2VecFeatures * maxSeqLen elements)
-            val gfz2 = gfy2.withColumn("x2", flattenFunc(col("xs2")))
-            val gfzV2 = gfyV2.withColumn("x2", flattenFunc(col("xs2")))
-            val gfzW2 = gfyW2.withColumn("x2", flattenFunc(col("xs2")))
-
-            // assemble the input vectors into one 
-            val assembler = new VectorAssembler().setInputCols(Array("t", "p", "f", "x", "x2")).setOutputCol("t+p+f+x")
-            val hf = assembler.transform(gfz2)
-            val hfV = assembler.transform(gfzV2)
-            val hfW = assembler.transform(gfzW2)            
+            val Array(hf, hfV, hfW) = addNodeEmbeddingFeatures(spark, config, Array(gf, gfV, gfW))
             (hf, hfV, hfW)
           case "bx" => 
-            // first, create a UDF g to make BERT input of size 4 x maxSeqLen
-            val g = udf((x: Vector) => {
-              val v = x.toArray // x is a dense vector (produced by a Sequencer)
-              // token type, all are 0 (0 for sentence A, 1 for sentence B -- here we have only one sentence)
-              val types: Array[Double] = Array.fill[Double](v.length)(0)
-              // positions, start from 0
-              val positions = Array.fill[Double](v.length)(0)
-              for (j <- v.indices)
-                positions(j) = j
-              // attention mask with indices in [0, 1]
-              // It's a mask to be used if the input sequence length is smaller than maxSeqLen
-              // find the last non-zero element index
-              var n = v.length - 1
-              while (n >= 0 && v(n) == 0) n = n - 1
-              val masks = Array.fill[Double](v.length)(1)
-              // padded positions have a mask value of 0 (which are not attended to)
-              for (j <- n + 1 until v.length) {
-                masks(j) = 0
-              }
-              Vectors.dense(v ++ types ++ positions ++ masks)
-            })
-
-            // create x features (same as case "x")
-            // read graphX features from the training/dev split
-            val graphU = spark.read.parquet(s"dat/dep/${config.language}-graphx-train")
-            val graphV = spark.read.parquet(s"dat/dep/${config.language}-graphx-dev")
-            import spark.implicits._
-            val graphUMap = graphU.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-            val graphVMap = graphV.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-            // join two maps
-            val graphMap = graphUMap ++ graphVMap
-            val zipFunc = udf((a: Seq[String], b: Seq[String]) => {a.zip(b).map(p => p._1 + ":" + p._2) })
-            val gfx = gf.withColumn("b", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            val gfxV = gfV.withColumn("b", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            val gfxW = gfW.withColumn("b", g(col("t"))).withColumn("t:p", zipFunc(col("tokens"), col("uPoS")))
-            // create a sequencer for graphX features
-            val sequencerX = new SequencerX(graphMap, config.maxSeqLen, 3).setInputCol("t:p").setOutputCol("xs")
-            val gfy = sequencerX.transform(gfx)
-            val gfyV = sequencerX.transform(gfxV)
-            val gfyW = sequencerX.transform(gfxW)
-            // flatten the "xs" column to get a vector x1 (of numberOfNetworkXFeatures * maxSeqLen elements)
-            val flattenFunc = udf((xs: Seq[Vector]) => { Vectors.dense(xs.flatMap(v => v.toArray).toArray) })
-            val gfz = gfy.withColumn("x", flattenFunc(col("xs")))
-            val gfzV = gfyV.withColumn("x", flattenFunc(col("xs")))
-            val gfzW = gfyW.withColumn("x", flattenFunc(col("xs")))
-
-            // extended features (32-dim embedding of Node2Vec)
-            // read Node2Vec features from the training split (-nodeId.txt and -nodeVec.txt)
-            val graphNodeId = spark.read.csv(s"dat/dep/${config.language}-nodeId.txt").toDF("t:p")
-            val graphNodeVec = spark.read.csv(s"dat/dep/${config.language}-nodeVec.txt").toDF("s")
-            // convert "s" string column to a Seq[Double] column
-            val splitFunc = udf((s: String) => s.split(" ").map(_.toDouble))
-            val graphNodeVecSeq = graphNodeVec.withColumn("z", splitFunc(col("s")))
-            // add an index column to two dfs 
-            val windowSpec = Window.orderBy(monotonically_increasing_id())
-            val graphNodeIdWithIndex = graphNodeId.withColumn("id", row_number().over(windowSpec))
-            val graphNodeVecSeqWithIndex = graphNodeVecSeq.withColumn("id", row_number().over(windowSpec))
-            // now join two dfs by the index column
-            val graphNode = graphNodeIdWithIndex.join(graphNodeVecSeqWithIndex, Seq("id")).select("t:p", "z")
-            // convert to a map
-            val graphNodeMap = graphNode.map { row => (row.getString(0), row.getAs[Seq[Double]](1)) }.collect().toMap
-            // create a sequencer for Node2Vec features
-            val sequencerX2 = new SequencerX(graphNodeMap, config.maxSeqLen, 32).setInputCol("t:p").setOutputCol("xs2")
-            val gfy2 = sequencerX2.transform(gfz)
-            val gfyV2 = sequencerX2.transform(gfzV)
-            val gfyW2 = sequencerX2.transform(gfzW)
-            // flatten the "xs2" column to get a vector x2 (of numberOfNode2VecFeatures * maxSeqLen elements)
-            val gfz2 = gfy2.withColumn("x2", flattenFunc(col("xs2")))
-            val gfzV2 = gfyV2.withColumn("x2", flattenFunc(col("xs2")))
-            val gfzW2 = gfyW2.withColumn("x2", flattenFunc(col("xs2")))
-
-            // assemble the input vectors into one
-            val assembler = new VectorAssembler().setInputCols(Array("b", "x", "x2")).setOutputCol("bx")
-            val hf = assembler.transform(gfz2)
-            val hfV = assembler.transform(gfzV2)
-            val hfW = assembler.transform(gfzW2)
+            val gf2 = gf.withColumn("b", createInputBERT(col("t")))
+            val gf2V = gfV.withColumn("b", createInputBERT(col("t")))
+            val gf2W = gfW.withColumn("b", createInputBERT(col("t")))
+            val Array(hf, hfV, hfW) = addNodeEmbeddingFeatures(spark, config, Array(gf2, gf2V, gf2W))
             (hf, hfV, hfW)
-
         }
         // create a BigDL model corresponding to a model type, return a tuple: (bigdl, featureSize, labelSize, featureColName)
         def createBigDL(config: ConfigDEP): (KerasNet[Float], Array[Array[Int]], Array[Int], String) = {
@@ -540,7 +470,7 @@ object DEPx {
               val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
               val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
               val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
-              val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
+              val embeddingF = Embedding(numFeatureStructures + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
 
               val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF), mode = "concat")
               val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
@@ -557,20 +487,20 @@ object DEPx {
               val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
               val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
               val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
-              val embeddingF = Embedding(numFeatureStructure + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
+              val embeddingF = Embedding(numFeatureStructures + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
               // graphX input
-              val inputX = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX") // 3 for graphX
-              val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX").inputs(inputX)
+              val inputX1 = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX1") // 3 for graphX
+              val reshapeX1 = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX1").inputs(inputX1)
               // Node2Vec input
               val inputX2 = Input(inputShape = Shape(32*config.maxSeqLen), name = "inputX2") // 32 for node2vec
               val reshapeX2 = Reshape(targetShape = Array(config.maxSeqLen, 32)).setName("reshapeX2").inputs(inputX2)
 
-              val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX, reshapeX2), mode = "concat")
+              val merge = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX1, reshapeX2), mode = "concat")
               val rnn1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-1")).inputs(merge)
               val rnn2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-2")).inputs(rnn1)
               val dropout = Dropout(config.dropoutRate).inputs(rnn2)
               val output = Dense(numOffsets, activation = "softmax").setName("dense").inputs(dropout)
-              val bigdl = Model(Array(inputT, inputP, inputF, inputX, inputX2), output) // multiple inputs
+              val bigdl = Model(Array(inputT, inputP, inputF, inputX1, inputX2), output) // multiple inputs
               val (featureSize, labelSize) = (
                 Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), 
                 Array(config.maxSeqLen))
@@ -594,19 +524,18 @@ object DEPx {
               val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
               val bertOutput = SelectTable(0).setName("firstBlock").inputs(bertNode)
               // graphX input
-              val inputX = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX") // 3 for graphX
-              val reshapeX = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX").inputs(inputX)
+              val inputX1 = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX1") // 3 for graphX
+              val reshapeX1 = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX1").inputs(inputX1)
               // Node2Vec input
               val inputX2 = Input(inputShape = Shape(32*config.maxSeqLen), name = "inputX2") // 32 for node2vec
               val reshapeX2 = Reshape(targetShape = Array(config.maxSeqLen, 32)).setName("reshapeX2").inputs(inputX2)
               // merge bert ++ graphX ++ Node2Vec
-              val merge = Merge.merge(inputs = List(bertOutput, reshapeX, reshapeX2), mode = "concat")
+              val merge = Merge.merge(inputs = List(bertOutput, reshapeX1, reshapeX2), mode = "concat")
               val dense = Dense(numOffsets).setName("dense").inputs(merge)
               val output = SoftMax().setName("output").inputs(dense)
-              val bigdl = Model(Array(input, inputX, inputX2), output)
+              val bigdl = Model(Array(input, inputX1, inputX2), output)
               val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(config.maxSeqLen))
               (bigdl, featureSize, labelSize, "bx")
-
           }
         }
         
@@ -639,8 +568,8 @@ object DEPx {
         // eval() needs an array of feature column names for a proper reshaping of input tensors
         val featureColNames = config.modelType match {
           case "f" => Array("t", "p", "f")
-          case "x" => Array("t", "p", "f", "x", "x2")
-          case "bx" => Array("b", "x", "x2")
+          case "x" => Array("t", "p", "f", "x1", "x2")
+          case "bx" => Array("b", "x1", "x2")
           case _ => Array(featureColName)
         }
 

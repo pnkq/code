@@ -31,6 +31,7 @@ import com.intel.analytics.bigdl.dllib.nn.{Sequential => NSequential}
 import com.intel.analytics.bigdl.dllib.nn.JoinTable
 import com.intel.analytics.bigdl.dllib.nn.MapTable
 import org.apache.spark.ml.linalg.{Vectors, Vector}
+import org.apache.spark.sql.expressions.Window
 
 
 
@@ -85,9 +86,11 @@ object LOP {
     * @param numVocab number of input tokens
     * @param numOffsets number of offsets
     * @param numLabels number of dependency labels
+    * @param numPartsOfSpeech number of parts of speech
+    * @param numFeatureStructures number of feature structures
     * @return a tuple: (bigdl, featureSize, labelSize, featureColName) 
   */
-  def createBigDL(config: ConfigDEP, numVocab: Int, numOffsets: Int, numLabels: Int): (KerasNet[Float], Array[Array[Int]], Array[Int], String) = {
+  def createBigDL(config: ConfigDEP, numVocab: Int, numOffsets: Int, numLabels: Int, numPartsOfSpeech: Int, numFeatureStructures: Int): (KerasNet[Float], Array[Array[Int]], Array[Int], String) = {
     config.modelType  match {      
       case "t" =>
         val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT")
@@ -120,6 +123,54 @@ object LOP {
         val bigdl = Model(inputT, duplicate)
         val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t")
+      case "x" =>
+        // A model for (token ++ uPoS ++graphX ++ Node2Vec) tensor
+        val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
+        val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
+        val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
+        val embeddingT = Embedding(numVocab + 1, config.tokenEmbeddingSize).setName("tokEmbedding").inputs(inputT)
+        val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
+        val embeddingF = Embedding(numFeatureStructures + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
+        // graphX input
+        val inputX1 = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX1") // 3 for graphX
+        val reshapeX1 = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX1").inputs(inputX1)
+        // Node2Vec input
+        val inputX2 = Input(inputShape = Shape(32*config.maxSeqLen), name = "inputX2") // 32 for node2vec
+        val reshapeX2 = Reshape(targetShape = Array(config.maxSeqLen, 32)).setName("reshapeX2").inputs(inputX2)
+        // merge all embeddings
+        val embedding = Merge.merge(inputs = List(embeddingT, embeddingP, embeddingF, reshapeX1, reshapeX2), mode = "concat")
+
+        val offsetRNN1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-o1")).inputs(embedding)
+        val offsetRNN2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-o2")).inputs(offsetRNN1)
+        val labelRNN1 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-d1")).inputs(embedding)
+        val labelRNN2 = Bidirectional(LSTM(outputDim = config.tokenHiddenSize, returnSequences = true).setName("LSTM-d2")).inputs(labelRNN1)
+        val offsetOutput = Dense(numOffsets, activation = "softmax").setName("denseO").inputs(offsetRNN2)
+        val labelOutput =  Dense(numLabels, activation = "softmax").setName("denseD").inputs(labelRNN2)
+        // transpose in order to apply zeroPadding
+        val transposeOffset = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(offsetOutput)
+        val transposeLabel = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(labelOutput)
+        // right-pad the smaller size
+        val padSize = Math.abs(numOffsets - numLabels)
+        val zeroPadding = if (numOffsets < numLabels) {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeOffset) 
+        } else {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeLabel)
+        }
+        val transposeBack = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPadding)
+        val merge = if (numOffsets < numLabels) {
+          Merge.merge(inputs = List(transposeBack, labelOutput), mode = "concat", concatAxis = -1)
+        } else {
+          Merge.merge(inputs = List(offsetOutput, transposeBack), mode = "concat", concatAxis = -1)
+        }
+        // output size is maxSeqLen x (2*max(numOffsets, numLabels))
+        // duplicate to have the same seqLen as labels (for TimeDistributedCriterion to work)
+        val duplicate = Merge.merge(inputs = List(merge, merge), mode = "concat", concatAxis = 1)
+
+        val bigdl = Model(Array(inputT, inputP, inputF, inputX1, inputX2), duplicate)
+        val (featureSize, labelSize) = (
+          Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), 
+          Array(2*config.maxSeqLen))
+        (bigdl, featureSize, labelSize, "t+p+f+x")
       case "b" => 
         // BERT model using one input of 4*maxSeqLen elements
         val input = Input(inputShape = Shape(4*config.maxSeqLen), name = "input")
@@ -255,12 +306,17 @@ object LOP {
         val partsOfSpeech = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
         val partsOfSpeechMap = partsOfSpeech.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
         val numPartsOfSpeech = partsOfSpeech.length
+        val featureStructures = preprocessor.stages(4).asInstanceOf[CountVectorizerModel].vocabulary
+        val featureStructureMap = featureStructures.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+        val numFeatureStructures = featureStructures.length
+
         println("   offsets = " + offsets.mkString(", "))
         println("#(offsets) = " + numOffsets)
         println("    labels = " + dependencies.mkString(", "))
         println(" #(labels) = " + numDependencies)
         println("  #(vocab) = " + numVocab)
         println("    #(PoS) = " + numPartsOfSpeech)
+        println("    #(fs) = " + numFeatureStructures)
         // 
         // sequencer tokens, pos, offsets and labels; then concatenate offsets and labels
         val tokenSequencer = new Sequencer(tokensMap, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("t")
@@ -270,8 +326,9 @@ object LOP {
         val outputAssembler = new VectorAssembler().setInputCols(Array("o", "d")).setOutputCol("o+d")
         val labelShifter = new Shifter(numOffsets, -1f).setInputCol("d").setOutputCol("d1")
         val outputAssembler1 = new VectorAssembler().setInputCols(Array("o", "d1")).setOutputCol("o+d1")
-        val pipeline = new Pipeline().setStages(Array(tokenSequencer, posSequencer, offsetSequencer, 
-          labelSequencer, labelShifter, outputAssembler, outputAssembler1))
+        val featureSequencer = new Sequencer(featureStructureMap, config.maxSeqLen, 0f).setInputCol("featureStructure").setOutputCol("f")
+        val featureAssembler = new VectorAssembler().setInputCols(Array("t", "p", "f")).setOutputCol("t+p+f")
+        val pipeline = new Pipeline().setStages(Array(tokenSequencer, posSequencer, offsetSequencer, labelSequencer, labelShifter, outputAssembler, outputAssembler1, featureSequencer, featureAssembler))
         val pipelineModel = pipeline.fit(df)
 
         val (ff, ffV, ffW) = (pipelineModel.transform(ef), pipelineModel.transform(efV), pipelineModel.transform(efW))
@@ -280,34 +337,15 @@ object LOP {
         val (uf, vf, wf) = config.modelType match {
           case "t" => (ff, ffV, ffW)
           case "b" =>
-            // first, create a UDF g to make BERT input of size 4 x maxSeqLen
-            val g = udf((x: Vector) => {
-              val v = x.toArray // x is a dense vector (produced by a Sequencer)
-              // token type, all are 0 (0 for sentence A, 1 for sentence B -- here we have only one sentence)
-              val types: Array[Double] = Array.fill[Double](v.length)(0)
-              // positions, start from 0
-              val positions = Array.fill[Double](v.length)(0)
-              for (j <- v.indices)
-                positions(j) = j
-              // attention mask with indices in [0, 1]
-              // It's a mask to be used if the input sequence length is smaller than maxSeqLen
-              // find the last non-zero element index
-              var n = v.length - 1
-              while (n >= 0 && v(n) == 0) n = n - 1
-              val masks = Array.fill[Double](v.length)(1)
-              // padded positions have a mask value of 0 (which are not attended to)
-              for (j <- n + 1 until v.length) {
-                masks(j) = 0
-              }
-              Vectors.dense(v ++ types ++ positions ++ masks)
-            })
-            // then transform the token index column
-            val hf = ff.withColumn("b", g(col("t")))
-            val hfV = ffV.withColumn("b", g(col("t")))
-            val hfW = ffW.withColumn("b", g(col("t")))
+            val hf = ff.withColumn("b", DEPx.createInputBERT(col("t")))
+            val hfV = ffV.withColumn("b", DEPx.createInputBERT(col("t")))
+            val hfW = ffW.withColumn("b", DEPx.createInputBERT(col("t")))
+            (hf, hfV, hfW)
+          case "x" => 
+            val Array(hf, hfV, hfW) = DEPx.addNodeEmbeddingFeatures(spark, config, Array(ff, ffV, ffW))
             (hf, hfV, hfW)
         }
-        val (bigdl, featureSize, labelSize, featureColName) = createBigDL(config, numVocab, numOffsets, numDependencies)
+        val (bigdl, featureSize, labelSize, featureColName) = createBigDL(config, numVocab, numOffsets, numDependencies, numPartsOfSpeech, numFeatureStructures)
         val numCores = Runtime.getRuntime().availableProcessors()
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
@@ -315,8 +353,8 @@ object LOP {
         val criterion = TimeDistributedMaskCriterion(loss, paddingValue = -1)
         // eval() needs an array of feature column names for a proper reshaping of input tensors
         val featureColNames = config.modelType match {
-          case "x" => Array("t", "p", "x", "x2") // TODO
-          case "bx" => Array("b", "x", "x2") // TODO
+          case "x" => Array("t", "p", "f", "x1", "x2")
+          case "bx" => Array("b", "x1", "x2")
           case _ => Array(featureColName)
         }
         // best maxIterations for each language which is validated on the dev. split:
@@ -368,7 +406,7 @@ object LOP {
               for (w <- ws; h <- hs) {
                 val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
                 println(cfg)
-                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg, numVocab, numOffsets, numDependencies)
+                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg, numVocab, numOffsets, numDependencies, numPartsOfSpeech, numFeatureStructures)
                 val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
                 estimator.setLabelCol("o+d1").setFeaturesCol(featureColName)
                   .setBatchSize(batchSize)
@@ -392,7 +430,7 @@ object LOP {
               for (w <- ws; h <- hs; j <- js; n <- nHeads) {
                 val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h, layers = j, heads = n)
                 println(cfg)
-                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg, numVocab, numOffsets, numDependencies)
+                val (bigdl, featureSize, labelSize, featureColName) = createBigDL(cfg, numVocab, numOffsets, numDependencies, numPartsOfSpeech, numFeatureStructures)
                 val estimator = NNEstimator(bigdl, criterion, featureSize, labelSize)
                 estimator.setLabelCol("o+d1").setFeaturesCol(featureColName)
                   .setBatchSize(batchSize)
