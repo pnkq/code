@@ -386,7 +386,7 @@ object LOP {
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
-            Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+            Files.write(Paths.get(s"${config.scorePath}-lop.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "eval" =>
             println(s"Loading model in the path: $modelPath...")
             val bigdl = Models.loadModel[Float](modelPath)
@@ -396,7 +396,7 @@ object LOP {
             val heads = if (config.modelType != "b") 0 else config.heads
             val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
             println(result)
-            Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+            Files.write(Paths.get(s"${config.scorePath}-lop.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "validate" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t <modelType> -m validate
@@ -416,7 +416,7 @@ object LOP {
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
                 val result = f"\n${cfg.language};${cfg.modelType};$w;$h;2;0;${scores(0)}%.4g;${scores(1)}%.4g"
-                Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+                Files.write(Paths.get(s"${config.scorePath}-lop.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
             }
           case "validate-b" => 
@@ -440,7 +440,7 @@ object LOP {
                 estimator.fit(uf)
                 val scores = eval(bigdl, cfg, uf, vf, featureColNames)
                 val result = f"\n${cfg.language};${cfg.modelType};$w;$h;$j;$n;${scores(0)}%.4g;${scores(1)}%.4g"
-                Files.write(Paths.get(s"${config.scorePath}-las.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+                Files.write(Paths.get(s"${config.scorePath}-lop.tsv"), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
               }
             }
           }
