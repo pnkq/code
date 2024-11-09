@@ -124,7 +124,7 @@ object LOP {
         val (featureSize, labelSize) = (Array(Array(config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t")
       case "x" =>
-        // A model for (token ++ uPoS ++graphX ++ Node2Vec) tensor
+        // A model for (token ++ uPoS ++ features ++ graphX ++ Node2Vec) tensor
         val inputT = Input(inputShape = Shape(config.maxSeqLen), name = "inputT") 
         val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
         val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
@@ -167,9 +167,7 @@ object LOP {
         val duplicate = Merge.merge(inputs = List(merge, merge), mode = "concat", concatAxis = 1)
 
         val bigdl = Model(Array(inputT, inputP, inputF, inputX1, inputX2), duplicate)
-        val (featureSize, labelSize) = (
-          Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), 
-          Array(2*config.maxSeqLen))
+        val (featureSize, labelSize) = (Array(Array(config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "t+p+f+x")
       case "b" => 
         // BERT model using one input of 4*maxSeqLen elements
@@ -214,6 +212,67 @@ object LOP {
         val bigdl = Model(input, duplicate)
         val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "b")
+      case "bx" => 
+        // A model for (token ++ uPoS ++ features ++ graphX ++ Node2Vec) tensor using BERT 
+        // BERT model using one input of 4*maxSeqLen elements
+        val inputT = Input(inputShape = Shape(4*config.maxSeqLen), name = "inputT")
+        val reshape = Reshape(targetShape = Array(4, config.maxSeqLen)).inputs(inputT)
+        val split = SplitTensor(1, 4).inputs(reshape)
+        val selectIds = SelectTable(0).setName("inputId").inputs(split)
+        val inputIds = Squeeze(1).inputs(selectIds)
+        val selectSegments = SelectTable(1).setName("segmentId").inputs(split)
+        val segmentIds = Squeeze(1).inputs(selectSegments)
+        val selectPositions = SelectTable(2).setName("positionId").inputs(split)
+        val positionIds = Squeeze(1).inputs(selectPositions)
+        val selectMasks = SelectTable(3).setName("masks").inputs(split)
+        val masksReshaped = Reshape(targetShape = Array(1, 1, config.maxSeqLen)).setName("mask").inputs(selectMasks)
+        val bert = BERT(vocab = numVocab + 1, hiddenSize = config.tokenEmbeddingSize, nBlock = config.layers, nHead = config.heads, maxPositionLen = config.maxSeqLen,
+          intermediateSize = config.tokenHiddenSize, outputAllBlock = false).setName("bert")
+        val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
+        val bertOutput = SelectTable(0).setName("firstBlock").inputs(bertNode)
+        // inputs for parts-of-speech and features
+        val inputP = Input(inputShape = Shape(config.maxSeqLen), name = "inputP") 
+        val inputF = Input(inputShape = Shape(config.maxSeqLen), name = "inputF") 
+        val embeddingP = Embedding(numPartsOfSpeech + 1, config.partsOfSpeechEmbeddingSize).setName("posEmbedding").inputs(inputP)
+        val embeddingF = Embedding(numFeatureStructures + 1, config.featureStructureEmbeddingSize).setName("fsEmbedding").inputs(inputF)
+        // graphX input
+        val inputX1 = Input(inputShape = Shape(3*config.maxSeqLen), name = "inputX1") // 3 for graphX
+        val reshapeX1 = Reshape(targetShape = Array(config.maxSeqLen, 3)).setName("reshapeX1").inputs(inputX1)
+        // Node2Vec input
+        val inputX2 = Input(inputShape = Shape(32*config.maxSeqLen), name = "inputX2") // 32 for node2vec
+        val reshapeX2 = Reshape(targetShape = Array(config.maxSeqLen, 32)).setName("reshapeX2").inputs(inputX2)
+        // merge these two exra embeddings        
+        val extra = Merge.merge(inputs = List(embeddingP, embeddingF, reshapeX1, reshapeX2), mode = "concat")
+        // pass these embeddings through a RNN 
+        val pfgRNN = Bidirectional(LSTM(outputDim = 32, returnSequences = true).setName("LSTM-pfg")).inputs(extra) // 32 is a magic number
+        // merge bert ++ pfgRNN
+        val merge = Merge.merge(inputs = List(bertOutput, pfgRNN), mode = "concat")
+        // create 2 output branches for offsets and labels
+        val offsetOutput = Dense(numOffsets, activation = "softmax").setName("denseO").inputs(merge)
+        val labelOutput =  Dense(numLabels, activation = "softmax").setName("denseD").inputs(merge)
+        // transpose in order to apply zeroPadding
+        val transposeOffset = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(offsetOutput)
+        val transposeLabel = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(labelOutput)
+        // right-pad the smaller size
+        val padSize = Math.abs(numOffsets - numLabels)
+        val zeroPadding = if (numOffsets < numLabels) {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeOffset) 
+        } else {
+            new ZeroPadding1D(padding = Array(0, padSize)).inputs(transposeLabel)
+        }
+        val transposeBack = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPadding)
+        val merge2 = if (numOffsets < numLabels) {
+          Merge.merge(inputs = List(transposeBack, labelOutput), mode = "concat")
+        } else {
+          Merge.merge(inputs = List(offsetOutput, transposeBack), mode = "concat")
+        }
+        // output size is maxSeqLen x (2*max(numOffsets, numLabels))
+        // duplicate to have the same seqLen as labels (for TimeDistributedCriterion to work)
+        val duplicate = Merge.merge(inputs = List(merge2, merge2), mode = "concat", concatAxis = 1)
+
+        val bigdl = Model(Array(inputT, inputP, inputF, inputX1, inputX2), duplicate)
+        val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(2*config.maxSeqLen))
+        (bigdl, featureSize, labelSize, "b+p+f+x")
     }
   }
 
@@ -336,14 +395,20 @@ object LOP {
 
         val (uf, vf, wf) = config.modelType match {
           case "t" => (ff, ffV, ffW)
+          case "x" => 
+            val Array(hf, hfV, hfW) = DEPx.addNodeEmbeddingFeatures(spark, config, Array(ff, ffV, ffW))
+            (hf, hfV, hfW)
           case "b" =>
             val hf = ff.withColumn("b", DEPx.createInputBERT(col("t")))
             val hfV = ffV.withColumn("b", DEPx.createInputBERT(col("t")))
             val hfW = ffW.withColumn("b", DEPx.createInputBERT(col("t")))
             (hf, hfV, hfW)
-          case "x" => 
-            val Array(hf, hfV, hfW) = DEPx.addNodeEmbeddingFeatures(spark, config, Array(ff, ffV, ffW))
-            (hf, hfV, hfW)
+          case "bx" =>
+            val hf = ff.withColumn("b", DEPx.createInputBERT(col("t")))
+            val hfV = ffV.withColumn("b", DEPx.createInputBERT(col("t")))
+            val hfW = ffW.withColumn("b", DEPx.createInputBERT(col("t")))
+            val Array(jf, jfV, jfW) = DEPx.addNodeEmbeddingFeatures(spark, config, Array(hf, hfV, hfW))
+            (jf, jfV, jfW)
         }
         val (bigdl, featureSize, labelSize, featureColName) = createBigDL(config, numVocab, numOffsets, numDependencies, numPartsOfSpeech, numFeatureStructures)
         val numCores = Runtime.getRuntime().availableProcessors()
@@ -353,9 +418,10 @@ object LOP {
         val criterion = TimeDistributedMaskCriterion(loss, paddingValue = -1)
         // eval() needs an array of feature column names for a proper reshaping of input tensors
         val featureColNames = config.modelType match {
+          case "t" => Array("t")
+          case "b" => Array("b")
           case "x" => Array("t", "p", "f", "x1", "x2")
-          case "bx" => Array("b", "x1", "x2")
-          case _ => Array(featureColName)
+          case "bx" => Array("b", "p", "f", "x1", "x2")
         }
         // best maxIterations for each language which is validated on the dev. split:
         val maxIterations = config.language match {

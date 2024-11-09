@@ -237,10 +237,10 @@ object DEPx {
       // flatten the "xs2" column to get a vector x2 (of numberOfNode2VecFeatures * maxSeqLen elements)
       val gfz2 = gfy2.withColumn("x2", flattenFunc(col("xs2")))
       // assemble the input vectors into one 
-      val assembler = if (config.modelType.startsWith("b")) {
-        new VectorAssembler().setInputCols(Array("b", "x1", "x2")).setOutputCol("bx")
-      } else { 
-        new VectorAssembler().setInputCols(Array("t", "p", "f", "x1", "x2")).setOutputCol("t+p+f+x")
+      val assembler = config.modelType match {
+        case "b" => new VectorAssembler().setInputCols(Array("b", "x1", "x2")).setOutputCol("b+x")
+        case "bx" => new VectorAssembler().setInputCols(Array("b", "p", "f", "x1", "x2")).setOutputCol("b+p+f+x")
+        case _ => new VectorAssembler().setInputCols(Array("t", "p", "f", "x1", "x2")).setOutputCol("t+p+f+x")
       }
       assembler.transform(gfz2)
     }

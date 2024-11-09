@@ -7,7 +7,7 @@ case class ConfigDEP(
     mode: String = "eval",
     maxVocabSize: Int = 32768,
     tokenEmbeddingSize: Int = 32,
-    tokenHiddenSize: Int = 64, // recurrent size or 
+    tokenHiddenSize: Int = 64, // recurrent size or BERT hidden size
     partsOfSpeechEmbeddingSize: Int = 25,
     featureStructureEmbeddingSize: Int = 25,
     layers: Int = 2, // number of LSTM layers or BERT blocks
