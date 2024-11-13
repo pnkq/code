@@ -633,8 +633,8 @@ object DEPx {
           case "validate" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t <modelType> -m validate
-            val ws = Array(64, 128, 200)
-            val hs = Array(64, 128, 200, 300)
+            val ws = Array(128, 200)
+            val hs = Array(128, 200, 300)
             for (_ <- 1 to 3) {
               for (w <- ws; h <- hs) {
                 val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
@@ -656,8 +656,8 @@ object DEPx {
           case "validate-b" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t b/bx -m validate
-            val ws = Array(64, 128, 200)
-            val hs = Array(64, 128, 200, 300)
+            val ws = Array(128, 200)
+            val hs = Array(128, 200, 300)
             val js = Array(2, 3)
             val nHeads = Array(2, 4, 8)
             for (_ <- 1 to 3) {
