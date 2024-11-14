@@ -237,10 +237,10 @@ object DEPx {
       // flatten the "xs2" column to get a vector x2 (of numberOfNode2VecFeatures * maxSeqLen elements)
       val gfz2 = gfy2.withColumn("x2", flattenFunc(col("xs2")))
       // assemble the input vectors into one 
-      val assembler = if (config.modelType.startsWith("b")) {
-        new VectorAssembler().setInputCols(Array("b", "x1", "x2")).setOutputCol("bx")
-      } else { 
-        new VectorAssembler().setInputCols(Array("t", "p", "f", "x1", "x2")).setOutputCol("t+p+f+x")
+      val assembler = config.modelType match {
+        case "b" => new VectorAssembler().setInputCols(Array("b", "x1", "x2")).setOutputCol("b+x")
+        case "bx" => new VectorAssembler().setInputCols(Array("b", "p", "f", "x1", "x2")).setOutputCol("b+p+f+x")
+        case _ => new VectorAssembler().setInputCols(Array("t", "p", "f", "x1", "x2")).setOutputCol("t+p+f+x")
       }
       assembler.transform(gfz2)
     }
@@ -633,8 +633,8 @@ object DEPx {
           case "validate" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t <modelType> -m validate
-            val ws = Array(64, 128, 200)
-            val hs = Array(64, 128, 200, 300)
+            val ws = Array(128, 200)
+            val hs = Array(128, 200, 300)
             for (_ <- 1 to 3) {
               for (w <- ws; h <- hs) {
                 val cfg = config.copy(tokenEmbeddingSize = w, tokenHiddenSize = h)
@@ -656,8 +656,8 @@ object DEPx {
           case "validate-b" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t b/bx -m validate
-            val ws = Array(64, 128, 200)
-            val hs = Array(64, 128, 200, 300)
+            val ws = Array(128, 200)
+            val hs = Array(128, 200, 300)
             val js = Array(2, 3)
             val nHeads = Array(2, 4, 8)
             for (_ <- 1 to 3) {
