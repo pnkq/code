@@ -536,7 +536,7 @@ object DEPx {
               val output = SoftMax().setName("output").inputs(dense)
               val bigdl = Model(Array(input, inputX1, inputX2), output)
               val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(config.maxSeqLen))
-              (bigdl, featureSize, labelSize, "bx")
+              (bigdl, featureSize, labelSize, "b+p+f+x")
           }
         }
         
