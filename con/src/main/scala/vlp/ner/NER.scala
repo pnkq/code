@@ -21,7 +21,6 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.mllib.linalg.Matrix
 import org.apache.spark.ml.linalg.DenseVector
 
-
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.Sequential
 import com.intel.analytics.bigdl.dllib.keras.models.{Models, KerasNet}
@@ -37,26 +36,6 @@ import com.intel.analytics.bigdl.dllib.nn.{TimeDistributedCriterion, ClassNLLCri
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.optim.Trigger
 
-
-case class ConfigNER(
-  master: String = "local[*]",
-  totalCores: Int = 8,    // X
-  executorCores: Int = 8, // Y
-  executorMemory: String = "8g", // Z
-  driverMemory: String = "16g", // D
-  mode: String = "eval",
-  batchSize: Int = 128,
-  maxSeqLen: Int = 80,
-  hiddenSize: Int = 64,
-  epochs: Int = 30,
-  learningRate: Double = 5E-4, 
-  modelPath: String = "bin/med/",
-  trainPath: String = "dat/med/syll.txt",
-  validPath: String = "dat/med/val/", // Parquet file of devPath
-  outputPath: String = "out/med/",
-  scorePath: String = "dat/med/scores-med.json",
-  modelType: String = "s", 
-)
 
 case class ScoreNER(
   modelType: String,
@@ -83,6 +62,20 @@ object NER {
   val labelDict: Map[Double, String] = labelIndex.keys.map(k => (labelIndex(k).toDouble, k)).toMap
 
   /**
+    * Builds a pipeline for BigDL model: sequencer -> flattener -> padder
+    *
+    * @param config config
+    */
+  private def pipelineBigDL(config: ConfigNER): Pipeline = {
+    // use a label sequencer to transform `ys` into sequences of integers (1-based, for BigDL to work)
+    // we use padding value -1f for padding label sequences.
+    val sequencer = new Sequencer(labelIndex, config.maxSeqLen, -1f).setInputCol("ys").setOutputCol("target")
+    val flattener = new FeatureFlattener().setInputCol("xs").setOutputCol("as")
+    val padder = new FeaturePadder(config.maxSeqLen*768, 0f).setInputCol("as").setOutputCol("features")
+    new Pipeline().setStages(Array(sequencer, flattener, padder))
+  }
+
+  /**
     * Trains a NER model using the BigDL framework with user-defined model. This approach is more flexible than the [[trainJSL()]] method.
     *
     * @param config a config
@@ -103,21 +96,24 @@ object NER {
     }
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols("xs").setOutputAsVector(false) // output as arrays
     val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher))
-    val preprocessor = pipeline.fit(trainingDF)
-    val (af, bf) = (preprocessor.transform(trainingDF), preprocessor.transform(developmentDF))
+    val preprocessorSnow = pipeline.fit(trainingDF)
+    val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
     // supplement pipeline for BigDL
-    val bigdlPreprocessor = pipelineBigDL(config).fit(af)
-    val (uf, vf) = (bigdlPreprocessor.transform(af), bigdlPreprocessor.transform(bf))
+    val preprocessorBigDL = pipelineBigDL(config).fit(af)
+    val (uf, vf) = (preprocessorBigDL.transform(af), preprocessorBigDL.transform(bf))
     // create a BigDL model
     val bigdl = Sequential()
     bigdl.add(InputLayer(inputShape = Shape(config.maxSeqLen*768)).setName("input"))
     bigdl.add(Reshape(targetShape=Array(config.maxSeqLen, 768)).setName("reshape"))
-    bigdl.add(Bidirectional(LSTM(outputDim = config.hiddenSize, returnSequences = true).setName("LSTM")))
+    for (j <- 1 to config.layers) {
+      bigdl.add(Bidirectional(LSTM(outputDim = config.hiddenSize, returnSequences = true).setName(s"LSTM-$j")))
+    }
     bigdl.add(Dropout(0.1).setName("dropout"))
     bigdl.add(Dense(labelIndex.size, activation="softmax").setName("dense"))
     val (featureSize, labelSize) = (Array(config.maxSeqLen*768), Array(config.maxSeqLen))
     // should set the sizeAverage=false in ClassNLLCriterion
-    val estimator = NNEstimator(bigdl, TimeDistributedCriterion(ClassNLLCriterion(logProbAsInput = false, sizeAverage = false), sizeAverage = true), featureSize, labelSize)
+    val criterion = ClassNLLCriterion(sizeAverage = false, paddingValue = -1)
+    val estimator = NNEstimator(bigdl, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
     val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/med/")
     val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/med/")
     estimator.setLabelCol("target").setFeaturesCol("features")
@@ -128,25 +124,13 @@ object NER {
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), config.batchSize)
     estimator.fit(uf)
-    (preprocessor, bigdl)
+    (preprocessorSnow, bigdl)
   }
 
-  /**
-    * Builds a pipeline for BigDL model: sequencer -> flattener -> padder
-    *
-    * @param config config
-    */
-  private def pipelineBigDL(config: ConfigNER): Pipeline = {
-    // use a label sequencer to transform `ys` into sequences of integers (one-based, for BigDL to work)
-    val sequencer = new Sequencer(labelIndex, config.maxSeqLen, -1f).setInputCol("ys").setOutputCol("target")
-    val flattener = new FeatureFlattener().setInputCol("xs").setOutputCol("as")
-    val padder = new FeaturePadder(config.maxSeqLen*768, 0f).setInputCol("as").setOutputCol("features")
-    new Pipeline().setStages(Array(sequencer, flattener, padder))
-  }
 
   /**
     * Trains a NER model using the JohnSnowLab [[NerDLApproach]]. This is a CNN-BiLSTM-CRF network model, which is readily usable but not 
-    * flexible enough.
+    * flexible enough compared to our own NER model using BigDL.
     *
     * @param config a config
     * @param trainingDF a df
@@ -186,12 +170,13 @@ object NER {
 
   def evaluate(result: DataFrame, config: ConfigNER, split: String): ScoreNER = {
     val predictionsAndLabels = result.rdd.map { row =>
-      val zs = row.getAs[Seq[Float]](0).map(_.toDouble).toArray
+      // prediction
+      val zs = row.getAs[Seq[Float]](0).toArray.map(_.toDouble)
+      // label
       val ys = row.getAs[DenseVector](1).toArray
-      var j = ys.indexOf(-1f) // first padding value in the label sequence
-      if (j < 0) j = ys.length
-      val i = Math.min(config.maxSeqLen, j)
-      (zs.take(i), ys.take(i))
+      // remove padding values -1 of the target from the evaluation
+      val pairs = zs.zip(ys).filter(_._2 != -1d)
+      (pairs.map(_._1), pairs.map(_._2))
     }.flatMap { case (prediction, label) => prediction.zip(label) }
     val metrics = new MulticlassMetrics(predictionsAndLabels)
     val ls = metrics.labels
@@ -261,6 +246,7 @@ object NER {
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
+      opt[Int]('j', "layers").action((x, conf) => conf.copy(layers = x)).text("number of RNN layers or Transformer blocks")
       opt[Int]('h', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("encoder hidden size")
       opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
       opt[Double]('a', "alpha").action((x, conf) => conf.copy(learningRate = x)).text("learning rate, default value is 5E-4")

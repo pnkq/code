@@ -382,8 +382,8 @@ object DEP {
           case "train" =>
             // create an estimator, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode
             val estimator = if (config.weightedLoss)
-              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
-            else NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
+              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
+            else NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             estimator.setLabelCol("o").setFeaturesCol(featureColName)
@@ -419,9 +419,9 @@ object DEP {
             // train the model on the training set (uf) using the best hyper-parameters which was tuned on the validation set (vf)
             // and run prediction it on the test set (wf) to collect scores
             val estimator = if (config.weightedLoss)
-              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
+              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
             else
-              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
+              NNEstimator(bigdl, TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = s"sum/dep/${config.language}")
             estimator.setLabelCol("o").setFeaturesCol(featureColName)

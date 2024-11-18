@@ -584,9 +584,9 @@ object DEPx {
     
         // create a training criterion, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode            
         val criterion = if (config.weightedLoss) {
-          TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+          TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, paddingValue = -1), paddingValue = -1)
         } else {
-          TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+          TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, paddingValue = -1), paddingValue = -1)
         }
         config.mode match {
           case "train" =>
