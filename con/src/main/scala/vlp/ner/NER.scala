@@ -106,8 +106,8 @@ object NER {
       val preprocessorSnow = prepareSnowPreprocessor(config, trainingDF, developmentDF)
       println("Applying the Snow preprocessor to (traing, dev.) datasets...")
       val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
-      af.write.parquet(config.modelPath + "/af")
-      af.write.parquet(config.modelPath + "/bf")
+      af.write.mode("overwrite").parquet(config.modelPath + "/af")
+      af.write.mode("overwrite").parquet(config.modelPath + "/bf")
       (preprocessorSnow, af, bf)
     } else {
       val preprocessorSnow = PipelineModel.load(config.modelPath + "/" + config.modelType)
@@ -116,7 +116,6 @@ object NER {
       val bf = spark.read.parquet(config.modelPath + "/bf")
       (preprocessorSnow, af, bf)
     }
-    bf.select("token.result", "ys").show(3, false)
     // supplement pipeline for BigDL
     val preprocessorBigDL = pipelineBigDL(config).fit(af)
     val (uf, vf) = (preprocessorBigDL.transform(af), preprocessorBigDL.transform(bf))
@@ -295,6 +294,7 @@ object NER {
         val Array(trainingDF, developmentDF) = af.randomSplit(Array(0.8, 0.2), 220712L)
         developmentDF.show()
         developmentDF.printSchema()
+        developmentDF.select("token.result", "ys").show(3, false)
         val modelPath = config.modelPath + "/" + config.modelType
         config.mode match {
           case "train" =>
