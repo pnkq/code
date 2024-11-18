@@ -96,15 +96,16 @@ object NER {
     }
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols("xs").setOutputAsVector(false) // output as arrays
     val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher))
+    println("Fitting the Snow preprocessor...")
     val preprocessorSnow = pipeline.fit(trainingDF)
+    println("Done.")
     val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
     // supplement pipeline for BigDL
     val preprocessorBigDL = pipelineBigDL(config).fit(af)
     val (uf, vf) = (preprocessorBigDL.transform(af), preprocessorBigDL.transform(bf))
     // create a BigDL model
     val bigdl = Sequential()
-    bigdl.add(InputLayer(inputShape = Shape(config.maxSeqLen*768)).setName("input"))
-    bigdl.add(Reshape(targetShape=Array(config.maxSeqLen, 768)).setName("reshape"))
+    bigdl.add(Reshape(targetShape=Array(config.maxSeqLen, 768), inputShape=Shape(config.maxSeqLen*768)).setName("reshape"))
     for (j <- 1 to config.layers) {
       bigdl.add(Bidirectional(LSTM(outputDim = config.hiddenSize, returnSequences = true).setName(s"LSTM-$j")))
     }
@@ -221,10 +222,10 @@ object NER {
     Files.write(Paths.get(s"${config.outputPath}/${config.modelType}-$split.txt"), s.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }
 
-  def predict(preprocessor: PipelineModel, bigdl: KerasNet[Float], df: DataFrame, config: ConfigNER, argmax: Boolean=true): DataFrame = {
-    val bf = preprocessor.transform(df)
-    val bigdlPreprocessor = pipelineBigDL(config).fit(bf)
-    val vf = bigdlPreprocessor.transform(bf)
+  def predict(preprocessorSnow: PipelineModel, bigdl: KerasNet[Float], df: DataFrame, config: ConfigNER, argmax: Boolean=true): DataFrame = {
+    val bf = preprocessorSnow.transform(df)
+    val preprocessorBigDL = pipelineBigDL(config).fit(bf)
+    val vf = preprocessorBigDL.transform(bf)
     // convert bigdl to sequential model
     val sequential = bigdl.asInstanceOf[Sequential[Float]]
     // bigdl produces 3-d output results (including batch dimension), we need to convert it to 2-d results.
@@ -278,10 +279,10 @@ object NER {
         config.mode match {
           case "train" =>
             // val model = trainJSL(config, trainingDF, developmentDF)
-            val (preprocessor, bigdl) = trainBDL(config, trainingDF, developmentDF)
-            preprocessor.write.overwrite.save(modelPath)
+            val (preprocessorSnow, bigdl) = trainBDL(config, trainingDF, developmentDF)
+            preprocessorSnow.write.overwrite.save(modelPath)
             bigdl.saveModel(modelPath + "/ner.bigdl", overWrite = true)
-            val output = predict(preprocessor, bigdl, developmentDF, config)
+            val output = predict(preprocessorSnow, bigdl, developmentDF, config)
             output.show
           case "predict" =>
           case "evalBDL" => 
