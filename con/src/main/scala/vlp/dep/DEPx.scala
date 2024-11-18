@@ -238,8 +238,7 @@ object DEPx {
       val gfz2 = gfy2.withColumn("x2", flattenFunc(col("xs2")))
       // assemble the input vectors into one 
       val assembler = config.modelType match {
-        case "b" => new VectorAssembler().setInputCols(Array("b", "x1", "x2")).setOutputCol("b+x")
-        case "bx" => new VectorAssembler().setInputCols(Array("b", "p", "f", "x1", "x2")).setOutputCol("b+p+f+x")
+        case "b" | "bx" => new VectorAssembler().setInputCols(Array("b", "x1", "x2")).setOutputCol("b+x")
         case _ => new VectorAssembler().setInputCols(Array("t", "p", "f", "x1", "x2")).setOutputCol("t+p+f+x")
       }
       assembler.transform(gfz2)
@@ -536,7 +535,7 @@ object DEPx {
               val output = SoftMax().setName("output").inputs(dense)
               val bigdl = Model(Array(input, inputX1, inputX2), output)
               val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(config.maxSeqLen))
-              (bigdl, featureSize, labelSize, "bx")
+              (bigdl, featureSize, labelSize, "b+x")
           }
         }
         
@@ -570,7 +569,7 @@ object DEPx {
         val featureColNames = config.modelType match {
           case "f" => Array("t", "p", "f")
           case "x" => Array("t", "p", "f", "x1", "x2")
-          case "bx" => Array("b", "x1", "x2")
+          case "b" | "bx" => Array("b", "x1", "x2")
           case _ => Array(featureColName)
         }
 
@@ -585,9 +584,9 @@ object DEPx {
     
         // create a training criterion, it is necessary to set sizeAverage of ClassNLLCriterion to false in non-batch mode            
         val criterion = if (config.weightedLoss) {
-          TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+          TimeDistributedMaskCriterion(ClassNLLCriterion(weights = weights(), sizeAverage = false, paddingValue = -1), paddingValue = -1)
         } else {
-          TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), paddingValue = -1)
+          TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, paddingValue = -1), paddingValue = -1)
         }
         config.mode match {
           case "train" =>
