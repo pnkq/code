@@ -90,8 +90,7 @@ object NER {
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols("xs").setOutputAsVector(false) // output as arrays
     val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher))
     val preprocessor = pipeline.fit(trainingDF)
-    val modelPath = config.modelPath + "/" + config.modelType
-    preprocessor.write.overwrite.save(modelPath)
+    preprocessor.write.overwrite.save(config.modelPath + "/" + config.modelType)
     preprocessor
   }
 
@@ -103,16 +102,21 @@ object NER {
     * @return a preprocessor and a BigDL model
     */
   private def trainBDL(config: ConfigNER, trainingDF: DataFrame, developmentDF: DataFrame, firstTime: Boolean = false): (PipelineModel, KerasNet[Float]) = {
-    val preprocessorSnow = if (firstTime) {
-      prepareSnowPreprocessor(config, trainingDF, developmentDF)
+    val (preprocessorSnow, af, bf) = if (firstTime) {
+      val preprocessorSnow = prepareSnowPreprocessor(config, trainingDF, developmentDF)
+      println("Applying the Snow preprocessor to (traing, dev.) datasets...")
+      val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
+      af.write.parquet(config.modelPath + "/af")
+      af.write.parquet(config.modelPath + "/bf")
+      (preprocessorSnow, af, bf)
     } else {
-      val modelPath = config.modelPath + "/" + config.modelType
-      PipelineModel.load(modelPath)
+      val preprocessorSnow = PipelineModel.load(config.modelPath + "/" + config.modelType)
+      val spark = SparkSession.getActiveSession.get
+      val af = spark.read.parquet(config.modelPath + "/af")
+      val bf = spark.read.parquet(config.modelPath + "/bf")
+      (preprocessorSnow, af, bf)
     }
-    println("Applying the Snow preprocessor to (traing, dev.) datasets...")
-    val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
-    println(s"Number of validation samples = ${bf.count()}.")
-    println("Done.")
+    bf.select("token.result", "ys").show(3, false)
     // supplement pipeline for BigDL
     val preprocessorBigDL = pipelineBigDL(config).fit(af)
     val (uf, vf) = (preprocessorBigDL.transform(af), preprocessorBigDL.transform(bf))
@@ -138,7 +142,7 @@ object NER {
       .setMaxEpoch(config.epochs)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
-      .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), config.batchSize)
+      .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
     estimator.fit(uf)
     (preprocessorSnow, bigdl)
   }
@@ -265,7 +269,7 @@ object NER {
       opt[Int]('j', "layers").action((x, conf) => conf.copy(layers = x)).text("number of RNN layers or Transformer blocks")
       opt[Int]('h', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("encoder hidden size")
       opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
-      opt[Double]('a', "alpha").action((x, conf) => conf.copy(learningRate = x)).text("learning rate, default value is 5E-4")
+      opt[Double]('a', "alpha").action((x, conf) => conf.copy(learningRate = x)).text("learning rate, default value is 1E-5")
       opt[String]('d', "trainPath").action((x, conf) => conf.copy(trainPath = x)).text("training data directory")
       opt[String]('p', "modelPath").action((x, conf) => conf.copy(modelPath = x)).text("model folder, default is 'bin/'")
       opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
