@@ -60,6 +60,7 @@ object NER {
     "O" -> 1, "B-problem" -> 2, "I-problem" -> 3, "B-treatment" -> 4, "I-treatment" -> 5, "B-test" -> 6, "I-test" -> 7
   )
   val labelDict: Map[Double, String] = labelIndex.keys.map(k => (labelIndex(k).toDouble, k)).toMap
+  val numCores = Runtime.getRuntime().availableProcessors()
 
   /**
     * Builds a pipeline for BigDL model: sequencer -> flattener -> padder
@@ -75,15 +76,7 @@ object NER {
     new Pipeline().setStages(Array(sequencer, flattener, padder))
   }
 
-  /**
-    * Trains a NER model using the BigDL framework with user-defined model. This approach is more flexible than the [[trainJSL()]] method.
-    *
-    * @param config a config
-    * @param trainingDF a training df
-    * @param developmentDF a development df
-    * @return a preprocessor and a BigDL model
-    */
-  private def trainBDL(config: ConfigNER, trainingDF: DataFrame, developmentDF: DataFrame): (PipelineModel, KerasNet[Float]) = {
+  private def prepareSnowPreprocessor(config: ConfigNER, trainingDF: DataFrame, developmentDF: DataFrame): PipelineModel = {
     val document = new DocumentAssembler().setInputCol("text").setOutputCol("document")
     val tokenizer = new Tokenizer().setInputCols(Array("document")).setOutputCol("token")
     val embeddings = config.modelType match {
@@ -96,13 +89,34 @@ object NER {
     }
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols("xs").setOutputAsVector(false) // output as arrays
     val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher))
-    println("Fitting the Snow preprocessor...")
-    val preprocessorSnow = pipeline.fit(trainingDF)
-    println("Done.")
+    val preprocessor = pipeline.fit(trainingDF)
+    val modelPath = config.modelPath + "/" + config.modelType
+    preprocessor.write.overwrite.save(modelPath)
+    preprocessor
+  }
+
+  /**
+    * Trains a NER model using the BigDL framework with user-defined model. This approach is more flexible than the [[trainJSL()]] method.
+    * @param config a config
+    * @param trainingDF a training df
+    * @param developmentDF a development df
+    * @return a preprocessor and a BigDL model
+    */
+  private def trainBDL(config: ConfigNER, trainingDF: DataFrame, developmentDF: DataFrame, firstTime: Boolean = false): (PipelineModel, KerasNet[Float]) = {
+    val preprocessorSnow = if (firstTime) {
+      prepareSnowPreprocessor(config, trainingDF, developmentDF)
+    } else {
+      val modelPath = config.modelPath + "/" + config.modelType
+      PipelineModel.load(modelPath)
+    }
+    println("Applying the Snow preprocessor to (traing, dev.) datasets...")
     val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
+    println(s"Number of validation samples = ${bf.count()}.")
+    println("Done.")
     // supplement pipeline for BigDL
     val preprocessorBigDL = pipelineBigDL(config).fit(af)
     val (uf, vf) = (preprocessorBigDL.transform(af), preprocessorBigDL.transform(bf))
+    
     // create a BigDL model
     val bigdl = Sequential()
     bigdl.add(Reshape(targetShape=Array(config.maxSeqLen, 768), inputShape=Shape(config.maxSeqLen*768)).setName("reshape"))
@@ -117,8 +131,9 @@ object NER {
     val estimator = NNEstimator(bigdl, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
     val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/med/")
     val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/med/")
+    val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
     estimator.setLabelCol("target").setFeaturesCol("features")
-      .setBatchSize(config.batchSize)
+      .setBatchSize(batchSize)
       .setOptimMethod(new Adam(config.learningRate))
       .setMaxEpoch(config.epochs)
       .setTrainSummary(trainingSummary)
@@ -241,8 +256,8 @@ object NER {
     val opts = new OptionParser[ConfigNER](getClass.getName) {
       head(getClass.getName, "1.0")
       opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
-      opt[Int]('X', "executorCores").action((x, conf) => conf.copy(executorCores = x)).text("executor cores, default is 8")
-      opt[Int]('Y', "totalCores").action((x, conf) => conf.copy(totalCores = x)).text("total number of cores, default is 8")
+      opt[Int]('X', "executorCores").action((x, conf) => conf.copy(executorCores = x)).text("executor cores")
+      opt[Int]('Y', "totalCores").action((x, conf) => conf.copy(totalCores = x)).text("total number of cores")
       opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
@@ -256,6 +271,7 @@ object NER {
       opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
       opt[String]('o', "outputPath").action((x, conf) => conf.copy(outputPath = x)).text("output path")
       opt[String]('s', "scorePath").action((x, conf) => conf.copy(scorePath = x)).text("score path")
+      opt[Boolean]('f', "firstTime").action((_, conf) => conf.copy(firstTime = true)).text("first time in the training")
     }
     opts.parse(args, ConfigNER()) match {
       case Some(config) =>
@@ -272,15 +288,14 @@ object NER {
         val df = CoNLL(conllLabelIndex = 3).readDatasetFromLines(Source.fromFile(config.trainPath, "UTF-8").getLines.toArray, spark).toDF
         val af = df.withColumn("ys", col("label.result"))
         println(s"Number of samples = ${df.count}")
-        val Array(trainingDF, developmentDF) = af.randomSplit(Array(0.9, 0.1), 220712L)
+        val Array(trainingDF, developmentDF) = af.randomSplit(Array(0.8, 0.2), 220712L)
         developmentDF.show()
         developmentDF.printSchema()
         val modelPath = config.modelPath + "/" + config.modelType
         config.mode match {
           case "train" =>
             // val model = trainJSL(config, trainingDF, developmentDF)
-            val (preprocessorSnow, bigdl) = trainBDL(config, trainingDF, developmentDF)
-            preprocessorSnow.write.overwrite.save(modelPath)
+            val (preprocessorSnow, bigdl) = trainBDL(config, trainingDF, developmentDF, config.firstTime)
             bigdl.saveModel(modelPath + "/ner.bigdl", overWrite = true)
             val output = predict(preprocessorSnow, bigdl, developmentDF, config)
             output.show
