@@ -8,7 +8,7 @@ case class ConfigNER(
   driverMemory: String = "16g", // D
   mode: String = "eval",
   batchSize: Int = 32,
-  maxSeqLen: Int = 80,
+  maxSeqLen: Int = 40,
   layers: Int = 2, // number of LSTM layers or BERT blocks
   hiddenSize: Int = 64,
   epochs: Int = 20,
