@@ -16,7 +16,7 @@ object NLU {
     spark.sparkContext.setLogLevel("WARN")
 
     val df = spark.read.options(Map("delimiter" -> ";", "header" -> "true"))
-      .csv("/Users/phuonglh/Downloads/nlu.csv").na.drop().select("intent", "answer_normalised")
+      .csv("dat/nlu/nlu.csv").na.drop().select("intent", "answer_normalised")
     df.show(20, false)
 
     val indexer = new StringIndexer().setInputCol("intent").setOutputCol("label")
