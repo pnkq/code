@@ -7,10 +7,6 @@ import org.apache.spark.ml.{Pipeline, PipelineModel}
 import com.johnsnowlabs.nlp.annotator._
 import com.johnsnowlabs.nlp.embeddings.{BertSentenceEmbeddings, RoBertaSentenceEmbeddings}
 import com.johnsnowlabs.nlp.{DocumentAssembler, EmbeddingsFinisher}
-import com.johnsnowlabs.nlp.annotators.ner.dl.NerDLApproach
-import com.johnsnowlabs.nlp.training.CoNLL
-
-
 
 import scala.io.Source
 import org.apache.spark.SparkConf
@@ -22,7 +18,7 @@ import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 
 object PretrainedNLU {
 
-  def train(trainingDF: DataFrame, modelType: String="r"): PipelineModel = {
+  def train(trainingDF: DataFrame, modelType: String="b"): PipelineModel = {
     val document = new DocumentAssembler().setInputCol("answer_normalised").setOutputCol("document")
     val tokenizer = new Tokenizer().setInputCols(Array("document")).setOutputCol("token")    
     val embeddings = modelType match {
@@ -48,7 +44,7 @@ object PretrainedNLU {
       .set("spark.executor.memory", "8g")
       .set("spark.driver.memory", "8g")
     val sc = new SparkContext(conf)
-    sc.setLogLevel("WARN")
+    sc.setLogLevel("INFO")
 
     val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
 
@@ -61,9 +57,10 @@ object PretrainedNLU {
     println(s"    Number of test samples = ${testDF.count}")
 
     // train a pipeline 
-    val model = train(trainingDF)
+    val model = train(trainingDF, "b")
     val prediction = model.transform(testDF)
     prediction.printSchema()
+    println(prediction.select("vectors").head())
     
     val evaluator = new MulticlassClassificationEvaluator().setMetricName("f1")
     val score = evaluator.evaluate(prediction)
