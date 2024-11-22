@@ -13,7 +13,7 @@ case class ConfigNER(
   layers: Int = 2, // number of LSTM layers or BERT blocks
   hiddenSize: Int = 64,
   epochs: Int = 20,
-  learningRate: Double = 1E-5,
+  learningRate: Double = 5E-6,
   modelPath: String = "bin/med",
   trainPath: String = "dat/med/syll.txt",
   validPath: String = "dat/med/val/", // Parquet file of devPath
