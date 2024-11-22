@@ -3,8 +3,7 @@ package vlp.dep
 import scala.io.Source
 import java.nio.file.Files
 import java.nio.file.Paths
-import _root_.java.nio.file.StandardOpenOption
-
+import java.nio.file.StandardOpenOption
 
 /**
   * phuonglh
@@ -57,14 +56,14 @@ object PyG {
     }.toList.sortBy(_._1).map(_._2)
 
     val pathOut = basePath + language + "-pyg.tsv"
-    Files.writeString(Paths.get(pathOut), us.mkString(" "), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-    Files.writeString(Paths.get(pathOut), "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-    Files.writeString(Paths.get(pathOut), vs.mkString(" "), StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-    Files.writeString(Paths.get(pathOut), "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-    Files.writeString(Paths.get(pathOut), ys.mkString(" "), StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+    Files.write(Paths.get(pathOut), us.mkString(" ").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    Files.write(Paths.get(pathOut), "\n".getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+    Files.write(Paths.get(pathOut), vs.mkString(" ").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+    Files.write(Paths.get(pathOut), "\n".getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+    Files.write(Paths.get(pathOut), ys.mkString(" ").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND)
 
     val pathOutNode = basePath + language + "-nodeId.txt"
     val xs = nodeSet.mkString("\n")
-    Files.writeString(Paths.get(pathOutNode), xs, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    Files.write(Paths.get(pathOutNode), xs.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }    
 }

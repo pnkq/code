@@ -240,8 +240,7 @@ object NER {
     Files.write(Paths.get(s"${config.outputPath}/${config.modelType}-$split.txt"), s.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }
 
-  def predict(preprocessorSnow: PipelineModel, bigdl: KerasNet[Float], df: DataFrame, config: ConfigNER, argmax: Boolean=true): DataFrame = {
-    val bf = preprocessorSnow.transform(df)
+  def predict(bigdl: KerasNet[Float], bf: DataFrame, config: ConfigNER, argmax: Boolean=true): DataFrame = {
     val preprocessorBigDL = pipelineBigDL(config).fit(bf)
     val vf = preprocessorBigDL.transform(bf)
     // convert bigdl to sequential model
@@ -287,46 +286,58 @@ object NER {
         Engine.init
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
         sc.setLogLevel("WARN")
+
         // read the df using the CoNLL format of Spark-NLP, which provides some columns, including [text, label] columns.
         val df = CoNLL(conllLabelIndex = 3).readDatasetFromLines(Source.fromFile(config.trainPath, "UTF-8").getLines.toArray, spark).toDF
-        val af = df.withColumn("ys", col("label.result"))
-        println(s"Number of samples = ${df.count}")
-        val Array(trainingDF, developmentDF) = af.randomSplit(Array(0.8, 0.2), 220712L)
+        val af = df.withColumn("ys", col("label.result")).withColumn("length", size(col("ys")))
+        println(s"Number of samples = ${af.count}")
+        // remove short sentences
+        val ef = af.filter(col("length") >= config.minSeqLen)
+        println(s"Number of samples >= ${config.minSeqLen} = ${ef.count}")
+        // split train/dev.
+        val Array(trainingDF, developmentDF) = ef.randomSplit(Array(0.8, 0.2), 220712L)
         developmentDF.show()
         developmentDF.printSchema()
         developmentDF.select("token.result", "ys").show(3, false)
+
         val modelPath = config.modelPath + "/" + config.modelType
         config.mode match {
           case "train" =>
             // val model = trainJSL(config, trainingDF, developmentDF)
             val (preprocessorSnow, bigdl) = trainBDL(config, trainingDF, developmentDF, config.firstTime)
             bigdl.saveModel(modelPath + "/ner.bigdl", overWrite = true)
-            val output = predict(preprocessorSnow, bigdl, developmentDF, config)
+            val bf = spark.read.parquet(config.modelPath + "/bf")
+            val output = predict(bigdl, bf, config)
             output.show
           case "predict" =>
           case "evalBDL" => 
             val preprocessor = PipelineModel.load(modelPath)
             val bigdl = Models.loadModel[Float](modelPath + "/ner.bigdl")
+            // load preprocessed training/dev. data frames
+            val af = spark.read.parquet(config.modelPath + "/af")
+            println(s"Number of training samples = ${af.count}")
             // training result
-            val outputTrain = predict(preprocessor, bigdl, trainingDF.sample(0.1), config)
+            val outputTrain = predict(bigdl, af, config)
             outputTrain.show
             outputTrain.printSchema
             val trainResult = outputTrain.select("prediction", "target")
             var score = evaluate(trainResult, config, "train")
             saveScore(score, config.scorePath)
             // validation result
-            val outputValid = predict(preprocessor, bigdl, developmentDF, config, argmax = false)
+            val bf = spark.read.parquet(config.modelPath + "/bf")
+            println(s"Number of validation samples = ${bf.count}")
+            val outputValid = predict(bigdl, bf, config, argmax = false)
             outputValid.show
             val validResult = outputValid.select("prediction", "target")
             score = evaluate(validResult, config, "valid")
             saveScore(score, config.scorePath)
             // convert "prediction" column to human-readable label column "zs"
             val sequencerPrediction = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
-            val af = sequencerPrediction.transform(outputTrain)
-            val bf = sequencerPrediction.transform(outputValid)
+            val uf = sequencerPrediction.transform(outputTrain)
+            val vf = sequencerPrediction.transform(outputValid)
             // export to CoNLL format
-            export(af.select("zs", "ys"), config, "train")
-            export(bf.select("zs", "ys"), config, "valid")
+            export(uf.select("zs", "ys"), config, "train")
+            export(vf.select("zs", "ys"), config, "valid")
           case "evalJSL" => 
             val model = PipelineModel.load(modelPath)
             val tf = model.transform(trainingDF).withColumn("zs", col("ner.result")).withColumn("ys", col("label.result"))
@@ -347,6 +358,7 @@ object NER {
             // export to CoNLL format
             export(af.select("zs", "ys"), config, "train")
             export(bf.select("zs", "ys"), config, "valid")
+          case _ => println("Invalid running mode!")
         }
 
         sc.stop()
