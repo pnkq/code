@@ -285,7 +285,7 @@ object NER {
         val sc = new SparkContext(conf)
         Engine.init
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-        sc.setLogLevel("WARN")
+        sc.setLogLevel("INFO")
 
         // read the df using the CoNLL format of Spark-NLP, which provides some columns, including [text, label] columns.
         val df = CoNLL(conllLabelIndex = 3).readDatasetFromLines(Source.fromFile(config.trainPath, "UTF-8").getLines.toArray, spark).toDF

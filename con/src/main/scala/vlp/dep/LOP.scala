@@ -272,7 +272,7 @@ object LOP {
 
         val bigdl = Model(Array(inputT, inputP, inputF, inputX1, inputX2), duplicate)
         val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(2*config.maxSeqLen))
-        (bigdl, featureSize, labelSize, "b+p+f+x")
+        (bigdl, featureSize, labelSize, "b+x")
     }
   }
 
@@ -414,14 +414,14 @@ object LOP {
         val numCores = Runtime.getRuntime().availableProcessors()
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         val modelPath = s"${config.modelPath}/${config.language}-${config.modelType}.bigdl"
-        val loss = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1)
+        val loss = ClassNLLCriterion(sizeAverage = false, paddingValue = -1)
         val criterion = TimeDistributedMaskCriterion(loss, paddingValue = -1)
         // eval() needs an array of feature column names for a proper reshaping of input tensors
         val featureColNames = config.modelType match {
           case "t" => Array("t")
           case "b" => Array("b")
           case "x" => Array("t", "p", "f", "x1", "x2")
-          case "bx" => Array("b", "p", "f", "x1", "x2")
+          case "bx" => Array("b", "x1", "x2")
         }
         // best maxIterations for each language which is validated on the dev. split:
         val maxIterations = config.language match {
