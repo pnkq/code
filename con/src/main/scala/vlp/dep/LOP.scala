@@ -212,7 +212,7 @@ object LOP {
         val bigdl = Model(input, duplicate)
         val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(2*config.maxSeqLen))
         (bigdl, featureSize, labelSize, "b")
-      case "bx" => 
+      case "bpfx" => 
         // A model for (token ++ uPoS ++ features ++ graphX ++ Node2Vec) tensor using BERT 
         // BERT model using one input of 4*maxSeqLen elements
         val inputT = Input(inputShape = Shape(4*config.maxSeqLen), name = "inputT")
@@ -272,7 +272,7 @@ object LOP {
 
         val bigdl = Model(Array(inputT, inputP, inputF, inputX1, inputX2), duplicate)
         val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen), Array(config.maxSeqLen), Array(config.maxSeqLen), Array(3*config.maxSeqLen), Array(32*config.maxSeqLen)), Array(2*config.maxSeqLen))
-        (bigdl, featureSize, labelSize, "b+x")
+        (bigdl, featureSize, labelSize, "b+p+f+x")
     }
   }
 
@@ -403,7 +403,7 @@ object LOP {
             val hfV = ffV.withColumn("b", DEPx.createInputBERT(col("t")))
             val hfW = ffW.withColumn("b", DEPx.createInputBERT(col("t")))
             (hf, hfV, hfW)
-          case "bx" =>
+          case "bx" | "bpfx" =>
             val hf = ff.withColumn("b", DEPx.createInputBERT(col("t")))
             val hfV = ffV.withColumn("b", DEPx.createInputBERT(col("t")))
             val hfW = ffW.withColumn("b", DEPx.createInputBERT(col("t")))
@@ -421,7 +421,7 @@ object LOP {
           case "t" => Array("t")
           case "b" => Array("b")
           case "x" => Array("t", "p", "f", "x1", "x2")
-          case "bx" => Array("b", "x1", "x2")
+          case "bpfx" => Array("b", "p", "f", "x1", "x2")
         }
         // best maxIterations for each language which is validated on the dev. split:
         val maxIterations = config.language match {
@@ -488,8 +488,8 @@ object LOP {
           case "validate-b" => 
             // perform a series of experiments to find the best hyper-params on the development set for a language
             // The arguments are: -l <lang> -t b/bx -m validate
-            val ws = Array(64, 128, 200)
-            val hs = Array(64, 128, 200, 300)
+            val ws = Array(128, 200)
+            val hs = Array(128, 200, 300)
             val js = Array(2, 3)
             val nHeads = Array(2, 4, 8)
             for (_ <- 1 to 3) {
