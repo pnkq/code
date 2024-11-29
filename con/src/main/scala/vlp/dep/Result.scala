@@ -16,7 +16,7 @@ object Result {
     // val path = "dat/depx-scores-uas-sun-4.tsv" // UAS
     val path = "dat/depx-scores-las.tsv" // LAS
 
-    val modelType = "b" // [t, t+p, f, x, b, bx]
+    val modelType = "bx" // [t, t+p, f, x, b, bx]
     val df = spark.read.options(Map("delimiter" -> ";", "inferSchema" -> "true")).csv(path).toDF("lang", "model", "w", "h", "j", "b", "train", "valid")
     val languages = Array("eng" , "fra", "ind", "vie")
     val maxScores = languages.map { lang =>

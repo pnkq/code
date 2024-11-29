@@ -24,7 +24,12 @@ object ECC {
   implicit val formats: Formats = Serialization.formats(NoTypeHints)
 
   def extractPremises(premises: String): List[String] = {
-    parse(premises).extract[List[String]]
+    val text = premises.replaceAll(", '", ", \"")
+      .replaceAll("', ", "\", ")
+      .replaceAll("""\['""", """\["""")
+      .replaceAll("""'\]""", """"\]""")
+
+    parse(text).extract[List[String]]
   }
 
   val g = udf((text: String) => extractPremises(text))
@@ -32,13 +37,19 @@ object ECC {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder().appName(ECC.getClass().getName()).master("local[4]").getOrCreate()
 
-    val path = "dat/ecc/ECC-train.tsv"
+    val path = "dat/ecc/ECC-val.tsv"
     val df = spark.read.options(Map("delimiter" -> "\t", "header" -> "true")).csv(path)
     val ef = df.withColumn("claim", f(col("claim_text"))).withColumn("premises", f(col("premise_texts")))
     ef.show(5)
 
     val gf = ef.withColumn("xs", g(col("premises")))
     gf.show(5)
+
+    val hf = gf.select("claim", "year", "quarter", "label", "xs").withColumn("premise", explode(col("xs")))
+    hf.show(20)
+    hf.printSchema()
+    println(s"Number of samples = ${hf.count}.")
+
 
     spark.stop()
   }
