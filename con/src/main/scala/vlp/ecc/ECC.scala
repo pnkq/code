@@ -14,6 +14,10 @@ import com.johnsnowlabs.nlp.embeddings.{BertSentenceEmbeddings, RoBertaSentenceE
 import com.johnsnowlabs.nlp.EmbeddingsFinisher
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import scopt.OptionParser
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.classification.{LogisticRegression, MultilayerPerceptronClassifier}
+import org.apache.spark.ml.{Pipeline, PipelineModel}
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 
 object ECC {
   /**
@@ -58,9 +62,22 @@ object ECC {
       case "b" => BertSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
       case "r" => RoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
     }
-    val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols(s"${columnName}Vec").setOutputAsVector(false)
+    val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols(s"${columnName}Vec").setOutputAsVector(true)
     val pipeline = new Pipeline().setStages(Array(document, embeddings, finisher))
     pipeline.fit(df)
+  }
+
+  def mlp(df: DataFrame, hiddenUnits: Array[Int] = Array.emptyIntArray): PipelineModel = {
+    val ef = df.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
+    val assembler = new VectorAssembler().setInputCols(Array("p", "c")).setOutputCol("features")
+    val classifier = if (hiddenUnits.isEmpty) {
+      new LogisticRegression().setLabelCol("target")
+    } else {
+      val layers = hiddenUnits ++ Array(3)
+      new MultilayerPerceptronClassifier().setLayers(layers)
+    }
+    val pipeline = new Pipeline().setStages(Array(assembler, classifier))
+    pipeline.fit(ef)
   }
 
   def main(args: Array[String]): Unit = {
@@ -80,7 +97,7 @@ object ECC {
     }
     opts.parse(args, ConfigECC()) match {
       case Some(config) =>
-        val spark = SparkSession.builder().appName(ECC.getClass().getName()).master("local[4]").getOrCreate()
+        val spark = SparkSession.builder().config("spark.driver.memory", "8g").master("local[4]").getOrCreate()
         spark.sparkContext.setLogLevel("WARN")
         config.mode match {
           case "prepare" =>  
@@ -110,6 +127,15 @@ object ECC {
             val efV = spark.read.parquet(s"${config.validPath}-${config.modelType}")
             println(s"Number of (train, valid) samples = (${ef.count}, ${efV.count}).")
             ef.show()
+
+            val model = mlp(ef)
+            val (ff, ffV) = (model.transform(ef), model.transform(efV))
+            ff.show()
+            val evaluator = new MulticlassClassificationEvaluator().setLabelCol("target")
+            var score = evaluator.evaluate(ff)
+            println(s"Training score = ${score}.")
+            score = evaluator.evaluate(ffV)
+            println(s"Valid. score = ${score}.")
         }
         spark.stop()
       case None => 
