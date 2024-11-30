@@ -1,11 +1,19 @@
 package vlp.ecc
 
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.SparkSession
 
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.json4s.jackson.Serialization
+import org.apache.spark.sql.types.DoubleType
+import com.johnsnowlabs.nlp.DocumentAssembler
+import com.johnsnowlabs.nlp.annotator.Tokenizer
+import com.johnsnowlabs.nlp.embeddings.{BertSentenceEmbeddings, RoBertaSentenceEmbeddings}
+import com.johnsnowlabs.nlp.EmbeddingsFinisher
+import org.apache.spark.ml.{Pipeline, PipelineModel}
+import scopt.OptionParser
 
 object ECC {
   /**
@@ -34,23 +42,77 @@ object ECC {
 
   val g = udf((text: String) => extractPremises(text))
 
-  def main(args: Array[String]): Unit = {
-    val spark = SparkSession.builder().appName(ECC.getClass().getName()).master("local[4]").getOrCreate()
-
-    val path = "dat/ecc/ECC-val.tsv"
-    val df = spark.read.options(Map("delimiter" -> "\t", "header" -> "true")).csv(path)
+  def preprocess(df: DataFrame): DataFrame = {
     val ef = df.withColumn("claim", f(col("claim_text"))).withColumn("premises", f(col("premise_texts")))
-    ef.show(5)
-
     val gf = ef.withColumn("xs", g(col("premises")))
-    gf.show(5)
+    val hf = gf.select("claim", "year", "quarter", "label", "xs")
+      .withColumn("premise", explode(col("xs")))
+      .withColumn("target", col("label").cast(DoubleType))
+      .withColumn("id", monotonically_increasing_id)
+    hf
+  }
 
-    val hf = gf.select("claim", "year", "quarter", "label", "xs").withColumn("premise", explode(col("xs")))
-    hf.show(20)
-    hf.printSchema()
-    println(s"Number of samples = ${hf.count}.")
+  def preprocessJSL(df: DataFrame, config: ConfigECC, columnName: String): PipelineModel = {
+    val document = new DocumentAssembler().setInputCol(columnName).setOutputCol("document")
+    val embeddings = config.modelType match {
+      case "b" => BertSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
+      case "r" => RoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
+    }
+    val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols(s"${columnName}Vec").setOutputAsVector(false)
+    val pipeline = new Pipeline().setStages(Array(document, embeddings, finisher))
+    pipeline.fit(df)
+  }
 
-
-    spark.stop()
+  def main(args: Array[String]): Unit = {
+    val opts = new OptionParser[ConfigECC](getClass.getName) {
+      head(getClass.getName, "1.0")
+      opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
+      opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
+      opt[Int]('j', "layers").action((x, conf) => conf.copy(layers = x)).text("number of RNN layers or Transformer blocks")
+      opt[Int]('h', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("encoder hidden size")
+      opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
+      opt[Double]('a', "alpha").action((x, conf) => conf.copy(learningRate = x)).text("learning rate, default value is 1E-5")
+      opt[String]('d', "trainPath").action((x, conf) => conf.copy(trainPath = x)).text("training data directory")
+      opt[String]('p', "modelPath").action((x, conf) => conf.copy(modelPath = x)).text("model folder, default is 'bin/'")
+      opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
+      opt[String]('o', "outputPath").action((x, conf) => conf.copy(outputPath = x)).text("output path")
+      opt[String]('s', "scorePath").action((x, conf) => conf.copy(scorePath = x)).text("score path")
+    }
+    opts.parse(args, ConfigECC()) match {
+      case Some(config) =>
+        val spark = SparkSession.builder().appName(ECC.getClass().getName()).master("local[4]").getOrCreate()
+        spark.sparkContext.setLogLevel("WARN")
+        config.mode match {
+          case "prepare" =>  
+            val paths = Array("dat/ecc/ECC-train.tsv", "dat/ecc/ECC-val.tsv")
+            val Array(df, dfV) = paths.map{ path => 
+              val af = spark.read.options(Map("delimiter" -> "\t", "header" -> "true")).csv(path)
+              preprocess(af)
+            }
+            df.printSchema()
+            println(s"Number of (train, valid) samples = (${df.count}, ${dfV.count}).")
+            // JSL preprocessors 
+            val preprocessorClaim = preprocessJSL(df, config, "claim")
+            val preprocessorPremise = preprocessJSL(df, config, "premise")
+            val (cf, cfV) = (preprocessorClaim.transform(df), preprocessorClaim.transform(dfV))
+            val (pf, pfV) = (preprocessorPremise.transform(df), preprocessorPremise.transform(dfV))
+            val firstCols = Seq("claim", "year", "quarter", "target", "claimVec")
+            val secondCols = Seq("premise", "premiseVec")
+            val ef = cf.select("id", firstCols: _*).join(pf.select("id", secondCols: _*), "id")
+            val efV = cfV.select("id", firstCols: _*).join(pfV.select("id", secondCols: _*), "id")
+            ef.printSchema()
+            ef.show()
+            // save the two data frames for fast loading later
+            ef.write.parquet(s"${config.trainPath}-${config.modelType}")
+            efV.write.parquet(s"${config.validPath}-${config.modelType}")
+          case "train" => 
+            val ef = spark.read.parquet(s"${config.trainPath}-${config.modelType}")
+            val efV = spark.read.parquet(s"${config.validPath}-${config.modelType}")
+            println(s"Number of (train, valid) samples = (${ef.count}, ${efV.count}).")
+            ef.show()
+        }
+        spark.stop()
+      case None => 
+    }
   }
 }

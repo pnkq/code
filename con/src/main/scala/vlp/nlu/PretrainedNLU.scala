@@ -20,7 +20,6 @@ object PretrainedNLU {
 
   def train(trainingDF: DataFrame, modelType: String="b"): PipelineModel = {
     val document = new DocumentAssembler().setInputCol("answer_normalised").setOutputCol("document")
-    val tokenizer = new Tokenizer().setInputCols(Array("document")).setOutputCol("token")    
     val embeddings = modelType match {
       case "b" => BertSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings")
       case "r" => RoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings")
@@ -29,7 +28,7 @@ object PretrainedNLU {
     val selector = new Selector().setInputCol("vectors").setOutputCol("features")
     val indexer = new StringIndexer().setInputCol("intent").setOutputCol("label")
     val classifier = new LogisticRegression().setRegParam(1E-5)
-    val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher, selector, indexer, classifier))
+    val pipeline = new Pipeline().setStages(Array(document, embeddings, finisher, selector, indexer, classifier))
     val model = pipeline.fit(trainingDF)
     model.write.overwrite.save("bin/nlu")
     model
