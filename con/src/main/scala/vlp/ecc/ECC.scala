@@ -68,16 +68,15 @@ object ECC {
   }
 
   def mlp(df: DataFrame, hiddenUnits: Array[Int] = Array.emptyIntArray): PipelineModel = {
-    val ef = df.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
     val assembler = new VectorAssembler().setInputCols(Array("p", "c")).setOutputCol("features")
     val classifier = if (hiddenUnits.isEmpty) {
       new LogisticRegression().setLabelCol("target")
     } else {
       val layers = hiddenUnits ++ Array(3)
-      new MultilayerPerceptronClassifier().setLayers(layers)
+      new MultilayerPerceptronClassifier().setLayers(layers).setLabelCol("target")
     }
     val pipeline = new Pipeline().setStages(Array(assembler, classifier))
-    pipeline.fit(ef)
+    pipeline.fit(df)
   }
 
   def main(args: Array[String]): Unit = {
@@ -128,8 +127,10 @@ object ECC {
             println(s"Number of (train, valid) samples = (${ef.count}, ${efV.count}).")
             ef.show()
 
-            val model = mlp(ef)
-            val (ff, ffV) = (model.transform(ef), model.transform(efV))
+            val df = ef.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
+            val dfV = efV.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
+            val model = mlp(df)
+            val (ff, ffV) = (model.transform(df), model.transform(dfV))
             ff.show()
             val evaluator = new MulticlassClassificationEvaluator().setLabelCol("target")
             var score = evaluator.evaluate(ff)
