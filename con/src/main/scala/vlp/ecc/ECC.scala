@@ -67,25 +67,29 @@ object ECC {
     pipeline.fit(df)
   }
 
-  def mlp(df: DataFrame, hiddenUnits: Array[Int] = Array.emptyIntArray): PipelineModel = {
+  val quarterMap = Map("Q1" -> 0, "Q2" -> 1, "Q3" -> 2, "Q4" -> 3)
+
+  val h = udf((quarter: String) => quarterMap(quarter))
+
+  def mlp(df: DataFrame, hiddenSizes: Array[Int] = Array.emptyIntArray): PipelineModel = {    
     val assembler = new VectorAssembler().setInputCols(Array("p", "c")).setOutputCol("features")
-    val classifier = if (hiddenUnits.isEmpty) {
+    val classifier = if (hiddenSizes.isEmpty) {
       new LogisticRegression().setLabelCol("target")
     } else {
-      val layers = hiddenUnits ++ Array(3)
+      val layers = Array(768*2) ++ hiddenSizes ++ Array(3)
       new MultilayerPerceptronClassifier().setLayers(layers).setLabelCol("target")
     }
     val pipeline = new Pipeline().setStages(Array(assembler, classifier))
     pipeline.fit(df)
   }
 
+
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[ConfigECC](getClass.getName) {
       head(getClass.getName, "1.0")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
-      opt[Int]('j', "layers").action((x, conf) => conf.copy(layers = x)).text("number of RNN layers or Transformer blocks")
-      opt[Int]('h', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("encoder hidden size")
+      opt[String]('h', "hiddenSizes").action((x, conf) => conf.copy(hiddenSizes = x)).text("MLP hidden sizes")
       opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
       opt[Double]('a', "alpha").action((x, conf) => conf.copy(learningRate = x)).text("learning rate, default value is 1E-5")
       opt[String]('d', "trainPath").action((x, conf) => conf.copy(trainPath = x)).text("training data directory")
@@ -127,9 +131,13 @@ object ECC {
             println(s"Number of (train, valid) samples = (${ef.count}, ${efV.count}).")
             ef.show()
 
-            val df = ef.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
-            val dfV = efV.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
-            val model = mlp(df)
+            val df = ef.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec"))).withColumn("q", h(col("quarter")))              
+            val dfV = efV.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec"))).withColumn("q", h(col("quarter")))
+            var hiddenSizes = Array.emptyIntArray
+            if (config.hiddenSizes.nonEmpty) {
+              hiddenSizes = config.hiddenSizes.split(",").map(_.toInt)
+            }
+            val model = mlp(df, hiddenSizes)
             val (ff, ffV) = (model.transform(df), model.transform(dfV))
             ff.show()
             val evaluator = new MulticlassClassificationEvaluator().setLabelCol("target")

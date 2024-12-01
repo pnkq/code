@@ -3,8 +3,7 @@ package vlp.ecc
 case class ConfigECC(
   mode: String = "eval",
   batchSize: Int = 32,
-  layers: Int = 2, 
-  hiddenSize: Int = 64,
+  hiddenSizes: String = "", // comma separated integers, i.e., "64,32"
   epochs: Int = 20,
   learningRate: Double = 2E-5,
   modelPath: String = "bin/ecc",
