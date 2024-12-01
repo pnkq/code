@@ -14,7 +14,7 @@ import com.johnsnowlabs.nlp.embeddings.{BertSentenceEmbeddings, RoBertaSentenceE
 import com.johnsnowlabs.nlp.EmbeddingsFinisher
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import scopt.OptionParser
-import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.feature.{RegexTokenizer, CountVectorizer, Normalizer, VectorAssembler}
 import org.apache.spark.ml.classification.{LogisticRegression, MultilayerPerceptronClassifier}
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
@@ -60,6 +60,7 @@ object ECC {
     val document = new DocumentAssembler().setInputCol(columnName).setOutputCol("document")
     val embeddings = config.modelType match {
       case "b" => BertSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
+      case "f" => BertSentenceEmbeddings.pretrained("sbert_setfit_finetuned_financial_text_classification","en").setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
       case "r" => RoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
     }
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols(s"${columnName}Vec").setOutputAsVector(true)
@@ -71,15 +72,15 @@ object ECC {
 
   val h = udf((quarter: String) => quarterMap(quarter))
 
-  def mlp(df: DataFrame, hiddenSizes: Array[Int] = Array.emptyIntArray): PipelineModel = {    
-    val assembler = new VectorAssembler().setInputCols(Array("p", "c")).setOutputCol("features")
-    val classifier = if (hiddenSizes.isEmpty) {
-      new LogisticRegression().setLabelCol("target")
-    } else {
-      val layers = Array(768*2) ++ hiddenSizes ++ Array(3)
-      new MultilayerPerceptronClassifier().setLayers(layers).setLabelCol("target")
-    }
-    val pipeline = new Pipeline().setStages(Array(assembler, classifier))
+  def mlp(df: DataFrame, discreteFeatures: Boolean = false): PipelineModel = {
+    val tokenizer = new RegexTokenizer().setInputCol("text").setOutputCol("tokens").setPattern("""[\s,'.’]""")
+    val vectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vector").setMinDF(2)
+    val normalizer = new Normalizer().setInputCol("vector").setOutputCol("v")
+    val columns = if (discreteFeatures) Array("v", "p", "c") else Array("p", "c")
+    val assembler = new VectorAssembler().setInputCols(columns).setOutputCol("features")
+    val classifier = new LogisticRegression().setLabelCol("target")
+    val stages = if (discreteFeatures) Array(tokenizer, vectorizer, normalizer, assembler, classifier) else Array(assembler, classifier)
+    val pipeline = new Pipeline().setStages(stages)
     pipeline.fit(df)
   }
 
@@ -89,7 +90,6 @@ object ECC {
       head(getClass.getName, "1.0")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
-      opt[String]('h', "hiddenSizes").action((x, conf) => conf.copy(hiddenSizes = x)).text("MLP hidden sizes")
       opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
       opt[Double]('a', "alpha").action((x, conf) => conf.copy(learningRate = x)).text("learning rate, default value is 1E-5")
       opt[String]('d', "trainPath").action((x, conf) => conf.copy(trainPath = x)).text("training data directory")
@@ -97,6 +97,7 @@ object ECC {
       opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
       opt[String]('o', "outputPath").action((x, conf) => conf.copy(outputPath = x)).text("output path")
       opt[String]('s', "scorePath").action((x, conf) => conf.copy(scorePath = x)).text("score path")
+      opt[Boolean]('c', "discreteFeatures").action((_, conf) => conf.copy(discreteFeatures = true)).text("using count features")
     }
     opts.parse(args, ConfigECC()) match {
       case Some(config) =>
@@ -131,13 +132,11 @@ object ECC {
             println(s"Number of (train, valid) samples = (${ef.count}, ${efV.count}).")
             ef.show()
 
-            val df = ef.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec"))).withColumn("q", h(col("quarter")))              
-            val dfV = efV.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec"))).withColumn("q", h(col("quarter")))
-            var hiddenSizes = Array.emptyIntArray
-            if (config.hiddenSizes.nonEmpty) {
-              hiddenSizes = config.hiddenSizes.split(",").map(_.toInt)
-            }
-            val model = mlp(df, hiddenSizes)
+            val df = ef.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
+              .withColumn("q", h(col("quarter"))).withColumn("text", concat_ws(" ", col("claim"), col("premise")))
+            val dfV = efV.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
+              .withColumn("q", h(col("quarter"))).withColumn("text", concat_ws(" ", col("claim"), col("premise")))
+            val model = mlp(df, config.discreteFeatures)
             val (ff, ffV) = (model.transform(df), model.transform(dfV))
             ff.show()
             val evaluator = new MulticlassClassificationEvaluator().setLabelCol("target")
