@@ -18,6 +18,7 @@ import org.apache.spark.ml.feature.{RegexTokenizer, CountVectorizer, Normalizer,
 import org.apache.spark.ml.classification.{LogisticRegression, MultilayerPerceptronClassifier}
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+import _root_.org.apache.spark.ml.linalg.Vectors
 
 object ECC {
   /**
@@ -72,11 +73,20 @@ object ECC {
 
   val h = udf((quarter: String) => quarterMap(quarter))
 
+  val durationKeywords = Array("quarter", "year", "month", "Q1", "Q2", "Q3", "Q4")
+  val d = udf((text: String) => {
+    val vector = Array.fill[Double](durationKeywords.size)(0d)
+    for (i <- 0 until durationKeywords.size) {
+      if (text.contains(durationKeywords(i))) vector(i) = 1 else vector(i) = 0
+    }
+    Vectors.dense(vector)
+  })
+
   def mlp(df: DataFrame, discreteFeatures: Boolean = false): PipelineModel = {
     val tokenizer = new RegexTokenizer().setInputCol("text").setOutputCol("tokens").setPattern("""[\s,'.’]""")
     val vectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vector").setMinDF(2)
     val normalizer = new Normalizer().setInputCol("vector").setOutputCol("v")
-    val columns = if (discreteFeatures) Array("v", "p", "c") else Array("p", "c")
+    val columns = if (discreteFeatures) Array("v", "p", "c", "d") else Array("p", "c", "d")
     val assembler = new VectorAssembler().setInputCols(columns).setOutputCol("features")
     val classifier = new LogisticRegression().setLabelCol("target")
     val stages = if (discreteFeatures) Array(tokenizer, vectorizer, normalizer, assembler, classifier) else Array(assembler, classifier)
@@ -134,8 +144,10 @@ object ECC {
 
             val df = ef.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
               .withColumn("q", h(col("quarter"))).withColumn("text", concat_ws(" ", col("claim"), col("premise")))
+              .withColumn("d", d(col("text")))
             val dfV = efV.withColumn("p", explode(col("premiseVec"))).withColumn("c", explode(col("claimVec")))
               .withColumn("q", h(col("quarter"))).withColumn("text", concat_ws(" ", col("claim"), col("premise")))
+              .withColumn("d", d(col("text")))
             val model = mlp(df, config.discreteFeatures)
             val (ff, ffV) = (model.transform(df), model.transform(dfV))
             ff.show()
