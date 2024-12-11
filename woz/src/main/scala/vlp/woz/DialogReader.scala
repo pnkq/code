@@ -7,7 +7,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.catalyst.ScalaReflection
 
-import vlp.woz.act.DialogActReader
+import vlp.woz.act.ActReader
 
 /**
   * phuonglh, 2023
@@ -15,12 +15,12 @@ import vlp.woz.act.DialogActReader
   */
 object DialogReader {
 
-  def readDialogs(spark: SparkSession, split: String): DataFrame = {
+  def readDialogs(spark: SparkSession, split: String, basePath: String = "dat/woz/data/MultiWOZ_2.2"): DataFrame = {
     import spark.implicits._
     // SlotValues are temporarily set to empty. TODO: give a complete description for this struct type. 
     // We use a ScalaReflection hack to overcome a schema error of empty SlotValues type:
     val scalaSchema = ScalaReflection.schemaFor[SlotValues].dataType.asInstanceOf[StructType]
-    val path = s"dat/woz/data/MultiWOZ_2.2/${split}"
+    val path = s"${basePath}/${split}"
     // read the whole directory of the split (train/dev/test)
     val df = spark.read.option("multiline", "true").json(path)
     val ef = df.as[Dialog]
@@ -41,7 +41,8 @@ object DialogReader {
     val splits = Seq("train", "dev", "test")
     import spark.implicits._
     // read all dialog acts
-    val as = DialogActReader.readAll()
+    val ds = ActReader.readDialogs("dat/dialog_acts.json")
+    val as = ActReader.extractActNames(ds)
     val af = spark.sparkContext.parallelize(as).toDF("dialogId", "turnId", "actNames")
     splits.map { split => 
       val df = readDialogs(spark, split)
@@ -125,11 +126,11 @@ object DialogReader {
     ef
   }
 
-  def readDialogStatesWOZ(spark: SparkSession, split: String): DataFrame = {
+  def readDialogStatesWOZ(spark: SparkSession, split: String, basePath: String = "dat/woz/data/MultiWOZ_2.2"): DataFrame = {
     import spark.implicits._
     // We use a ScalaReflection hack to overcome a schema error of empty SlotValues type:
     val scalaSchema = ScalaReflection.schemaFor[SlotValues].dataType.asInstanceOf[StructType]
-    val path = s"dat/woz/data/MultiWOZ_2.2/${split}"
+    val path = s"${basePath}/${split}"
     // read the whole directory of the split (train/dev/test)
     val df = spark.read.option("multiline", "true").json(path)
     df.printSchema

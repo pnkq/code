@@ -22,7 +22,7 @@ lazy val commonSettings = Seq(
   )
 )
 
-lazy val con = (project in file("."))
+lazy val woz = (project in file("."))
     .settings(commonSettings, 
       assembly / mainClass := Some("vlp.woz.act.Classifier"),
       assembly / assemblyJarName := "woz.jar",
