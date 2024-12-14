@@ -26,4 +26,12 @@
         </param-name>
         <param-value>true</param-value>
     </context-param>
+
+    <!--
+    <data-source>
+        <name>jdbc/__default</name>
+        <class-name>org.h2.jdbcx.JdbcDataSource</class-name>
+        <url>jdbc:h2:lhp/lib/databases/embedded_default;AUTO_SERVER=TRUE</url>
+    </data-source>
+    -->
 </web-app>
