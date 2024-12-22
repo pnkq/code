@@ -18,8 +18,14 @@ import org.apache.spark.ml.feature.{RegexTokenizer, CountVectorizer, Normalizer,
 import org.apache.spark.ml.classification.{LogisticRegression, MultilayerPerceptronClassifier}
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import _root_.org.apache.spark.ml.linalg.Vectors
+import org.apache.spark.ml.linalg.Vectors
 
+/**
+ * Phuong Le-Hong, <phuonglh@gmail.com>
+ * 
+ * December 2024.
+ *
+ */
 object ECC {
   /**
     * Remove a prefix string (before the first ':'), for example "claim:" or "premises:".
@@ -50,7 +56,7 @@ object ECC {
   def preprocess(df: DataFrame): DataFrame = {
     val ef = df.withColumn("claim", f(col("claim_text"))).withColumn("premises", f(col("premise_texts")))
     val gf = ef.withColumn("xs", g(col("premises")))
-    val hf = gf.select("claim", "year", "quarter", "label", "xs")
+    val hf = gf.select("sId", "claim", "year", "quarter", "label", "xs")
       .withColumn("premise", explode(col("xs")))
       .withColumn("target", col("label").cast(DoubleType))
       .withColumn("id", monotonically_increasing_id)
@@ -94,6 +100,12 @@ object ECC {
     pipeline.fit(df)
   }
 
+  // majority voting from a list of predicted labels for a given sample Id ("sId")
+  val vote = udf((a: Array[Double]) => {
+    val g = a.groupBy(identity).mapValues(_.size)
+    g.toList.maxBy(_._2)._1
+  }) 
+
 
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[ConfigECC](getClass.getName) {
@@ -127,15 +139,15 @@ object ECC {
             val preprocessorPremise = preprocessJSL(df, config, "premise")
             val (cf, cfV) = (preprocessorClaim.transform(df), preprocessorClaim.transform(dfV))
             val (pf, pfV) = (preprocessorPremise.transform(df), preprocessorPremise.transform(dfV))
-            val firstCols = Seq("claim", "year", "quarter", "target", "claimVec")
+            val firstCols = Seq("sId", "claim", "year", "quarter", "target", "claimVec")
             val secondCols = Seq("premise", "premiseVec")
             val ef = cf.select("id", firstCols: _*).join(pf.select("id", secondCols: _*), "id")
             val efV = cfV.select("id", firstCols: _*).join(pfV.select("id", secondCols: _*), "id")
             ef.printSchema()
             ef.show()
             // save the two data frames for fast loading later
-            ef.write.parquet(s"${config.trainPath}-${config.modelType}")
-            efV.write.parquet(s"${config.validPath}-${config.modelType}")
+            ef.write.mode("overwrite").parquet(s"${config.trainPath}-${config.modelType}")
+            efV.write.mode("overwrite").parquet(s"${config.validPath}-${config.modelType}")
           case "train" => 
             val ef = spark.read.parquet(s"${config.trainPath}-${config.modelType}")
             val efV = spark.read.parquet(s"${config.validPath}-${config.modelType}")
@@ -153,9 +165,22 @@ object ECC {
             ff.show()
             val evaluator = new MulticlassClassificationEvaluator().setLabelCol("target")
             var score = evaluator.evaluate(ff)
-            println(s"Training score = ${score}.")
+            println(s"  training score = ${score}.")
             score = evaluator.evaluate(ffV)
-            println(s"Valid. score = ${score}.")
+            println(s"validation score = ${score}.")
+
+            val (gf, gfV) = (
+              ff.groupBy("sId").agg(collect_list("target").as("ys"), collect_list("prediction").as("zs"))
+                .withColumn("label", vote(col("ys"))).withColumn("prediction", vote(col("zs"))),
+              ffV.groupBy("sId").agg(collect_list("target").as("ys"), collect_list("prediction").as("zs"))
+              .withColumn("label", vote(col("ys"))).withColumn("prediction", vote(col("zs"))),
+            )
+            println(s"Number of original (train, valid) samples = (${gf.count}, ${gfV.count}).")
+            val finalEvaluator = new MulticlassClassificationEvaluator()
+            var finalScore = finalEvaluator.evaluate(gf)
+            println(s"  final training score = ${finalScore}.")
+            finalScore = finalEvaluator.evaluate(gfV)
+            println(s"final validation score = ${finalScore}.")
         }
         spark.stop()
       case None => 
