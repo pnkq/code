@@ -92,6 +92,8 @@ object ECC {
     val tokenizer = new RegexTokenizer().setInputCol("text").setOutputCol("tokens").setPattern("""[\s,'.’]""")
     val vectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vector").setMinDF(2)
     val normalizer = new Normalizer().setInputCol("vector").setOutputCol("v")
+    // d: duration keyword vector; p: premise pretrained vector; c: claim pretrained vector
+    // v: discrete count vector for text = premise :: claim
     val columns = if (discreteFeatures) Array("v", "p", "c", "d") else Array("p", "c", "d")
     val assembler = new VectorAssembler().setInputCols(columns).setOutputCol("features")
     val classifier = new LogisticRegression().setLabelCol("target")
