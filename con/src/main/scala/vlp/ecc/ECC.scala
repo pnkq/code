@@ -19,6 +19,7 @@ import org.apache.spark.ml.classification.{LogisticRegression, MultilayerPercept
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.linalg.Vectors
+import com.johnsnowlabs.nlp.annotator.DeBertaForSequenceClassification
 
 /**
  * Phuong Le-Hong, <phuonglh@gmail.com>
@@ -66,9 +67,10 @@ object ECC {
   def preprocessJSL(df: DataFrame, config: ConfigECC, columnName: String): PipelineModel = {
     val document = new DocumentAssembler().setInputCol(columnName).setOutputCol("document")
     val embeddings = config.modelType match {
-      case "b" => BertSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
-      case "f" => BertSentenceEmbeddings.pretrained("sbert_setfit_finetuned_financial_text_classification","en").setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
-      case "r" => RoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setCaseSensitive(true)
+      case "b" => BertSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
+      case "d" => DeBertaForSequenceClassification.pretrained().setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
+      case "f" => BertSentenceEmbeddings.pretrained("sbert_setfit_finetuned_financial_text_classification","en").setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
+      case "r" => RoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
     }
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols(s"${columnName}Vec").setOutputAsVector(true)
     val pipeline = new Pipeline().setStages(Array(document, embeddings, finisher))
