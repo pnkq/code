@@ -10,7 +10,7 @@ import org.json4s.jackson.Serialization
 import org.apache.spark.sql.types.DoubleType
 import com.johnsnowlabs.nlp.DocumentAssembler
 import com.johnsnowlabs.nlp.annotator.Tokenizer
-import com.johnsnowlabs.nlp.embeddings.{BertSentenceEmbeddings, RoBertaSentenceEmbeddings}
+import com.johnsnowlabs.nlp.embeddings.{BertSentenceEmbeddings, RoBertaSentenceEmbeddings, XlmRoBertaSentenceEmbeddings}
 import com.johnsnowlabs.nlp.EmbeddingsFinisher
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import scopt.OptionParser
@@ -19,7 +19,6 @@ import org.apache.spark.ml.classification.{LogisticRegression, MultilayerPercept
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.linalg.Vectors
-import com.johnsnowlabs.nlp.annotator.DeBertaForSequenceClassification
 
 /**
  * Phuong Le-Hong, <phuonglh@gmail.com>
@@ -68,9 +67,9 @@ object ECC {
     val document = new DocumentAssembler().setInputCol(columnName).setOutputCol("document")
     val embeddings = config.modelType match {
       case "b" => BertSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
-      case "d" => DeBertaForSequenceClassification.pretrained().setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
       case "f" => BertSentenceEmbeddings.pretrained("sbert_setfit_finetuned_financial_text_classification","en").setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
       case "r" => RoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
+      case "x" => XlmRoBertaSentenceEmbeddings.pretrained().setInputCols("document").setOutputCol("embeddings").setMaxSentenceLength(256).setCaseSensitive(true)
     }
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols(s"${columnName}Vec").setOutputAsVector(true)
     val pipeline = new Pipeline().setStages(Array(document, embeddings, finisher))

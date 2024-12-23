@@ -3,7 +3,7 @@ package vlp.ecc
 case class ConfigECC(
   mode: String = "eval",
   batchSize: Int = 32,
-  epochs: Int = 20,
+  epochs: Int = 10,
   learningRate: Double = 2E-5,
   modelPath: String = "bin/ecc",
   trainPath: String = "dat/ecc/ECC-train",
