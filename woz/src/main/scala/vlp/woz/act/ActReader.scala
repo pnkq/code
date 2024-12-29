@@ -99,15 +99,36 @@ object ActReader {
     ds.toList.flatMap(d => d.turns.map(t => (d.id, t.id, t.acts.toList.map(_.name))))
   }
 
+  /**
+    * Extracts a sequence of tuples (dialogId, turnId, Set[Act])
+    *
+    * @param ds a sequence of dialogs
+    * @return a sequence of tuples.
+    */
+  def extractActs(ds: Seq[Dialog]): Seq[(String, String, Set[Act])] = {
+    ds.toList.flatMap(d => d.turns.map(t => (d.id, t.id, t.acts)))
+  }
+
+  def readAll(): Seq[(String, String, List[String])] = {
+    val ds = readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
+    println(s"Number of dialogs = ${ds.size}")
+    extractActNames(ds)
+  }
+
+  def readActs(): Seq[(String, String, Set[Act])] = {
+    val ds = readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
+    extractActs(ds)
+  }
+
   def main(args: Array[String]): Unit = {
-    // val ds = readDialogs("dat/multiwoz/data/MultiWOZ_2.2/dialog_acts.json")
-    val ds = readDialogs("dat/dialog_acts.json")
+    // val ds = readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
+    val ds = readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
     println(s"Number of dialogs = ${ds.size}")
 
     println("First dialogue: ")
     println(ds.head)
 
-    val as = extractActNames(ds)
+    val as = extractActs(ds)
     println(s"Number of turns = ${as.size}")
     as.toList.take(20).foreach(println)
   }
