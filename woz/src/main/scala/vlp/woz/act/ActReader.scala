@@ -19,7 +19,7 @@ case class Act(
 case class Span(
   actName: String,
   slot: String,
-  value: Any,
+  value: String,
   start: Option[Int],
   end: Option[Int]
 )
@@ -81,7 +81,7 @@ object ActReader {
         // get spans 
         val spanInfo = elements("span_info").asInstanceOf[List[List[Any]]]
         val spans = spanInfo.map { list => 
-          Span(list(0).asInstanceOf[String], list(1).asInstanceOf[String], list(2), toInt(list(3)), toInt(list(4)))
+          Span(list(0).asInstanceOf[String], list(1).asInstanceOf[String], list(2).asInstanceOf[String], toInt(list(3)), toInt(list(4)))
         }
         Turn(id, acts, spans)
       }
@@ -100,13 +100,13 @@ object ActReader {
   }
 
   /**
-    * Extracts a sequence of tuples (dialogId, turnId, Set[Act])
+    * Extracts a sequence of tuples (dialogId, turnId, List[Span])
     *
     * @param ds a sequence of dialogs
     * @return a sequence of tuples.
     */
-  def extractActs(ds: Seq[Dialog]): Seq[(String, String, Set[Act])] = {
-    ds.toList.flatMap(d => d.turns.map(t => (d.id, t.id, t.acts)))
+  def extractActs(ds: Seq[Dialog]): Seq[(String, String, List[Span])] = {
+    ds.toList.flatMap(d => d.turns.map(t => (d.id, t.id, t.spans)))
   }
 
   def readAll(): Seq[(String, String, List[String])] = {
@@ -115,7 +115,7 @@ object ActReader {
     extractActNames(ds)
   }
 
-  def readActs(): Seq[(String, String, Set[Act])] = {
+  def readActs(): Seq[(String, String, List[Span])] = {
     val ds = readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
     extractActs(ds)
   }
