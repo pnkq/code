@@ -5,6 +5,24 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.ml.feature._
 
+import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.functions._
+
+case class Span(
+  actName: String,
+  slot: String,
+  value: String,
+  start: Option[Long],
+  end: Option[Long]
+)
+
+case class Element(
+  dialogId: String,
+  turnId: String,
+  utterance: String,
+  acts: Array[Span]
+)
+
 /**
   * Reads dialog act data sets which are saved by [[vlp.woz.DialogReader]] and prepare 
   * data sets suitable for training token classification (sequence labeling) models.
@@ -12,25 +30,42 @@ import org.apache.spark.ml.feature._
   */
 object NLU {
 
-  def tokenize(utterance: String, intervals: List[(Int, Int)]): Seq[(Int, Int, Array[String])] = {
+  val patterns = """[?.,!\s]+"""
+
+  def tokenize(utterance: String, spans: Array[Span]): Seq[(Int, Array[(String, String)])] = {
+    val intervals: Array[(Int, Int)] = spans.map { span => (span.start.get.toInt, span.end.get.toInt) }
     val (a, b) = (intervals.head._1, intervals.last._2)
     // build intervals that need to be tokenized
     val js = new collection.mutable.ArrayBuffer[(Int, Int)](intervals.size + 1)
-    js.append((0, a))
+    if (a > 0) js.append((0, a))
     for (j <- 0 until intervals.size - 1) {
       js.append((intervals(j)._2, intervals(j+1)._1))
     }
-    js.append((b, utterance.size))
+    if (b < utterance.size) js.append((b, utterance.size))
     // build results
-    val ss = new collection.mutable.ArrayBuffer[(Int, Int, Array[String])](intervals.size*2)
-    intervals.foreach(p => ss.append((p._1, p._2, Array(utterance.subSequence(p._1, p._2).toString()))))
+    val ss = new collection.mutable.ArrayBuffer[(Int, Array[(String, String)])](intervals.size*2)
+    for (j <- 0 until intervals.size) {
+      val p = intervals(j)
+      val slot = spans(j).slot
+      val value = utterance.subSequence(p._1, p._2).toString().trim()
+      val tokens = value.split(patterns)
+      val labels = s"B-${slot.toUpperCase()}" +: Array.fill[String](tokens.size-1)(s"I-${slot.toUpperCase()}")
+      ss.append((p._1, tokens.zip(labels)))
+    }
     js.foreach { p => 
       val text = utterance.subSequence(p._1, p._2).toString().trim()
-      val tokens = text.split("""[?.,!\s]+""").filter(_.nonEmpty)
-      ss.append((p._1, p._2, tokens))
+      if (text.size > 0) { 
+        val tokens = text.split(patterns).filter(_.nonEmpty)
+        ss.append((p._1, tokens.zip(Array.fill[String](tokens.size)("O"))))
+      }
     }
     ss.toSeq.sortBy(_._1)
   }
+
+  val f = udf((utterance: String, spans: Array[Span]) => {
+    tokenize(utterance, spans)
+  })
+
   /**
     * Reads a data set and creates a df of columns (utterance, tokenSequence, slotSequence, actNameSequence), where
     * <ol>
@@ -43,22 +78,26 @@ object NLU {
     * @param spark
     * @param path
     */
-  def readActDataset(spark: SparkSession, path: String): DataFrame = {
-    val af = spark.read.json(path)
-    af
+  def transformActs(spark: SparkSession, path: String): DataFrame = {
+    import spark.implicits._
+    val af = spark.read.json(path).as[Element]
+    println("Number of rows = " + af.count())
+    val bf = af.filter(size(col("acts")) > 0)
+    println("Number of non-empty rows = " + bf.count())
+    val cf = bf.withColumn("seq", f(col("utterance"), col("acts")))
+    cf
   }
 
   def main(args: Array[String]): Unit = {
-    // val conf = new SparkConf().setAppName(getClass().getName()).setMaster("local[*]")
-    // val sc = new SparkContext(conf)
-    // val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-    // sc.setLogLevel("ERROR")
+    val conf = new SparkConf().setAppName(getClass().getName()).setMaster("local[*]")
+    val sc = new SparkContext(conf)
+    val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+    sc.setLogLevel("ERROR")
+    
+    val df = transformActs(spark, "dat/woz/act/dev")
+    df.select("seq").show(false)
+    df.printSchema()
 
-    val utterance = "Sheep's Green and Lammas Land Park Fen Causeway is a park in the South part of town at Fen Causeway, Newnham Road. The postcoe is CB22AD."
-    val intervals = List((35, 47), (65, 70), (101, 113), (130, 136))
-    val js = tokenize(utterance, intervals)
-    js.foreach(a => println(a._1, a._2, a._3.mkString("|")))
-    // {"dialogId":"PMUL4688.json","turnId":"5","utterance":,"acts":[{"actName":"Attraction-Inform","slot":"address","value":"Fen Causeway","start":35,"end":47},{"actName":"Attraction-Inform","slot":"area","value":"South","start":65,"end":70},{"actName":"Attraction-Inform","slot":"address","value":"Newnham Road","start":101,"end":113},{"actName":"Attraction-Inform","slot":"postcode","value":"CB22AD","start":130,"end":136}]}
-    // spark.stop()
+    spark.stop()
   }
 }
