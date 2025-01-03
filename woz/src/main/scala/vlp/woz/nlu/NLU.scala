@@ -8,6 +8,8 @@ import org.apache.spark.ml.feature._
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 
+import vlp.woz.act.Act
+
 case class Span(
   actName: String,
   slot: String,
@@ -20,7 +22,8 @@ case class Element(
   dialogId: String,
   turnId: String,
   utterance: String,
-  acts: Array[Span]
+  acts: Array[Act],
+  spans: Array[Span]
 )
 
 /**
@@ -30,41 +33,67 @@ case class Element(
   */
 object NLU {
 
-  val patterns = """[?.,!\s]+"""
+  val pattern = """[?.,!\s]+"""
 
-  def tokenize(utterance: String, spans: Array[Span]): Seq[(Int, Array[(String, String)])] = {
-    val intervals: Array[(Int, Int)] = spans.map { span => (span.start.get.toInt, span.end.get.toInt) }
-    val (a, b) = (intervals.head._1, intervals.last._2)
-    // build intervals that need to be tokenized
-    val js = new collection.mutable.ArrayBuffer[(Int, Int)](intervals.size + 1)
-    if (a > 0) js.append((0, a))
-    for (j <- 0 until intervals.size - 1) {
-      js.append((intervals(j)._2, intervals(j+1)._1))
-    }
-    if (b < utterance.size) js.append((b, utterance.size))
-    // build results
-    val ss = new collection.mutable.ArrayBuffer[(Int, Array[(String, String)])](intervals.size*2)
-    for (j <- 0 until intervals.size) {
-      val p = intervals(j)
-      val slot = spans(j).slot
-      val value = utterance.subSequence(p._1, p._2).toString().trim()
-      val tokens = value.split(patterns)
-      val labels = s"B-${slot.toUpperCase()}" +: Array.fill[String](tokens.size-1)(s"I-${slot.toUpperCase()}")
-      ss.append((p._1, tokens.zip(labels)))
-    }
-    js.foreach { p => 
-      val text = utterance.subSequence(p._1, p._2).toString().trim()
-      if (text.size > 0) { 
-        val tokens = text.split(patterns).filter(_.nonEmpty)
-        ss.append((p._1, tokens.zip(Array.fill[String](tokens.size)("O"))))
+  /**
+    * Given an utterance and its associated non-empty spans, tokenize the utterance 
+    * into tokens and their corresponding slot labels (B/I/O).
+    * @param utterance
+    * @param acts
+    * @param spans
+    * @return a sequence of tuples.
+    */
+  def tokenize(utterance: String, acts: Array[Act], spans: Array[Span]): Seq[(Int, Array[(String, String)])] = {
+    if (spans.size > 0) {
+      val intervals: Array[(Int, Int)] = spans.map { span => (span.start.get.toInt, span.end.get.toInt) }
+      val (a, b) = (intervals.head._1, intervals.last._2)
+      // build intervals that need to be tokenized
+      val js = new collection.mutable.ArrayBuffer[(Int, Int)](intervals.size + 1)
+      if (a > 0) js.append((0, a))
+      for (j <- 0 until intervals.size - 1) {
+        // there exists the cases of two similar intervals with different slots. We deliberately ignore those cases for now.
+        if ((intervals(j)._2 < intervals(j+1)._1)) { 
+          js.append((intervals(j)._2, intervals(j+1)._1))
+        }
       }
+      if (b < utterance.size) js.append((b, utterance.size))
+      // build results
+      val ss = new collection.mutable.ArrayBuffer[(Int, Array[(String, String)])](intervals.size*2)
+      for (j <- 0 until intervals.size) {
+        val p = intervals(j)
+        val slot = spans(j).slot
+        val value = utterance.subSequence(p._1, p._2).toString().trim()
+        val tokens = value.split(pattern)
+        val labels = s"B-${slot.toUpperCase()}" +: Array.fill[String](tokens.size-1)(s"I-${slot.toUpperCase()}")
+        ss.append((p._1, tokens.zip(labels)))
+      }
+      js.foreach { p => 
+        val text = utterance.subSequence(p._1, p._2).toString().trim()
+        if (text.size > 0) { 
+          val tokens = text.split(pattern).filter(_.nonEmpty)
+          ss.append((p._1, tokens.zip(Array.fill[String](tokens.size)("O"))))
+        }
+      }
+      // the start indices are used to sort the sequence of triples
+      ss.toSeq.sortBy(_._1)
+    } else {
+      // there is no slots, extract only O-labeled tokens
+      val tokens = utterance.split(pattern).filter(_.nonEmpty)
+      Seq((0, tokens.zip(Array.fill[String](tokens.size)("O"))))
     }
-    ss.toSeq.sortBy(_._1)
   }
 
-  val f = udf((utterance: String, spans: Array[Span]) => {
-    tokenize(utterance, spans)
-  })
+  def extractActNames(acts: Array[Act]): Array[String] = {
+    acts.map(act => act.name.toUpperCase()).toSet.toArray.sorted
+  }
+
+  val f = udf((utterance: String, acts: Array[Act], spans: Array[Span]) => tokenize(utterance, acts, spans))
+  // extract tokens
+  val f1 = udf((seq: Seq[(Int, Array[(String, String)])]) => seq.flatMap(_._2.map(_._1)))
+  // extract slots
+  val f2 = udf((seq: Seq[(Int, Array[(String, String)])]) => seq.flatMap(_._2.map(_._2)))
+  // extract actNames
+  val g = udf((acts: Array[Act]) => extractActNames(acts))
 
   /**
     * Reads a data set and creates a df of columns (utterance, tokenSequence, slotSequence, actNameSequence), where
@@ -82,10 +111,13 @@ object NLU {
     import spark.implicits._
     val af = spark.read.json(path).as[Element]
     println("Number of rows = " + af.count())
-    val bf = af.filter(size(col("acts")) > 0)
-    println("Number of non-empty rows = " + bf.count())
-    val cf = bf.withColumn("seq", f(col("utterance"), col("acts")))
-    cf
+    // filter for rows with non-empty spans
+    // val bf = af.filter(size(col("spans")) > 0)
+    val cf = af.withColumn("seq", f(col("utterance"), col("acts"), col("spans")))
+      .withColumn("tokens", f1(col("seq")))
+      .withColumn("slots", f2(col("seq")))
+      .withColumn("actNames", g(col("acts")))
+    cf.select("dialogId", "turnId", "utterance", "tokens", "slots", "actNames")
   }
 
   def main(args: Array[String]): Unit = {
@@ -94,9 +126,12 @@ object NLU {
     val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
     sc.setLogLevel("ERROR")
     
-    val df = transformActs(spark, "dat/woz/act/dev")
-    df.select("seq").show(false)
-    df.printSchema()
+    val splits = Array("train", "dev", "test")
+    splits.foreach { split => 
+      val df = transformActs(spark, s"dat/woz/act/$split")
+      df.show(false)
+      df.repartition(1).write.mode("overwrite").json(s"dat/woz/nlu/$split")
+    }
 
     spark.stop()
   }

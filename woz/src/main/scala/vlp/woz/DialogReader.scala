@@ -41,7 +41,7 @@ object DialogReader {
     val splits = Seq("train", "dev", "test")
     import spark.implicits._
     // read all dialog acts
-    val ds = ActReader.readDialogs("dat/dialog_acts.json")
+    val ds = ActReader.readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
     val as = ActReader.extractActNames(ds)
     val af = spark.sparkContext.parallelize(as).toDF("dialogId", "turnId", "actNames")
     splits.map { split => 
@@ -70,14 +70,14 @@ object DialogReader {
     import spark.implicits._
     // read all dialog acts
     val ds = ActReader.readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
-    val as = ActReader.extractActs(ds)    
-    val af = spark.sparkContext.parallelize(as).toDF("dialogId", "turnId", "acts")
+    val as = ActReader.extractActs(ds)
+    val af = spark.sparkContext.parallelize(as).toDF("dialogId", "turnId", "acts", "spans")
     splits.map { split => 
       val df = readDialogs(spark, split)
       // inner join of two data frames using dialogId and turnId
       // then sort the resulting data frame by dialogId and turnId
       val ff = df.as("df").join(af, df("dialogId") === af("dialogId") && df("turnId") === af("turnId"), "inner")
-        .select("df.*", "acts") // select columns from df to avoid duplicates of column names
+        .select("df.*", "acts", "spans") // select columns from df to avoid duplicates of column names
         .sort(col("dialogId").desc, col("turnId").cast("int")) // need to cast turnId to int before sorting, SNG before MUL
         // save the df to json
         if (save) ff.repartition(1).write.mode("overwrite").json(s"dat/woz/act/$split")
