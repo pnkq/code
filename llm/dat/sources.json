@@ -118,6 +118,13 @@
       "category": ["thuong-mai", "cong-nghiep", "thi-truong", "nang-luong", "tieu-dung-khuyen-mai"],
       "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.html",
       "exclude": []
+    },
+    {
+      "site": "https://tapchicongthuong.vn",
+      "category": ["hashtag/nguoi-cong-thuong-8.htm", "hashtag/doanh-nghiep-9.htm", "hashtag/nguoi-cong-thuong-8.htm", "hashtag/cong-nghe-14.htm", "hashtag/kinh-te-xanh-13302.htm", 
+        "hashtag/kinh-te-4.htm", "hashtag/hang-hoa-nguyen-lieu-54.htm", "hashtag/cartimes-56.htm", "hashtag/dia-phuong-8307.htm", "hashtag/chinh-sach-3.htm", "hashtag/tai-chinh-doanh-nghiep-453.htm"],
+      "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.htm",
+      "exclude": []
     }
   ]
 }
