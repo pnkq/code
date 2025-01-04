@@ -31,17 +31,17 @@ object DialogReader {
 
   /**
     * Reads the dialog act data frames. There will be 3 data frames: train/dev/test.
-    * Each data frame has 4 columns: (dialogId, turnId, utterance, acts)
+    * Each data frame has 4 columns: (dialogId, turnId, utterance, actNames)
     * 
     * @param spark
     * @param save
     * @return a sequence of 3 data frames corresponding to train/dev/test split of the WoZ corpus.
     */
-  def readDialogActs(spark: SparkSession, save: Boolean = false): Seq[DataFrame] = {
+  def readDialogActNames(spark: SparkSession, save: Boolean = false): Seq[DataFrame] = {
     val splits = Seq("train", "dev", "test")
     import spark.implicits._
     // read all dialog acts
-    val ds = ActReader.readDialogs("dat/dialog_acts.json")
+    val ds = ActReader.readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
     val as = ActReader.extractActNames(ds)
     val af = spark.sparkContext.parallelize(as).toDF("dialogId", "turnId", "actNames")
     splits.map { split => 
@@ -58,6 +58,34 @@ object DialogReader {
   }
 
   /**
+    * Reads the dialog act data frames. There will be 3 data frames: train/dev/test.
+    * Each data frame has 4 columns: (dialogId, turnId, utterance, acts)
+    * 
+    * @param spark
+    * @param save
+    * @return a sequence of 3 data frames corresponding to train/dev/test split of the WoZ corpus.
+    */
+  def readDialogActs(spark: SparkSession, save: Boolean = false): Seq[DataFrame] = {
+    val splits = Seq("train", "dev", "test")
+    import spark.implicits._
+    // read all dialog acts
+    val ds = ActReader.readDialogs("dat/woz/data/MultiWOZ_2.2/dialog_acts.json")
+    val as = ActReader.extractActs(ds)
+    val af = spark.sparkContext.parallelize(as).toDF("dialogId", "turnId", "acts", "spans")
+    splits.map { split => 
+      val df = readDialogs(spark, split)
+      // inner join of two data frames using dialogId and turnId
+      // then sort the resulting data frame by dialogId and turnId
+      val ff = df.as("df").join(af, df("dialogId") === af("dialogId") && df("turnId") === af("turnId"), "inner")
+        .select("df.*", "acts", "spans") // select columns from df to avoid duplicates of column names
+        .sort(col("dialogId").desc, col("turnId").cast("int")) // need to cast turnId to int before sorting, SNG before MUL
+        // save the df to json
+        if (save) ff.repartition(1).write.mode("overwrite").json(s"dat/woz/act/$split")
+      ff
+    }
+  }
+
+  /**
     * For each turn in a df (read by the [[readDialogActs()]] method), concat the act history at previous 3 turns.
     * First, we use the `concat_ws()` function to flatten the `actNames` column (say, turn an array `[Hotel-Inform, Hotel-Select]`
     * to a space-delimited string `Hotel-Inform Hotel-Select`). 
@@ -69,7 +97,7 @@ object DialogReader {
     * @param spark
     * @param df
     */
-  def concatDialogActs(spark: SparkSession, df: DataFrame): DataFrame = {
+  def concatDialogActNames(spark: SparkSession, df: DataFrame): DataFrame = {
     val df1 = df.withColumn("acts", concat_ws(" ", col("actNames")))
     // define a window
     val window = Window.partitionBy("dialogId").orderBy(col("turnId").cast("int"))
@@ -93,8 +121,8 @@ object DialogReader {
     println(s"#(trainingSamples) = ${dfs(0).count}")
     println(s"     #(devSamples) = ${dfs(1).count}")
     println(s"    #(testSamples) = ${dfs(2).count}")
-    dfs(2).show()
-    dfs(2).printSchema()
+    dfs(1).show(false)
+    dfs(1).printSchema()
     dfs
   }
 
@@ -151,10 +179,12 @@ object DialogReader {
     val spark = SparkSession.builder.config(conf).getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
 
-    // val dfs = readDialogActsWOZ(spark, true)
+    val dfs = readDialogActsWOZ(spark, true)
     // val df = readDialogActsFPT(spark, "dat/fpt/", true)
-    val df = readDialogStatesWOZ(spark, "test")
-    df.show()
+
+    // val df = readDialogStatesWOZ(spark, "test")
+    // df.show()
+
     // println(df.count())
     // df.select("states").show(false)
     spark.close()
