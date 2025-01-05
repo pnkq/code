@@ -1,9 +1,8 @@
 package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.Sequential
-import com.intel.analytics.bigdl.dllib.keras.layers.{Bidirectional, Dense, LSTM}
-import com.intel.analytics.bigdl.dllib.nn.internal.Embedding
-import com.intel.analytics.bigdl.dllib.utils.Shape
+import com.intel.analytics.bigdl.dllib.keras.layers.{Bidirectional, Dense, Embedding, InputLayer, LSTM}
+import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.DataFrame
@@ -14,7 +13,8 @@ import org.apache.spark.ml._
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation._
-import org.apache.spark.sql.expressions.UserDefinedFunction
+
+import scopt.OptionParser
 import vlp.woz.act.Act
 
 case class Span(
@@ -127,7 +127,7 @@ object NLU {
     cf.select("dialogId", "turnId", "utterance", "tokens", "slots", "actNames")
   }
 
-  def saveDatasets(spark: SparkSession): Unit = {
+  private def saveDatasets(spark: SparkSession): Unit = {
     val splits = Array("train", "dev", "test")
     splits.foreach { split => 
       val df = transformActs(spark, s"dat/woz/act/$split")
@@ -135,7 +135,7 @@ object NLU {
     }
   }
 
-  def preprocess(df: DataFrame, savePath: String = ""): PipelineModel = {
+  private def preprocess(df: DataFrame, savePath: String = ""): PipelineModel = {
     val vectorizerToken = new CountVectorizer().setInputCol("tokens").setOutputCol("tokenVec")
     val vectorizerSlot = new CountVectorizer().setInputCol("slots").setOutputCol("slotVec")
     val vectorizerAct = new CountVectorizer().setInputCol("actNames").setOutputCol("actVec")
@@ -147,7 +147,8 @@ object NLU {
 
   private def createEncoder(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): Sequential[Float] = {
     val sequential = Sequential[Float]()
-    sequential.add(Embedding[Float](inputShape = Shape(config.maxSeqLen), inputDim = numTokens, outputDim = config.embeddingSize))
+    sequential.add(InputLayer[Float](inputShape = Shape(config.maxSeqLen)))
+    sequential.add(Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize))
     for (j <- 0 until config.numLayers)
       sequential.add(Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)))
     sequential.add(Dense[Float](config.hiddenSize))
@@ -155,33 +156,58 @@ object NLU {
   }
 
   def main(args: Array[String]): Unit = {
-    val conf = new SparkConf().setAppName(getClass.getName).setMaster("local[*]")
-    val sc = new SparkContext(conf)
-    val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-    sc.setLogLevel("ERROR")
+    val opts = new OptionParser[ConfigNLU](getClass.getName) {
+      head(getClass.getName, "1.0")
+      opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
+      opt[Int]('X', "executorCores").action((x, conf) => conf.copy(executorCores = x)).text("executor cores")
+      opt[Int]('Y', "totalCores").action((x, conf) => conf.copy(totalCores = x)).text("total number of cores")
+      opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
+      opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
+      opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
+      opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
+      opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of RNN layers or Transformer blocks")
+      opt[Int]('h', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("encoder hidden size")
+      opt[Int]('k', "epochs").action((x, conf) => conf.copy(epochs = x)).text("number of epochs")
+      opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
+    }
+    opts.parse(args, ConfigNLU()) match {
+      case Some(config) =>
+        val conf = new SparkConf().setAppName(getClass.getName).setMaster(config.master)
+          .set("spark.executor.cores", config.executorCores.toString)
+          .set("spark.cores.max", config.totalCores.toString)
+          .set("spark.executor.memory", config.executorMemory)
+          .set("spark.driver.memory", config.driverMemory)
+        val sc = new SparkContext(conf)
+        Engine.init
+        val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+        sc.setLogLevel("INFO")
 
-//    saveDatasets(spark)
-    val basePath = "dat/woz/nlu"
-    val df = spark.read.json("dat/woz/nlu/dev")
-//    df.show(false)
+        val basePath = "dat/woz/nlu"
+        val df = spark.read.json("dat/woz/nlu/dev")
 
-//    val preprocessor = preprocess(df, s"$basePath/pre")
-    val preprocessor = PipelineModel.load(s"$basePath/pre")
-    val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
-    val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
-    val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
-    val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
-    val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
+        config.mode match {
+          case "init" =>
+            saveDatasets(spark)
+            preprocess(df, s"$basePath/pre")
+          case "train" =>
+            val preprocessor = PipelineModel.load(s"$basePath/pre")
+            val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
+            val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+            val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
+            val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+            val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
 
-    val config = ConfigNLU()
-    val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, -1f).setInputCol("tokens").setOutputCol("tokenIdx")
-    val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
-    val ef = sequencerTokens.transform(sequencerEntities.transform(df))
-    ef.select("tokenIdx", "slotIdx").show(false)
-    val encoder = createEncoder(vocab.length, entities.length, acts.length, config)
-    encoder.summary()
+            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, -1f).setInputCol("tokens").setOutputCol("tokenIdx")
+            val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
+            val ef = sequencerTokens.transform(sequencerEntities.transform(df))
+            ef.select("tokenIdx", "slotIdx").show(false)
+            val encoder = createEncoder(vocab.length, entities.length, acts.length, config)
+            encoder.summary()
 
-
-    spark.stop()
+          case "eval" =>
+        }
+        spark.stop()
+      case None =>
+    }
   }
 }
