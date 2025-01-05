@@ -4,10 +4,13 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.ml.feature._
-
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
-
+import org.apache.spark.ml._
+import org.apache.spark.ml.feature._
+import org.apache.spark.ml.classification._
+import org.apache.spark.ml.evaluation._
+import org.apache.spark.sql.expressions.UserDefinedFunction
 import vlp.woz.act.Act
 
 case class Span(
@@ -33,67 +36,67 @@ case class Element(
   */
 object NLU {
 
-  val pattern = """[?.,!\s]+"""
+  private val pattern = """[?.,!\s]+"""
 
   /**
     * Given an utterance and its associated non-empty spans, tokenize the utterance 
     * into tokens and their corresponding slot labels (B/I/O).
-    * @param utterance
-    * @param acts
-    * @param spans
+    * @param utterance an utterance
+    * @param acts a set of acts
+    * @param spans an array of spans
     * @return a sequence of tuples.
     */
   def tokenize(utterance: String, acts: Array[Act], spans: Array[Span]): Seq[(Int, Array[(String, String)])] = {
-    if (spans.size > 0) {
+    if (spans.length > 0) {
       val intervals: Array[(Int, Int)] = spans.map { span => (span.start.get.toInt, span.end.get.toInt) }
       val (a, b) = (intervals.head._1, intervals.last._2)
       // build intervals that need to be tokenized
-      val js = new collection.mutable.ArrayBuffer[(Int, Int)](intervals.size + 1)
+      val js = new collection.mutable.ArrayBuffer[(Int, Int)](intervals.length + 1)
       if (a > 0) js.append((0, a))
-      for (j <- 0 until intervals.size - 1) {
+      for (j <- 0 until intervals.length - 1) {
         // there exists the cases of two similar intervals with different slots. We deliberately ignore those cases for now.
-        if ((intervals(j)._2 < intervals(j+1)._1)) { 
+        if (intervals(j)._2 < intervals(j+1)._1) {
           js.append((intervals(j)._2, intervals(j+1)._1))
         }
       }
-      if (b < utterance.size) js.append((b, utterance.size))
+      if (b < utterance.length) js.append((b, utterance.length))
       // build results
-      val ss = new collection.mutable.ArrayBuffer[(Int, Array[(String, String)])](intervals.size*2)
-      for (j <- 0 until intervals.size) {
+      val ss = new collection.mutable.ArrayBuffer[(Int, Array[(String, String)])](intervals.length*2)
+      for (j <- intervals.indices) {
         val p = intervals(j)
         val slot = spans(j).slot
-        val value = utterance.subSequence(p._1, p._2).toString().trim()
+        val value = utterance.subSequence(p._1, p._2).toString.trim()
         val tokens = value.split(pattern)
         val labels = s"B-${slot.toUpperCase()}" +: Array.fill[String](tokens.size-1)(s"I-${slot.toUpperCase()}")
         ss.append((p._1, tokens.zip(labels)))
       }
       js.foreach { p => 
-        val text = utterance.subSequence(p._1, p._2).toString().trim()
-        if (text.size > 0) { 
+        val text = utterance.subSequence(p._1, p._2).toString.trim()
+        if (text.nonEmpty) {
           val tokens = text.split(pattern).filter(_.nonEmpty)
-          ss.append((p._1, tokens.zip(Array.fill[String](tokens.size)("O"))))
+          ss.append((p._1, tokens.zip(Array.fill[String](tokens.length)("O"))))
         }
       }
       // the start indices are used to sort the sequence of triples
-      ss.toSeq.sortBy(_._1)
+      ss.sortBy(_._1)
     } else {
       // there is no slots, extract only O-labeled tokens
       val tokens = utterance.split(pattern).filter(_.nonEmpty)
-      Seq((0, tokens.zip(Array.fill[String](tokens.size)("O"))))
+      Seq((0, tokens.zip(Array.fill[String](tokens.length)("O"))))
     }
   }
 
-  def extractActNames(acts: Array[Act]): Array[String] = {
-    acts.map(act => act.name.toUpperCase()).toSet.toArray.sorted
+  private def extractActNames(acts: Array[Act]): Array[String] = {
+    acts.map(act => act.name.toUpperCase()).distinct.sorted
   }
 
-  val f = udf((utterance: String, acts: Array[Act], spans: Array[Span]) => tokenize(utterance, acts, spans))
+  private val f = udf((utterance: String, acts: Array[Act], spans: Array[Span]) => tokenize(utterance, acts, spans))
   // extract tokens
-  val f1 = udf((seq: Seq[(Int, Array[(String, String)])]) => seq.flatMap(_._2.map(_._1)))
+  private val f1 = udf((seq: Seq[(Int, Array[(String, String)])]) => seq.flatMap(_._2.map(_._1)))
   // extract slots
-  val f2 = udf((seq: Seq[(Int, Array[(String, String)])]) => seq.flatMap(_._2.map(_._2)))
+  private val f2 = udf((seq: Seq[(Int, Array[(String, String)])]) => seq.flatMap(_._2.map(_._2)))
   // extract actNames
-  val g = udf((acts: Array[Act]) => extractActNames(acts))
+  private val g = udf((acts: Array[Act]) => extractActNames(acts))
 
   /**
     * Reads a data set and creates a df of columns (utterance, tokenSequence, slotSequence, actNameSequence), where
@@ -104,8 +107,8 @@ object NLU {
     * <li>actNameSequence: Seq[String], is a sequence of act names, which is typically 1 or 2 act names.
     * </ol>
     *
-    * @param spark
-    * @param path
+    * @param spark a spark session
+    * @param path a path to a split data
     */
   def transformActs(spark: SparkSession, path: String): DataFrame = {
     import spark.implicits._
@@ -120,18 +123,43 @@ object NLU {
     cf.select("dialogId", "turnId", "utterance", "tokens", "slots", "actNames")
   }
 
-  def main(args: Array[String]): Unit = {
-    val conf = new SparkConf().setAppName(getClass().getName()).setMaster("local[*]")
-    val sc = new SparkContext(conf)
-    val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-    sc.setLogLevel("ERROR")
-    
+  def saveDatasets(spark: SparkSession): Unit = {
     val splits = Array("train", "dev", "test")
     splits.foreach { split => 
       val df = transformActs(spark, s"dat/woz/act/$split")
-      df.show(false)
       df.repartition(1).write.mode("overwrite").json(s"dat/woz/nlu/$split")
     }
+  }
+
+  def preprocess(df: DataFrame, savePath: String = ""): PipelineModel = {
+    val vectorizerToken = new CountVectorizer().setInputCol("tokens").setOutputCol("tokenVec")
+    val vectorizerSlot = new CountVectorizer().setInputCol("slots").setOutputCol("slotVec")
+    val vectorizerAct = new CountVectorizer().setInputCol("actNames").setOutputCol("actVec")
+    val pipeline = new Pipeline().setStages(Array(vectorizerToken, vectorizerSlot, vectorizerAct))
+    val model = pipeline.fit(df)
+    if (savePath.nonEmpty) model.write.save(savePath)
+    model
+  }
+
+  def main(args: Array[String]): Unit = {
+    val conf = new SparkConf().setAppName(getClass.getName).setMaster("local[*]")
+    val sc = new SparkContext(conf)
+    val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+    sc.setLogLevel("ERROR")
+
+//    saveDatasets(spark)
+    val basePath = "dat/woz/nlu"
+//    val df = spark.read.json("dat/woz/nlu/train")
+//    df.show(false)
+
+//    val preprocessor = preprocess(df, s"$basePath/pre")
+    val preprocessor = PipelineModel.load(s"$basePath/pre")
+    val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
+    val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
+    val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
+
+    println(entities.mkString(", "))
+    println(acts.mkString(", "))
 
     spark.stop()
   }
