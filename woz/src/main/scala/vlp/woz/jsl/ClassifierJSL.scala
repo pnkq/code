@@ -20,7 +20,6 @@ import org.json4s.jackson.Serialization
 import scopt.OptionParser
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
-import vlp.woz.Sequencer
 
 
 /**
