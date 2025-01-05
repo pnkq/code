@@ -9,7 +9,7 @@ case class ConfigNLU(
   maxSeqLen: Int = 40,
   batchSize: Int = 32,
   embeddingSize: Int = 32,
-  recurrentSize: Int = 128,
+  recurrentSize: Int = 64, // x2 for bidirectional
   numLayers: Int = 2,
   hiddenSize: Int = 64,
   modelType: String = "lstm",

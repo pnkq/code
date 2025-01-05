@@ -152,6 +152,7 @@ object NLU {
     for (j <- 0 until config.numLayers)
       sequential.add(Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)))
     sequential.add(Dense[Float](config.hiddenSize))
+    sequential.add(Dense[Float](numEntities, activation = "softmax"))
     sequential
   }
 
@@ -197,7 +198,7 @@ object NLU {
             val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
 
-            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, -1f).setInputCol("tokens").setOutputCol("tokenIdx")
+            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("tokenIdx")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
             val ef = sequencerTokens.transform(sequencerEntities.transform(df))
             ef.select("tokenIdx", "slotIdx").show(false)
