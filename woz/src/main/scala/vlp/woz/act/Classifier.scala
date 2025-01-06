@@ -172,9 +172,9 @@ object Classifier {
         val (trainingDF0, validationDF0) = (spark.read.json(config.trainPath), spark.read.json(config.devPath))
         val testDF0 = spark.read.json(config.testPath)
 
-        val trainingDF1 = DialogReader.concatDialogActs(spark, trainingDF0)
-        val validationDF1 = DialogReader.concatDialogActs(spark, validationDF0)
-        val testDF1 = DialogReader.concatDialogActs(spark, testDF0)
+        val trainingDF1 = DialogReader.concatDialogActNames(spark, trainingDF0)
+        val validationDF1 = DialogReader.concatDialogActNames(spark, validationDF0)
+        val testDF1 = DialogReader.concatDialogActNames(spark, testDF0)
         val prevTokenizer = new RegexTokenizer().setInputCol("prevActs").setOutputCol("ps").setPattern("""[\s]+""")
         val (trainingDF, validationDF) = (prevTokenizer.transform(trainingDF1), prevTokenizer.transform(validationDF1))
         val testDF = prevTokenizer.transform(testDF1)
