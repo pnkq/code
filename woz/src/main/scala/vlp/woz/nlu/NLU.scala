@@ -184,11 +184,10 @@ object NLU {
         sc.setLogLevel("INFO")
 
         val basePath = "dat/woz/nlu"
-        val df = spark.read.json("dat/woz/nlu/dev")
-
         config.mode match {
           case "init" =>
             saveDatasets(spark)
+            val df = spark.read.json("dat/woz/nlu/train")
             preprocess(df, s"$basePath/pre")
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
@@ -200,7 +199,9 @@ object NLU {
 
             val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("tokenIdx")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
-            val ef = sequencerTokens.transform(sequencerEntities.transform(df))
+
+            val (uf, vf) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
+            val ef = sequencerTokens.transform(sequencerEntities.transform(vf))
             ef.select("tokenIdx", "slotIdx").show(false)
             val encoder = createEncoder(vocab.length, entities.length, acts.length, config)
             encoder.summary()
