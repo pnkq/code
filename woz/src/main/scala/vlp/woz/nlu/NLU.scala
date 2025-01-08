@@ -2,7 +2,11 @@ package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.Sequential
 import com.intel.analytics.bigdl.dllib.keras.layers.{Bidirectional, Dense, Embedding, InputLayer, LSTM}
+import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion}
+import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
+import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
 import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
+import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.DataFrame
@@ -13,7 +17,6 @@ import org.apache.spark.ml._
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation._
-
 import scopt.OptionParser
 import vlp.woz.act.Act
 
@@ -33,6 +36,45 @@ case class Element(
   spans: Array[Span]
 )
 
+import com.intel.analytics.bigdl.dllib.nn.abstractnn.Activity
+import com.intel.analytics.bigdl.dllib.optim.{AccuracyResult, ValidationMethod, ValidationResult}
+import com.intel.analytics.bigdl.dllib.tensor.Tensor
+import com.intel.analytics.bigdl.dllib.tensor.TensorNumericMath.TensorNumeric
+
+/**
+ * phuonglh@gamil.com
+ *
+ * @param paddingValue a padding value in the target sequence, default is -1f.
+ * @param ev
+ *
+ * Note: 1-based label index for token classification
+ */
+class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNumeric[Float]) extends ValidationMethod[Float] {
+  override def apply(output: Activity, target: Activity): ValidationResult = {
+    var correct = 0
+    var count = 0
+    val _output = output.asInstanceOf[Tensor[Float]] // nDim = 3
+    val _target = target.asInstanceOf[Tensor[Float]] // nDim = 2
+    // split by batch size (dim = 1 of output and target)
+    _output.split(1).zip(_target.split(1))
+      .foreach { case (tensor, ys) =>
+        // split by time slice (dim = 1 of tensor)
+        val zs = tensor.split(1).map { t =>
+          val (_, k) = t.max(1) // the label with max score
+          k(Array(1)).toInt // k is a tensor => extract its value
+        }
+        //      println(zs.mkString(", ") + " :=: " + ys.toArray().mkString(", ")) // DEBUG
+        // filter the padded value (-1) in the target before perform matching with the output
+        val c = ys.toArray().map(_.toInt).filter(e => e != paddingValue).zip(zs)
+          .map(p => if (p._1 == p._2) 1 else 0)
+        correct += c.sum
+        count += c.length
+      }
+    new AccuracyResult(correct, count)
+  }
+  override def format(): String = "TimeDistributedTop1Accuracy"
+}
+
 /**
   * Reads dialog act data sets which are saved by [[vlp.woz.DialogReader]] and prepare 
   * data sets suitable for training token classification (sequence labeling) models.
@@ -41,6 +83,7 @@ case class Element(
 object NLU {
 
   private val pattern = """[?.,!\s]+"""
+  private val numCores = Runtime.getRuntime.availableProcessors()
 
   /**
     * Given an utterance and its associated non-empty spans, tokenize the utterance 
@@ -181,7 +224,7 @@ object NLU {
         val sc = new SparkContext(conf)
         Engine.init
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-        sc.setLogLevel("INFO")
+        sc.setLogLevel("WARN")
 
         val basePath = "dat/woz/nlu"
         config.mode match {
@@ -192,7 +235,7 @@ object NLU {
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
             val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
-            val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+            val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2)).toMap
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
             val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
@@ -200,11 +243,29 @@ object NLU {
             val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("tokenIdx")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
 
-            val (uf, vf) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
-            val ef = sequencerTokens.transform(sequencerEntities.transform(vf))
-            ef.select("tokenIdx", "slotIdx").show(false)
+            val (train, dev) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
+            val (uf, vf) = (sequencerTokens.transform(sequencerEntities.transform(train)), sequencerTokens.transform(sequencerEntities.transform(dev)))
+            uf.select("tokenIdx", "slotIdx").show(false)
             val encoder = createEncoder(vocab.length, entities.length, acts.length, config)
             encoder.summary()
+
+            val (featureSize, labelSize) = (Array(config.maxSeqLen), Array(config.maxSeqLen))
+            // should set the sizeAverage=false in ClassNLLCriterion
+            val criterion = ClassNLLCriterion[Float](sizeAverage = false, paddingValue = -1)
+            val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
+            val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/woz/")
+            val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/woz/")
+            val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
+            estimator.setLabelCol("slotIdx").setFeaturesCol("tokenIdx")
+              .setBatchSize(batchSize)
+              .setOptimMethod(new Adam[Float](1E-4))
+              .setMaxEpoch(config.epochs)
+              .setTrainSummary(trainingSummary)
+              .setValidationSummary(validationSummary)
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
+            estimator.fit(vf) // uf in server
+
+            encoder.saveModel(s"bin/woz-${config.modelType}.bigdl", overWrite = true)
 
           case "eval" =>
         }
