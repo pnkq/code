@@ -208,6 +208,7 @@ object NLU {
       opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
+      opt[Double]('a', "learningRate").action((x, conf) => conf.copy(learningRate = x)).text("learning rate")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
       opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of RNN layers or Transformer blocks")
       opt[Int]('h', "hiddenSize").action((x, conf) => conf.copy(hiddenSize = x)).text("encoder hidden size")
@@ -258,7 +259,7 @@ object NLU {
             val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
             estimator.setLabelCol("slotIdx").setFeaturesCol("tokenIdx")
               .setBatchSize(batchSize)
-              .setOptimMethod(new Adam[Float](1E-4))
+              .setOptimMethod(new Adam[Float](config.learningRate))
               .setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)

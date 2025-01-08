@@ -8,6 +8,7 @@ case class ConfigNLU(
   driverMemory: String = "16g", // D
   maxSeqLen: Int = 40,
   batchSize: Int = 32,
+  learningRate: Double = 5E-4,
   embeddingSize: Int = 32,
   recurrentSize: Int = 64, // x2 for bidirectional
   numLayers: Int = 2,
