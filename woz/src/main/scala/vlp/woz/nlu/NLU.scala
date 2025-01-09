@@ -2,8 +2,9 @@ package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.Sequential
 import com.intel.analytics.bigdl.dllib.keras.layers.{Bidirectional, Dense, Embedding, InputLayer, LSTM}
+import com.intel.analytics.bigdl.dllib.keras.models.KerasNet
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion}
-import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
+import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
 import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
 import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
@@ -36,44 +37,6 @@ case class Element(
   spans: Array[Span]
 )
 
-import com.intel.analytics.bigdl.dllib.nn.abstractnn.Activity
-import com.intel.analytics.bigdl.dllib.optim.{AccuracyResult, ValidationMethod, ValidationResult}
-import com.intel.analytics.bigdl.dllib.tensor.Tensor
-import com.intel.analytics.bigdl.dllib.tensor.TensorNumericMath.TensorNumeric
-
-/**
- * phuonglh@gamil.com
- *
- * @param paddingValue a padding value in the target sequence, default is -1f.
- * @param ev
- *
- * Note: 1-based label index for token classification
- */
-class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNumeric[Float]) extends ValidationMethod[Float] {
-  override def apply(output: Activity, target: Activity): ValidationResult = {
-    var correct = 0
-    var count = 0
-    val _output = output.asInstanceOf[Tensor[Float]] // nDim = 3
-    val _target = target.asInstanceOf[Tensor[Float]] // nDim = 2
-    // split by batch size (dim = 1 of output and target)
-    _output.split(1).zip(_target.split(1))
-      .foreach { case (tensor, ys) =>
-        // split by time slice (dim = 1 of tensor)
-        val zs = tensor.split(1).map { t =>
-          val (_, k) = t.max(1) // the label with max score
-          k(Array(1)).toInt // k is a tensor => extract its value
-        }
-        //      println(zs.mkString(", ") + " :=: " + ys.toArray().mkString(", ")) // DEBUG
-        // filter the padded value (-1) in the target before perform matching with the output
-        val c = ys.toArray().map(_.toInt).filter(e => e != paddingValue).zip(zs)
-          .map(p => if (p._1 == p._2) 1 else 0)
-        correct += c.sum
-        count += c.length
-      }
-    new AccuracyResult(correct, count)
-  }
-  override def format(): String = "TimeDistributedTop1Accuracy"
-}
 
 /**
   * Reads dialog act data sets which are saved by [[vlp.woz.DialogReader]] and prepare 
@@ -199,6 +162,19 @@ object NLU {
     sequential
   }
 
+  private def predict(encoder: KerasNet[Float], vf: DataFrame, argmax: Boolean=true): DataFrame = {
+    // convert encoder to sequential model
+    val sequential = encoder.asInstanceOf[Sequential[Float]]
+    // bigdl produces 3-d output results (including batch dimension), we need to convert it to 2-d results.
+    if (argmax)
+      sequential.add(ArgMaxLayer[Float]())
+    sequential.summary()
+    // pass to a Spark model and run prediction
+    val model = NNModel(sequential)
+    model.transform(vf)
+  }
+
+
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[ConfigNLU](getClass.getName) {
       head(getClass.getName, "1.0")
@@ -238,14 +214,22 @@ object NLU {
             val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
             val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2)).toMap
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
-            val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+            val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // BigDL uses 1-based index for targets
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
 
             val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("tokenIdx")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
 
             val (train, dev) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
-            val (uf, vf) = (sequencerTokens.transform(sequencerEntities.transform(train)), sequencerTokens.transform(sequencerEntities.transform(dev)))
+            // filter samples longer than maxSeqLen
+            val (trainDF, devDF) = (
+              train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
+            )
+            val (uf, vf) = (
+              sequencerTokens.transform(sequencerEntities.transform(trainDF)),
+              sequencerTokens.transform(sequencerEntities.transform(devDF))
+            )
             uf.select("tokenIdx", "slotIdx").show(false)
             val encoder = createEncoder(vocab.length, entities.length, acts.length, config)
             encoder.summary()
@@ -267,6 +251,9 @@ object NLU {
             estimator.fit(vf) // uf in server
 
             encoder.saveModel(s"bin/woz-${config.modelType}.bigdl", overWrite = true)
+
+            val df = predict(encoder, vf)
+            df.select("slotIdx", "prediction").show(false)
 
           case "eval" =>
         }

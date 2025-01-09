@@ -6,14 +6,14 @@ case class ConfigNLU(
   executorCores: Int = 8, // Y
   executorMemory: String = "8g", // Z
   driverMemory: String = "16g", // D
-  maxSeqLen: Int = 40,
+  maxSeqLen: Int = 20,
   batchSize: Int = 32,
-  learningRate: Double = 5E-4,
+  learningRate: Double = 1E-6,
   embeddingSize: Int = 32,
   recurrentSize: Int = 64, // x2 for bidirectional
-  numLayers: Int = 2,
+  numLayers: Int = 1,
   hiddenSize: Int = 64,
   modelType: String = "lstm",
   mode: String = "train",
-  epochs: Int = 20
+  epochs: Int = 15
 )
