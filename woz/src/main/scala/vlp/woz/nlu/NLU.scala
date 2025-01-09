@@ -217,7 +217,7 @@ object NLU {
             val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // BigDL uses 1-based index for targets
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
 
-            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("tokenIdx")
+            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("features")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
 
             val (train, dev) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
@@ -230,7 +230,7 @@ object NLU {
               sequencerTokens.transform(sequencerEntities.transform(trainDF)),
               sequencerTokens.transform(sequencerEntities.transform(devDF))
             )
-            uf.select("tokenIdx", "slotIdx").show(false)
+            uf.select("features", "slotIdx").show(false)
             val encoder = createEncoder(vocab.length, entities.length, acts.length, config)
             encoder.summary()
 
@@ -241,7 +241,7 @@ object NLU {
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/woz/")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/woz/")
             val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
-            estimator.setLabelCol("slotIdx").setFeaturesCol("tokenIdx")
+            estimator.setLabelCol("slotIdx")
               .setBatchSize(batchSize)
               .setOptimMethod(new Adam[Float](config.learningRate))
               .setMaxEpoch(config.epochs)
