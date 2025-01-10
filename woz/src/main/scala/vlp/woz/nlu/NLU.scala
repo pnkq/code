@@ -6,6 +6,7 @@ import com.intel.analytics.bigdl.dllib.keras.models.KerasNet
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
 import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
+import com.intel.analytics.bigdl.dllib.tensor.{DenseTensorBLAS, Tensor}
 import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import org.apache.spark.{SparkConf, SparkContext}
@@ -18,6 +19,7 @@ import org.apache.spark.ml._
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation._
+import org.apache.spark.ml.linalg.DenseVector
 import scopt.OptionParser
 import vlp.woz.act.Act
 
@@ -151,7 +153,7 @@ object NLU {
     model
   }
 
-  private def createEncoder(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): Sequential[Float] = {
+  private def createEncoderLSTM(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): Sequential[Float] = {
     val sequential = Sequential[Float]()
     sequential.add(InputLayer[Float](inputShape = Shape(config.maxSeqLen)))
     sequential.add(Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize))
@@ -160,6 +162,10 @@ object NLU {
     sequential.add(Dense[Float](config.hiddenSize))
     sequential.add(Dense[Float](numEntities, activation = "softmax"))
     sequential
+  }
+
+  private def createEncoderBERT(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): KerasNet[Float] = {
+    ???
   }
 
   private def predict(encoder: KerasNet[Float], vf: DataFrame, argmax: Boolean=true): DataFrame = {
@@ -172,6 +178,19 @@ object NLU {
     // pass to a Spark model and run prediction
     val model = NNModel(sequential)
     model.transform(vf)
+  }
+
+  private def labelWeights(spark: SparkSession, df: DataFrame, labelColumnName: String): Tensor[Float] = {
+    import spark.implicits._
+    // select non-padded labels
+    val ef = df.select(labelColumnName).flatMap(row => row.getAs[DenseVector](0).toArray.filter(_ > 0))
+    val ff = ef.groupBy("value").count // two columns [value, count]
+    // count their frequencies
+    val total: Long = ff.agg(sum("count")).head.getLong(0)
+    val numLabels: Long = ff.count()
+    val wf = ff.withColumn("w", lit(total.toDouble/numLabels)/col("count")).sort("value") // sort to align label indices
+    val w = wf.select("w").collect().map(row => row.getDouble(0)).map(_.toFloat)
+    Tensor[Float](w, Array(w.length))
   }
 
 
@@ -231,12 +250,13 @@ object NLU {
               sequencerTokens.transform(sequencerEntities.transform(devDF))
             )
             uf.select("features", "slotIdx").show(false)
-            val encoder = createEncoder(vocab.length, entities.length, acts.length, config)
+            val encoder = createEncoderLSTM(vocab.length, entities.length, acts.length, config)
             encoder.summary()
 
             val (featureSize, labelSize) = (Array(config.maxSeqLen), Array(config.maxSeqLen))
-            // should set the sizeAverage=false in ClassNLLCriterion
-            val criterion = ClassNLLCriterion[Float](sizeAverage = false, paddingValue = -1)
+            val w = labelWeights(spark, uf, "slotIdx")
+            println(w.toArray.mkString(", "))
+            val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = false, paddingValue = -1)
             val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/woz/")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/woz/")
