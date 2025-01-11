@@ -268,9 +268,9 @@ object NLU {
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
-            estimator.fit(vf) // uf in server
+            estimator.fit(uf)
 
-            encoder.saveModel(s"bin/woz-${config.modelType}.bigdl", overWrite = true)
+            encoder.saveModel(s"bin/woz-${config.modelType}-${config.numLayers}.bigdl", overWrite = true)
 
             val df = predict(encoder, vf)
             df.select("slotIdx", "prediction").show(false)
