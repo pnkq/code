@@ -186,7 +186,7 @@ object NLU {
 //    val lastState = SelectTable[Float](1).setName("firstBlock").inputs(bertNode)
     // get all BERT states
     val bertOutput = SelectTable[Float](0).setName("bertOutput").inputs(bertNode)
-    val output = Dense[Float](numEntities).setName("output").inputs(bertOutput)
+    val output = Dense[Float](numEntities, activation = "softmax").setName("output").inputs(bertOutput)
     Model[Float](input, output)
   }
 
