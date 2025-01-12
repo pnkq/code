@@ -2,7 +2,7 @@ package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
 import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, InputLayer, LSTM, Reshape, SelectTable, SplitTensor, Squeeze}
-import com.intel.analytics.bigdl.dllib.keras.models.KerasNet
+import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
 import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
@@ -190,15 +190,15 @@ object NLU {
     Model[Float](input, output)
   }
 
-  private def predict(encoder: KerasNet[Float], vf: DataFrame, argmax: Boolean=true): DataFrame = {
-    // convert encoder to sequential model
-    val sequential = encoder.asInstanceOf[Sequential[Float]]
+  private def predict(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features", argmax: Boolean=true): DataFrame = {
+    val sequential = Sequential[Float]()
+    sequential.add(encoder)
     // bigdl produces 3-d output results (including batch dimension), we need to convert it to 2-d results.
     if (argmax)
       sequential.add(ArgMaxLayer[Float]())
     sequential.summary()
     // pass to a Spark model and run prediction
-    val model = NNModel(sequential)
+    val model = NNModel[Float](sequential).setFeaturesCol(featuresCol)
     model.transform(vf)
   }
 
@@ -245,6 +245,12 @@ object NLU {
         sc.setLogLevel("WARN")
 
         val basePath = "dat/woz/nlu"
+        val modelPath = s"bin/woz-${config.modelType}-${config.numLayers}.bigdl"
+        val (featuresCol, featureSize) = config.modelType match {
+          case "lstm" => ("features", Array(config.maxSeqLen))
+          case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
+        }
+
         config.mode match {
           case "init" =>
             saveDatasets(spark)
@@ -280,16 +286,14 @@ object NLU {
                   sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
                 )
             }
+            // save vf for other modes (eval/predict)
+            vf.write.mode("overwrite").parquet("dat/woz/nlu/vf")
 
             val encoder = config.modelType match {
               case "lstm" => createEncoderLSTM(vocab.length, entities.length, acts.length, config)
               case "bert" => createEncoderBERT(vocab.length, entities.length, acts.length, config)
             }
             encoder.summary()
-            val (featuresCol, featureSize) = config.modelType match {
-              case "lstm" => ("features", Array(config.maxSeqLen))
-              case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
-            }
             val labelSize = Array(config.maxSeqLen)
             val w = labelWeights(spark, uf, "slotIdx")
 
@@ -308,12 +312,18 @@ object NLU {
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
             estimator.fit(vf)
 
-            encoder.saveModel(s"bin/woz-${config.modelType}-${config.numLayers}.bigdl", overWrite = true)
+            encoder.saveModel(modelPath, overWrite = true)
 
-            val df = predict(encoder, vf)
-            df.select("slotIdx", "prediction").show(false)
+            val pf = predict(encoder, vf, featuresCol)
+            pf.select("slotIdx", "prediction").show(false)
 
           case "eval" =>
+            val encoder =  Models.loadModel[Float](modelPath)
+            encoder.summary()
+            val vf = spark.read.parquet("dat/woz/nlu/vf")
+            val pf = predict(encoder, vf, featuresCol)
+            pf.select("slotIdx", "prediction").show(false)
+            pf.show()
         }
         spark.stop()
       case None =>

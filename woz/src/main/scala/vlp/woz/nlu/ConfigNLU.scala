@@ -15,6 +15,6 @@ case class ConfigNLU(
   numHeads: Int = 4,
   hiddenSize: Int = 64,
   modelType: String = "lstm",
-  mode: String = "train",
+  mode: String = "eval",
   epochs: Int = 100
 )
