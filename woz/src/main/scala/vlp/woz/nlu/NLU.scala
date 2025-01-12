@@ -190,6 +190,19 @@ object NLU {
     Model[Float](input, output)
   }
 
+  private def createJointEncoderLSTM(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): Sequential[Float] = {
+    // first part: same as EncoderLSTM
+    val sequential = Sequential[Float]()
+    sequential.add(InputLayer[Float](inputShape = Shape(config.maxSeqLen)))
+    sequential.add(Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize))
+    for (j <- 0 until config.numLayers)
+      sequential.add(Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)))
+    sequential.add(Dense[Float](config.hiddenSize))
+    sequential.add(Dense[Float](numEntities, activation = "softmax"))
+    // second part: sigmoid activation for each act name
+    sequential
+  }
+
   private def predict(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features", argmax: Boolean=true): DataFrame = {
     val sequential = Sequential[Float]()
     sequential.add(encoder)
