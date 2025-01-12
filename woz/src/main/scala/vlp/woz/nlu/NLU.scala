@@ -1,7 +1,7 @@
 package vlp.woz.nlu
 
-import com.intel.analytics.bigdl.dllib.keras.Sequential
-import com.intel.analytics.bigdl.dllib.keras.layers.{Bidirectional, Dense, Embedding, InputLayer, LSTM}
+import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
+import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, InputLayer, LSTM, Reshape, SelectTable, SplitTensor, Squeeze}
 import com.intel.analytics.bigdl.dllib.keras.models.KerasNet
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
@@ -21,6 +21,7 @@ import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation._
 import org.apache.spark.ml.linalg.DenseVector
 import scopt.OptionParser
+import vlp.woz.Sequencer4BERT
 import vlp.woz.act.Act
 
 case class Span(
@@ -165,7 +166,28 @@ object NLU {
   }
 
   private def createEncoderBERT(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): KerasNet[Float] = {
-    ???
+    val input = Input[Float](inputShape = Shape(4*config.maxSeqLen), name = "input")
+    val reshape = Reshape[Float](targetShape = Array(4, config.maxSeqLen)).inputs(input)
+    val split = SplitTensor[Float](1, 4).inputs(reshape)
+    val selectIds = SelectTable[Float](0).setName("inputId").inputs(split)
+    val inputIds = Squeeze[Float](1).inputs(selectIds)
+    val selectSegments = SelectTable[Float](1).setName("segmentId").inputs(split)
+    val segmentIds = Squeeze[Float](1).inputs(selectSegments)
+    val selectPositions = SelectTable[Float](2).setName("positionId").inputs(split)
+    val positionIds = Squeeze[Float](1).inputs(selectPositions)
+    val selectMasks = SelectTable[Float](3).setName("masks").inputs(split)
+    val masksReshaped = Reshape[Float](targetShape = Array(1, 1, config.maxSeqLen)).setName("maskReshape").inputs(selectMasks)
+
+    // use a BERT layer, not output all blocks (there will be 2 outputs)
+    val bert = BERT[Float](numTokens, config.embeddingSize, config.numLayers, config.numHeads, config.maxSeqLen, config.hiddenSize, outputAllBlock = false).setName("BERT")
+    val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
+    // get the pooled output which processes the hidden state of the last layer with regard to the first
+    //  token of the sequence. This would be useful for classification tasks.
+//    val lastState = SelectTable[Float](1).setName("firstBlock").inputs(bertNode)
+    // get all BERT states
+    val bertOutput = SelectTable[Float](0).setName("bertOutput").inputs(bertNode)
+    val output = Dense[Float](numEntities).setName("output").inputs(bertOutput)
+    Model[Float](input, output)
   }
 
   private def predict(encoder: KerasNet[Float], vf: DataFrame, argmax: Boolean=true): DataFrame = {
@@ -180,10 +202,10 @@ object NLU {
     model.transform(vf)
   }
 
-  private def labelWeights(spark: SparkSession, df: DataFrame, labelColumnName: String): Tensor[Float] = {
+  private def labelWeights(spark: SparkSession, df: DataFrame, labelCol: String): Tensor[Float] = {
     import spark.implicits._
     // select non-padded labels
-    val ef = df.select(labelColumnName).flatMap(row => row.getAs[DenseVector](0).toArray.filter(_ > 0))
+    val ef = df.select(labelCol).flatMap(row => row.getAs[DenseVector](0).toArray.filter(_ > 0))
     val ff = ef.groupBy("value").count // two columns [value, count]
     // count their frequencies
     val total: Long = ff.agg(sum("count")).head.getLong(0)
@@ -245,30 +267,46 @@ object NLU {
               train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
               dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
             )
-            val (uf, vf) = (
-              sequencerTokens.transform(sequencerEntities.transform(trainDF)),
-              sequencerTokens.transform(sequencerEntities.transform(devDF))
-            )
-            uf.select("features", "slotIdx").show(false)
-            val encoder = createEncoderLSTM(vocab.length, entities.length, acts.length, config)
-            encoder.summary()
+            val (uf, vf) = config.modelType match {
+              case "lstm" =>
+                (
+                  sequencerTokens.transform(sequencerEntities.transform(trainDF)),
+                  sequencerTokens.transform(sequencerEntities.transform(devDF))
+                )
+              case "bert" =>
+                val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresBERT")
+                (
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF))),
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
+                )
+            }
 
-            val (featureSize, labelSize) = (Array(config.maxSeqLen), Array(config.maxSeqLen))
+            val encoder = config.modelType match {
+              case "lstm" => createEncoderLSTM(vocab.length, entities.length, acts.length, config)
+              case "bert" => createEncoderBERT(vocab.length, entities.length, acts.length, config)
+            }
+            encoder.summary()
+            val (featuresCol, featureSize) = config.modelType match {
+              case "lstm" => ("features", Array(config.maxSeqLen))
+              case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
+            }
+            val labelSize = Array(config.maxSeqLen)
             val w = labelWeights(spark, uf, "slotIdx")
-            println(w.toArray.mkString(", "))
+
             val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = false, paddingValue = -1)
             val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/woz/")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/woz/")
             val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
-            estimator.setLabelCol("slotIdx")
+            uf.select(featuresCol, "slotIdx").show(false)
+            estimator.setLabelCol("slotIdx").setFeaturesCol(featuresCol)
               .setBatchSize(batchSize)
               .setOptimMethod(new Adam[Float](config.learningRate))
               .setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
-            estimator.fit(uf)
+            estimator.fit(vf)
 
             encoder.saveModel(s"bin/woz-${config.modelType}-${config.numLayers}.bigdl", overWrite = true)
 

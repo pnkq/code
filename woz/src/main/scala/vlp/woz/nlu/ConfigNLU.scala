@@ -12,6 +12,7 @@ case class ConfigNLU(
   embeddingSize: Int = 32,
   recurrentSize: Int = 64, // x2 for bidirectional
   numLayers: Int = 1,
+  numHeads: Int = 4,
   hiddenSize: Int = 64,
   modelType: String = "lstm",
   mode: String = "train",

@@ -2,14 +2,10 @@ package vlp.woz.act
 
 import com.intel.analytics.bigdl.dllib.NNContext
 import com.intel.analytics.bigdl.numeric.NumericFloat
-import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
 import com.intel.analytics.bigdl.dllib.keras.models.{Models, KerasNet}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
-import com.intel.analytics.bigdl.dllib.keras.metrics.{CategoricalAccuracy, Top5Accuracy}
-import com.intel.analytics.bigdl.dllib.optim.{MeanAveragePrecision}
-import com.intel.analytics.bigdl.dllib.nn.abstractnn.{AbstractModule, Activity}
-import com.intel.analytics.bigdl.dllib.optim.{Loss, MAE, Trigger}
-import com.intel.analytics.bigdl.dllib.tensor.Tensor
+import com.intel.analytics.bigdl.dllib.keras.metrics.CategoricalAccuracy
+import com.intel.analytics.bigdl.dllib.optim.{MAE, Trigger}
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNModel, NNEstimator}
@@ -31,6 +27,7 @@ import java.nio.file.{Files, Paths, StandardOpenOption}
 import org.apache.spark.mllib.evaluation.MultilabelMetrics
 
 import vlp.woz.DialogReader
+import vlp.woz.Sequencer4BERT
 
 /**
   * phuonglh@gmail.com
@@ -39,12 +36,12 @@ import vlp.woz.DialogReader
   * 
   */
 object Classifier {
-  implicit val formats = Serialization.formats(NoTypeHints)
+  implicit val formats: AnyRef with Formats = Serialization.formats(NoTypeHints)
 
   def train(model: AbstractModel, config: Config, trainingDF: DataFrame, validationDF: DataFrame, 
     preprocessor: PipelineModel, vocabulary: Array[String], labels: Array[String], 
     trainingSummary: TrainSummary, validationSummary: ValidationSummary): KerasNet[Float] = {
-    val bigdl = model.createModel(vocabulary.size, labels.size)
+    val bigdl = model.createModel(vocabulary.length, labels.length)
     bigdl.summary()
     // build a vocab map
     val vocabDict = vocabulary.zipWithIndex.toMap
@@ -68,15 +65,15 @@ object Classifier {
     val maxSeqLen = config.maxSequenceLength
     val estimator = if (config.modelType == "lstm") {
       val featureSize = Array(maxSeqLen)
-      val labelSize = Array(labels.size)
+      val labelSize = Array(labels.length)
       NNEstimator(bigdl, BCECriterion(), featureSize, labelSize)
     } else if (config.modelType == "bert") {
       val featureSize = Array(Array(maxSeqLen), Array(maxSeqLen), Array(maxSeqLen), Array(maxSeqLen))
-      val labelSize = Array(labels.size)
+      val labelSize = Array(labels.length)
       NNEstimator(bigdl, BCECriterion(), featureSize, labelSize)
     } else { // lstm-boa
-      val featureSize = Array(Array(maxSeqLen), Array(labels.size))
-      val labelSize = Array(labels.size)
+      val featureSize = Array(Array(maxSeqLen), Array(labels.length))
+      val labelSize = Array(labels.length)
       NNEstimator(bigdl, BCECriterion(), featureSize, labelSize)
     }
     estimator.setLabelCol("label").setFeaturesCol("features")
@@ -92,7 +89,7 @@ object Classifier {
 
   def evaluate(result: DataFrame, labelSize: Int, config: Config, split: String): Score = {
     // evaluate the result
-    val predictionsAndLabels = result.rdd.map { case row => 
+    val predictionsAndLabels = result.rdd.map { row =>
       (row.getAs[Seq[Double]](0).toArray, row.getAs[Seq[Double]](1).toArray)
     }
     val metrics = new MultilabelMetrics(predictionsAndLabels)
@@ -128,8 +125,8 @@ object Classifier {
     Logger.getLogger("org.apache.spark").setLevel(Level.ERROR)
     val logger = LoggerFactory.getLogger(getClass.getName)
 
-    val opts = new OptionParser[Config](getClass().getName()) {
-      head(getClass().getName(), "1.0")
+    val opts = new OptionParser[Config](getClass.getName) {
+      head(getClass.getName, "1.0")
       opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
       opt[Int]('X', "executorCores").action((x, conf) => conf.copy(executorCores = x)).text("executor cores, default is 8")
       opt[Int]('Y', "totalCores").action((x, conf) => conf.copy(totalCores = x)).text("total number of cores, default is 8")
@@ -154,7 +151,7 @@ object Classifier {
     }
     opts.parse(args, Config()) match {
       case Some(config) =>
-        val conf = Engine.createSparkConf().setAppName(getClass().getName()).setMaster(config.master)
+        val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster(config.master)
           .set("spark.executor.cores", config.executorCores.toString)
           .set("spark.cores.max", config.totalCores.toString)
           .set("spark.executor.memory", config.executorMemory)
@@ -202,18 +199,18 @@ object Classifier {
             val (cft, cfv) = (labelIndexer.transform(trainingDF), labelIndexer.transform(validationDF))
             // training score
             val dft = model.predict(cft, preprocessor, bigdl)
-            val trainingScore = evaluate(dft, labels.size, config, "train")
+            val trainingScore = evaluate(dft, labels.length, config, "train")
             logger.info(s"${Serialization.writePretty(trainingScore)}") 
             saveScore(trainingScore, config.scorePath)
             // validation score
             val dfv = model.predict(cfv, preprocessor, bigdl)
-            val validationScore = evaluate(dfv, labels.size, config, "valid")
+            val validationScore = evaluate(dfv, labels.length, config, "valid")
             logger.info(s"${Serialization.writePretty(validationScore)}") 
             saveScore(validationScore, config.scorePath)
             // test score
             val xf = labelIndexer.transform(testDF)
             val test = model.predict(xf, preprocessor, bigdl)
-            val testScore = evaluate(test, labels.size, config, "test")
+            val testScore = evaluate(test, labels.length, config, "test")
             logger.info(s"${Serialization.writePretty(testScore)}") 
             saveScore(testScore, config.scorePath)
           case "eval" => 
@@ -231,19 +228,19 @@ object Classifier {
             // training score
             val trainingResult = model.predict(dft, preprocessor, bigdl)
             trainingResult.show(false)
-            var score = evaluate(trainingResult, labels.size, config, "train")
+            var score = evaluate(trainingResult, labels.length, config, "train")
             logger.info(s"${Serialization.writePretty(score)}") 
             saveScore(score, config.scorePath)
             // validation score
             val dfv = labelIndexer.transform(validationDF)
             val validationResult = model.predict(dfv, preprocessor, bigdl)
-            score = evaluate(validationResult, labels.size, config, "valid")
+            score = evaluate(validationResult, labels.length, config, "valid")
             logger.info(s"${Serialization.writePretty(score)}") 
             saveScore(score, config.scorePath)
             // test score
             val xf = labelIndexer.transform(testDF)
             val test = model.predict(xf, preprocessor, bigdl)
-            score = evaluate(test, labels.size, config, "test")
+            score = evaluate(test, labels.length, config, "test")
             logger.info(s"${Serialization.writePretty(score)}") 
             saveScore(score, config.scorePath)
 
@@ -267,15 +264,15 @@ object Classifier {
                 val bigdl = train(model, conf, trainingDF, validationDF, preprocessor, vocabulary, labels, trainingSummary, validationSummary)
                 // training score
                 val dft = model.predict(cft, preprocessor, bigdl)
-                val trainingScore = evaluate(dft, labels.size, conf, "train")
+                val trainingScore = evaluate(dft, labels.length, conf, "train")
                 saveScore(trainingScore, config.scorePath)
                 // validation score
                 val dfv = model.predict(cfv, preprocessor, bigdl)
-                val validationScore = evaluate(dfv, labels.size, conf, "valid")
+                val validationScore = evaluate(dfv, labels.length, conf, "valid")
                 saveScore(validationScore, config.scorePath)
                 // test score                
                 val test = model.predict(xf, preprocessor, bigdl)
-                val testScore = evaluate(test, labels.size, conf, "test")
+                val testScore = evaluate(test, labels.length, conf, "test")
                 saveScore(testScore, config.scorePath)
               }
             }
@@ -299,15 +296,15 @@ object Classifier {
                 val bigdl = train(model, conf, trainingDF, validationDF, preprocessor, vocabulary, labels, trainingSummary, validationSummary)
                 // training score
                 val dft = model.predict(cft, preprocessor, bigdl)
-                val trainingScore = evaluate(dft, labels.size, conf, "train")
+                val trainingScore = evaluate(dft, labels.length, conf, "train")
                 saveScore(trainingScore, config.scorePath)
                 // validation score
                 val dfv = model.predict(cfv, preprocessor, bigdl)
-                val validationScore = evaluate(dfv, labels.size, conf, "valid")
+                val validationScore = evaluate(dfv, labels.length, conf, "valid")
                 saveScore(validationScore, config.scorePath)
                 // test score                
                 val test = model.predict(xf, preprocessor, bigdl)
-                val testScore = evaluate(test, labels.size, conf, "test")
+                val testScore = evaluate(test, labels.length, conf, "test")
                 saveScore(testScore, config.scorePath)
               }
             }

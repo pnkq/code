@@ -1,11 +1,11 @@
-package vlp.woz.act
+package vlp.woz
 
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.UnaryTransformer
-import org.apache.spark.ml.util.{DefaultParamsReadable, DefaultParamsWritable, Identifiable}
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.ml.linalg.SQLDataTypes.VectorType
 import org.apache.spark.ml.linalg.{Vector, Vectors}
+import org.apache.spark.ml.util.{DefaultParamsReadable, DefaultParamsWritable, Identifiable}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types.DataType
 
 
@@ -56,7 +56,7 @@ class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], maxSeque
       }
     }
 
-    f(_)
+    f
   }
 
   override protected def outputDataType: DataType = VectorType

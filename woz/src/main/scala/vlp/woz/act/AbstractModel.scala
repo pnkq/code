@@ -4,17 +4,15 @@ import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.{Sequential, Model}
 import com.intel.analytics.bigdl.dllib.keras.models.KerasNet
 import com.intel.analytics.bigdl.dllib.keras.layers._
-import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
-import com.intel.analytics.bigdl.dllib.nn.abstractnn.{AbstractModule, Activity}
-import com.intel.analytics.bigdl.dllib.nn.internal.KerasLayer
 import com.intel.analytics.bigdl.dllib.nnframes.NNModel
 
-import org.apache.spark.sql.{SparkSession, DataFrame}
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.ml.{Pipeline, PipelineModel}
-import org.apache.spark.ml.feature.{Tokenizer, RegexTokenizer, CountVectorizer, CountVectorizerModel, StringIndexer, StringIndexerModel, VectorAssembler}
+import org.apache.spark.ml.feature.{RegexTokenizer, CountVectorizer, CountVectorizerModel, VectorAssembler}
 
 import vlp.woz.WordShaper
+import vlp.woz.Sequencer4BERT
 
 
 /**
@@ -60,7 +58,7 @@ abstract class AbstractModel(config: Config) {
       NNModel(bigdl, featureSize)
     } else { // lstm-boa
       val prevActs = preprocessor.stages(4).asInstanceOf[CountVectorizerModel].vocabulary
-      val featureSize = Array(Array(config.maxSequenceLength), Array(prevActs.size))
+      val featureSize = Array(Array(config.maxSequenceLength), Array(prevActs.length))
       println(bigdl.summary())
       NNModel(bigdl, featureSize)
     }
@@ -122,7 +120,7 @@ class TokenModel(config: Config) extends AbstractModel(config) {
     val preprocessor = pipeline.fit(df)
     val vocabulary = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
     val labels = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
-    println(s"vocabSize = ${vocabulary.size}, labels = ${labels.mkString(", ")}")
+    println(s"vocabSize = ${vocabulary.length}, labels = ${labels.mkString(", ")}")
     return (preprocessor, vocabulary, labels)
   }
 }
@@ -201,7 +199,7 @@ class TokenModelBOA(config: Config) extends AbstractModel(config) {
     val preprocessor = pipeline.fit(df)
     val vocabulary = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
     val labels = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
-    println(s"vocabSize = ${vocabulary.size}, labels = ${labels.mkString(", ")}")
+    println(s"vocabSize = ${vocabulary.length}, labels = ${labels.mkString(", ")}")
     return (preprocessor, vocabulary, labels)
   }
 }

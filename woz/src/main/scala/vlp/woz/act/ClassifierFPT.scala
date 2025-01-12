@@ -1,21 +1,17 @@
 package vlp.woz.act
 
 import com.intel.analytics.bigdl.dllib.utils.Engine
-import com.intel.analytics.bigdl.dllib.keras.models.{Models, KerasNet}
+import com.intel.analytics.bigdl.dllib.keras.models.Models
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.{SparkSession, DataFrame}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.ml.PipelineModel
 import org.apache.spark.ml.feature.CountVectorizerModel
 
 import org.json4s._
 import org.json4s.jackson.Serialization
 import scopt.OptionParser
-
-import java.nio.file.{Files, Paths, StandardOpenOption}
-
-import vlp.woz.DialogReader
 
 /**
   * phuonglh@gmail.com
@@ -24,11 +20,11 @@ import vlp.woz.DialogReader
   * 
   */
 object ClassifierFPT {
-  implicit val formats = Serialization.formats(NoTypeHints)
+  implicit val formats: AnyRef with Formats = Serialization.formats(NoTypeHints)
 
   def main(args: Array[String]): Unit = {
-    val opts = new OptionParser[Config](getClass().getName()) {
-      head(getClass().getName(), "1.0")
+    val opts = new OptionParser[Config](getClass.getName) {
+      head(getClass.getName, "1.0")
       opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
       opt[Int]('X', "executorCores").action((x, conf) => conf.copy(executorCores = x)).text("executor cores, default is 8")
       opt[Int]('Y', "totalCores").action((x, conf) => conf.copy(totalCores = x)).text("total number of cores, default is 8")
@@ -53,7 +49,7 @@ object ClassifierFPT {
     }
     opts.parse(args, Config()) match {
       case Some(config) =>
-        val conf = Engine.createSparkConf().setAppName(getClass().getName()).setMaster(config.master)
+        val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster(config.master)
           .set("spark.executor.cores", config.executorCores.toString)
           .set("spark.cores.max", config.totalCores.toString)
           .set("spark.executor.memory", config.executorMemory)
@@ -94,16 +90,16 @@ object ClassifierFPT {
             val (cft, cfv) = (labelIndexer.transform(trainingDF), labelIndexer.transform(validationDF))
             // training score
             val dft = model.predict(cft, preprocessor, bigdl)
-            val trainingScore = Classifier.evaluate(dft, labels.size, config, "train")
+            val trainingScore = Classifier.evaluate(dft, labels.length, config, "train")
             Classifier.saveScore(trainingScore, config.scorePath)
             // validation score
             val dfv = model.predict(cfv, preprocessor, bigdl)
-            val validationScore = Classifier.evaluate(dfv, labels.size, config, "valid")
+            val validationScore = Classifier.evaluate(dfv, labels.length, config, "valid")
             Classifier.saveScore(validationScore, config.scorePath)
             // test score
             val xf = labelIndexer.transform(testDF)
             val test = model.predict(xf, preprocessor, bigdl)
-            val testScore = Classifier.evaluate(test, labels.size, config, "test")
+            val testScore = Classifier.evaluate(test, labels.length, config, "test")
             Classifier.saveScore(testScore, config.scorePath)
           case "eval" => 
             println(s"Loading preprocessor ${config.modelPath}/vi/pre/...")
@@ -120,17 +116,17 @@ object ClassifierFPT {
             // training score
             val trainingResult = model.predict(dft, preprocessor, bigdl)
             trainingResult.show(false)
-            var score = Classifier.evaluate(trainingResult, labels.size, config, "train")
+            var score = Classifier.evaluate(trainingResult, labels.length, config, "train")
             Classifier.saveScore(score, config.scorePath)
             // validation score
             val dfv = labelIndexer.transform(validationDF)
             val validationResult = model.predict(dfv, preprocessor, bigdl)
-            score = Classifier.evaluate(validationResult, labels.size, config, "valid")
+            score = Classifier.evaluate(validationResult, labels.length, config, "valid")
             Classifier.saveScore(score, config.scorePath)
             // test score
             val xf = labelIndexer.transform(testDF)
             val test = model.predict(xf, preprocessor, bigdl)
-            score = Classifier.evaluate(test, labels.size, config, "test")
+            score = Classifier.evaluate(test, labels.length, config, "test")
             Classifier.saveScore(score, config.scorePath)
 
           case "experiment-lstm" => 
@@ -153,15 +149,15 @@ object ClassifierFPT {
                 val bigdl = Classifier.train(model, conf, trainingDF, validationDF, preprocessor, vocabulary, labels, trainingSummary, validationSummary)
                 // training score
                 val dft = model.predict(cft, preprocessor, bigdl)
-                val trainingScore = Classifier.evaluate(dft, labels.size, conf, "train")
+                val trainingScore = Classifier.evaluate(dft, labels.length, conf, "train")
                 Classifier.saveScore(trainingScore, config.scorePath)
                 // validation score
                 val dfv = model.predict(cfv, preprocessor, bigdl)
-                val validationScore = Classifier.evaluate(dfv, labels.size, conf, "valid")
+                val validationScore = Classifier.evaluate(dfv, labels.length, conf, "valid")
                 Classifier.saveScore(validationScore, config.scorePath)
                 // test score                
                 val test = model.predict(xf, preprocessor, bigdl)
-                val testScore = Classifier.evaluate(test, labels.size, conf, "test")
+                val testScore = Classifier.evaluate(test, labels.length, conf, "test")
                 Classifier.saveScore(testScore, config.scorePath)
               }
             }
@@ -185,15 +181,15 @@ object ClassifierFPT {
                 val bigdl = Classifier.train(model, conf, trainingDF, validationDF, preprocessor, vocabulary, labels, trainingSummary, validationSummary)
                 // training score
                 val dft = model.predict(cft, preprocessor, bigdl)
-                val trainingScore = Classifier.evaluate(dft, labels.size, conf, "train")
+                val trainingScore = Classifier.evaluate(dft, labels.length, conf, "train")
                 Classifier.saveScore(trainingScore, config.scorePath)
                 // validation score
                 val dfv = model.predict(cfv, preprocessor, bigdl)
-                val validationScore = Classifier.evaluate(dfv, labels.size, conf, "valid")
+                val validationScore = Classifier.evaluate(dfv, labels.length, conf, "valid")
                 Classifier.saveScore(validationScore, config.scorePath)
                 // test score                
                 val test = model.predict(xf, preprocessor, bigdl)
-                val testScore = Classifier.evaluate(test, labels.size, conf, "test")
+                val testScore = Classifier.evaluate(test, labels.length, conf, "test")
                 Classifier.saveScore(testScore, config.scorePath)
               }
             }
