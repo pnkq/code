@@ -60,7 +60,7 @@ object NER {
     "O" -> 1, "B-problem" -> 2, "I-problem" -> 3, "B-treatment" -> 4, "I-treatment" -> 5, "B-test" -> 6, "I-test" -> 7
   )
   val labelDict: Map[Double, String] = labelIndex.keys.map(k => (labelIndex(k).toDouble, k)).toMap
-  val numCores = Runtime.getRuntime().availableProcessors()
+  private val numCores = Runtime.getRuntime.availableProcessors()
 
   /**
     * Builds a pipeline for BigDL model: sequencer -> flattener -> padder
@@ -94,11 +94,26 @@ object NER {
     preprocessor
   }
 
+  private def labelWeights(spark: SparkSession, df: DataFrame, labelCol: String): Tensor[Float] = {
+    import spark.implicits._
+    // select non-padded labels
+    val ef = df.select(labelCol).flatMap(row => row.getAs[DenseVector](0).toArray.filter(_ > 0))
+    val ff = ef.groupBy("value").count // two columns [value, count]
+    // count their frequencies
+    val total: Long = ff.agg(sum("count")).head.getLong(0)
+    val numLabels: Long = ff.count()
+    val wf = ff.withColumn("w", lit(total.toDouble/numLabels)/col("count")).sort("value") // sort to align label indices
+    val w = wf.select("w").collect().map(row => row.getDouble(0)).map(_.toFloat)
+    Tensor[Float](w, Array(w.length))
+  }
+
+
   /**
     * Trains a NER model using the BigDL framework with user-defined model. This approach is more flexible than the [[trainJSL()]] method.
     * @param config a config
     * @param trainingDF a training df
     * @param developmentDF a development df
+   * @param firstTime run the first time, which will create and save parquet preprocessed datasets.
     * @return a preprocessor and a BigDL model
     */
   private def trainBDL(config: ConfigNER, trainingDF: DataFrame, developmentDF: DataFrame, firstTime: Boolean = false): (PipelineModel, KerasNet[Float]) = {
@@ -129,8 +144,9 @@ object NER {
     bigdl.add(Dropout(0.1).setName("dropout"))
     bigdl.add(Dense(labelIndex.size, activation="softmax").setName("dense"))
     val (featureSize, labelSize) = (Array(config.maxSeqLen*768), Array(config.maxSeqLen))
+    val w = labelWeights(SparkSession.getActiveSession.get, uf, "target")
     // should set the sizeAverage=false in ClassNLLCriterion
-    val criterion = ClassNLLCriterion(sizeAverage = false, paddingValue = -1)
+    val criterion = ClassNLLCriterion(weights = w, sizeAverage = false, paddingValue = -1)
     val estimator = NNEstimator(bigdl, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
     val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/med/")
     val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/med/")
@@ -285,10 +301,11 @@ object NER {
         val sc = new SparkContext(conf)
         Engine.init
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-        sc.setLogLevel("INFO")
+        sc.setLogLevel("WARN")
 
         // read the df using the CoNLL format of Spark-NLP, which provides some columns, including [text, label] columns.
-        val df = CoNLL(conllLabelIndex = 3).readDatasetFromLines(Source.fromFile(config.trainPath, "UTF-8").getLines.toArray, spark).toDF
+        val source = Source.fromFile(config.trainPath, "UTF-8")
+        val df = CoNLL(conllLabelIndex = 3).readDatasetFromLines(source.getLines.toArray, spark).toDF
         val af = df.withColumn("ys", col("label.result")).withColumn("length", size(col("ys")))
         println(s"Number of samples = ${af.count}")
         // remove short sentences
