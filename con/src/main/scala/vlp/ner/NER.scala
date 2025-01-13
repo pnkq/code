@@ -27,8 +27,6 @@ import com.intel.analytics.bigdl.dllib.keras.models.{Models, KerasNet}
 import com.intel.analytics.bigdl.dllib.keras.layers._
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
-import com.intel.analytics.bigdl.dllib.nn.abstractnn.Activity
-import com.intel.analytics.bigdl.dllib.nn.internal.KerasLayer
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNModel, NNEstimator}
@@ -76,7 +74,7 @@ object NER {
     new Pipeline().setStages(Array(sequencer, flattener, padder))
   }
 
-  private def prepareSnowPreprocessor(config: ConfigNER, trainingDF: DataFrame, developmentDF: DataFrame): PipelineModel = {
+  private def prepareSnowPreprocessor(config: ConfigNER, trainingDF: DataFrame): PipelineModel = {
     val document = new DocumentAssembler().setInputCol("text").setOutputCol("document")
     val tokenizer = new Tokenizer().setInputCols(Array("document")).setOutputCol("token")
     val embeddings = config.modelType match {
@@ -118,8 +116,8 @@ object NER {
     */
   private def trainBDL(config: ConfigNER, trainingDF: DataFrame, developmentDF: DataFrame, firstTime: Boolean = false): (PipelineModel, KerasNet[Float]) = {
     val (preprocessorSnow, af, bf) = if (firstTime) {
-      val preprocessorSnow = prepareSnowPreprocessor(config, trainingDF, developmentDF)
-      println("Applying the Snow preprocessor to (traing, dev.) datasets...")
+      val preprocessorSnow = prepareSnowPreprocessor(config, trainingDF)
+      println("Applying the Snow preprocessor to (training, dev.) datasets...")
       val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
       af.write.mode("overwrite").parquet(config.modelPath + "/af")
       af.write.mode("overwrite").parquet(config.modelPath + "/bf")
@@ -315,20 +313,19 @@ object NER {
         val Array(trainingDF, developmentDF) = ef.randomSplit(Array(0.8, 0.2), 220712L)
         developmentDF.show()
         developmentDF.printSchema()
-        developmentDF.select("token.result", "ys").show(3, false)
+        developmentDF.select("token.result", "ys").show(3, truncate = false)
 
         val modelPath = config.modelPath + "/" + config.modelType
         config.mode match {
           case "train" =>
             // val model = trainJSL(config, trainingDF, developmentDF)
-            val (preprocessorSnow, bigdl) = trainBDL(config, trainingDF, developmentDF, config.firstTime)
+            val (_, bigdl) = trainBDL(config, trainingDF, developmentDF, config.firstTime)
             bigdl.saveModel(modelPath + "/ner.bigdl", overWrite = true)
             val bf = spark.read.parquet(config.modelPath + "/bf")
             val output = predict(bigdl, bf, config)
             output.show
           case "predict" =>
           case "evalBDL" => 
-            val preprocessor = PipelineModel.load(modelPath)
             val bigdl = Models.loadModel[Float](modelPath + "/ner.bigdl")
             // load preprocessed training/dev. data frames
             val af = spark.read.parquet(config.modelPath + "/af")

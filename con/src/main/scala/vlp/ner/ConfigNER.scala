@@ -19,7 +19,7 @@ case class ConfigNER(
   validPath: String = "dat/med/val/", // Parquet file of devPath
   outputPath: String = "dat/med/",
   scorePath: String = "dat/med/scores-med.json",
-  modelType: String = "s",
+  modelType: String = "d",
   firstTime: Boolean = false
 )
 
