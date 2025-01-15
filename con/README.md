@@ -1,4 +1,16 @@
-# Steps
+## Medical NER
+
+Embedding models in use:
+- b: BERT, multilingual, cased
+- d: DeBERTa, Vietnamese, small
+- m: DeBERTa, multilingual, base
+- s: DistilBERT, Vietnamese, base
+- x: XLM-Roberta, multilingual, large
+
+1. Run `vlp.ner.NER` to read medical datasets and train models. 
+2. Options: `-m train/evalBDL/evalJSL`, `-t b/d/m/s/x`.  
+
+## DEPx
 
 1. Run `vlp.dep.NetworkX` to read a UD treebank and export its graph edges to a TSV file for a language:
    

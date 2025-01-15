@@ -1,4 +1,4 @@
-	claim_text	premise_texts	year	quarter	label
+sId	claim_text	premise_texts	year	quarter	label
 2168	claim: This is really about seeing improvement in some of our largest services and continue to see improvement year-over-year in the largest services.	premises: ['There were not any one-time benefits in this quarter that helped us.']	2019	Q4	1
 565	claim: So in the first half of the year, we have a tougher comp, if you will, versus some strong growth in the first-half of last year.	premises: ['On AWS revenue, let me just remind you that quarterly growth last year on an FX-neutral basis, so Q1 was 48%, then 49%, then 46% and 46%.']	2019	Q1	1
 2159	claim: And Heather, I would add that when you're using systems to look at content, when you're using AI machine learning systems, it's a real benefit to have actual people looking and tagging that content, classifying it	premises: ["because it helps those machine learning algorithms be able to learn what they're looking at."]	2019	Q3	0
