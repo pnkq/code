@@ -1,12 +1,12 @@
 package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
-import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, InputLayer, LSTM, Reshape, SelectTable, SplitTensor, Squeeze}
+import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, InputLayer, KerasLayerWrapper, LSTM, Merge, Reshape, Select, SelectTable, SplitTensor, Squeeze, ZeroPadding1D}
 import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
-import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion}
+import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion, Transpose}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
 import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
-import com.intel.analytics.bigdl.dllib.tensor.{DenseTensorBLAS, Tensor}
+import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import org.apache.spark.{SparkConf, SparkContext}
@@ -154,7 +154,7 @@ object NLU {
     model
   }
 
-  private def createEncoderLSTM(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): Sequential[Float] = {
+  private def createEncoderLSTM(numTokens: Int, numEntities: Int, config: ConfigNLU): Sequential[Float] = {
     val sequential = Sequential[Float]()
     sequential.add(InputLayer[Float](inputShape = Shape(config.maxSeqLen)))
     sequential.add(Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize))
@@ -165,7 +165,7 @@ object NLU {
     sequential
   }
 
-  private def createEncoderBERT(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): KerasNet[Float] = {
+  private def createEncoderBERT(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
     val input = Input[Float](inputShape = Shape(4*config.maxSeqLen), name = "input")
     val reshape = Reshape[Float](targetShape = Array(4, config.maxSeqLen)).inputs(input)
     val split = SplitTensor[Float](1, 4).inputs(reshape)
@@ -190,17 +190,30 @@ object NLU {
     Model[Float](input, output)
   }
 
-  private def createJointEncoderLSTM(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): Sequential[Float] = {
-    // first part: same as EncoderLSTM
-    val sequential = Sequential[Float]()
-    sequential.add(InputLayer[Float](inputShape = Shape(config.maxSeqLen)))
-    sequential.add(Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize))
-    for (j <- 0 until config.numLayers)
-      sequential.add(Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)))
-    sequential.add(Dense[Float](config.hiddenSize))
-    sequential.add(Dense[Float](numEntities, activation = "softmax"))
-    // second part: sigmoid activation for each act name
-    sequential
+  private def createJointEncoderLSTM(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): KerasNet[Float] = {
+    // (1) first part: 2 layers BiLSTM
+    val input = Input[Float](inputShape = Shape(config.maxSeqLen))
+    val embeddings = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(input)
+    val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(embeddings)
+    val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
+    val entityDense = Dense[Float](config.hiddenSize).inputs(rnn2)
+    val entityOutput = Dense[Float](numEntities, activation = "softmax").inputs(entityDense)
+    // (2) second part: sigmoid activation for each act prediction
+    // select the last hidden state of rnn2 as the representation for act prediction
+    val actDense = Select[Float](1, -1).inputs(entityDense)
+    val actOutput = Dense[Float](numActs, activation = "sigmoid").inputs(actDense)
+    // right pad the entity output
+    val transposeEntity = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(entityOutput)
+    val zeroPaddingEntity = new ZeroPadding1D[Float](padding = Array(0, numActs)).inputs(transposeEntity)
+    val transposeBackEntity = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPaddingEntity)
+    // left pad the act output
+    val reshapeActOutput = new Reshape[Float](targetShape = Array(1, numActs)).inputs(actOutput)
+    val transposeAct = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(reshapeActOutput)
+    val zeroPaddingAct = new ZeroPadding1D[Float](padding = Array(numEntities, 0)).inputs(transposeAct)
+    val transposeBackAct = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPaddingAct)
+    // concat the actOutput with the entityOutput. The output shape should be (maxSeqLen, numEntities + numActs)
+    val merge = Merge.merge(inputs = List(transposeBackEntity, transposeBackAct), mode = "concat", concatAxis = 1) // concat along the temporal dimension
+    Model(input, merge)
   }
 
   private def predict(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features", argmax: Boolean=true): DataFrame = {
@@ -303,8 +316,8 @@ object NLU {
             vf.write.mode("overwrite").parquet("dat/woz/nlu/vf")
 
             val encoder = config.modelType match {
-              case "lstm" => createEncoderLSTM(vocab.length, entities.length, acts.length, config)
-              case "bert" => createEncoderBERT(vocab.length, entities.length, acts.length, config)
+              case "lstm" => createEncoderLSTM(vocab.length, entities.length, config)
+              case "bert" => createEncoderBERT(vocab.length, entities.length, config)
             }
             encoder.summary()
             val labelSize = Array(config.maxSeqLen)
@@ -337,6 +350,9 @@ object NLU {
             val pf = predict(encoder, vf, featuresCol)
             pf.select("slotIdx", "prediction").show(false)
             pf.show()
+          case "joint" =>
+            val encoder = createJointEncoderLSTM(100, 50, 30, config)
+            encoder.summary()
         }
         spark.stop()
       case None =>
