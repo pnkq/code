@@ -24,6 +24,8 @@ import scopt.OptionParser
 import vlp.woz.Sequencer4BERT
 import vlp.woz.act.Act
 
+import java.nio.file.{Files, Paths, StandardOpenOption}
+
 case class Span(
   actName: String,
   slot: String,
@@ -114,7 +116,7 @@ object NLU {
   /**
     * Reads a data set and creates a df of columns (utterance, tokenSequence, slotSequence, actNameSequence), where
     * <ol>
-    * <li>utterance: String, is a original text</li>
+    * <li>utterance: String, is an original text</li>
     * <li>tokenSequence: Seq[String], is a sequence of tokens from utterance</li>
     * <li>slotSequence: Seq[String], is a sequence of slot names (entity types, in the form of B/I/O)</li>
     * <li>actNameSequence: Seq[String], is a sequence of act names, which is typically 1 or 2 act names.
@@ -160,7 +162,6 @@ object NLU {
     sequential.add(Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize))
     for (j <- 0 until config.numLayers)
       sequential.add(Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)))
-    sequential.add(Dense[Float](config.hiddenSize))
     sequential.add(Dense[Float](numEntities, activation = "softmax"))
     sequential
   }
@@ -196,11 +197,10 @@ object NLU {
     val embeddings = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(input)
     val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(embeddings)
     val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
-    val entityDense = Dense[Float](config.hiddenSize).inputs(rnn2)
-    val entityOutput = Dense[Float](numEntities, activation = "softmax").inputs(entityDense)
+    val entityOutput = Dense[Float](numEntities, activation = "softmax").inputs(rnn2)
     // (2) second part: sigmoid activation for each act prediction
     // select the last hidden state of rnn2 as the representation for act prediction
-    val actDense = Select[Float](1, -1).inputs(entityDense)
+    val actDense = Select[Float](1, -1).inputs(rnn2)
     val actOutput = Dense[Float](numActs, activation = "sigmoid").inputs(actDense)
     // right pad the entity output
     val transposeEntity = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(entityOutput)
@@ -239,6 +239,26 @@ object NLU {
     val wf = ff.withColumn("w", lit(total.toDouble/numLabels)/col("count")).sort("value") // sort to align label indices
     val w = wf.select("w").collect().map(row => row.getDouble(0)).map(_.toFloat)
     Tensor[Float](w, Array(w.length))
+  }
+
+  /**
+   * Exports result data frame (2-col format) into a text file of CoNLL-2003 format for
+   * evaluation with CoNLL evaluation script ("target <space> prediction").
+   * @param result a data frame of two columns "prediction, target"
+   * @param config configuration
+   * @param split a split name
+   */
+  private def export(result: DataFrame, config: ConfigNLU, split: String) = {
+    val spark = SparkSession.getActiveSession.get
+    import spark.implicits._
+    val ss = result.map { row =>
+      val prediction = row.getSeq[String](0)
+      val target = row.getSeq[String](1)
+      val lines = target.zip(prediction).map(p => p._1 + " " + p._2)
+      lines.mkString("\n") + "\n"
+    }.collect()
+    val s = ss.mkString("\n")
+    Files.write(Paths.get(s"dat/woz/nlu/${config.modelType}-${config.numLayers}-$split.txt"), s.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }
 
 
@@ -287,14 +307,15 @@ object NLU {
             val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
             val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2)).toMap
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
-            val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // BigDL uses 1-based index for targets
+            // BigDL uses 1-based index for targets:
+            val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
 
             val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("features")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
 
             val (train, dev) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
-            // filter samples longer than maxSeqLen
+            // remove samples which are longer than maxSeqLen
             val (trainDF, devDF) = (
               train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
               dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
@@ -312,8 +333,9 @@ object NLU {
                   sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
                 )
             }
-            // save vf for other modes (eval/predict)
-            vf.write.mode("overwrite").parquet("dat/woz/nlu/vf")
+            // save uf and vf for other modes (eval/predict)
+            uf.repartition(2).write.mode("overwrite").parquet("dat/woz/nlu/uf")
+            vf.repartition(1).write.mode("overwrite").parquet("dat/woz/nlu/vf")
 
             val encoder = config.modelType match {
               case "lstm" => createEncoderLSTM(vocab.length, entities.length, config)
@@ -336,20 +358,35 @@ object NLU {
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
-            estimator.fit(vf)
+            estimator.fit(uf)
 
             encoder.saveModel(modelPath, overWrite = true)
 
-            val pf = predict(encoder, vf, featuresCol)
-            pf.select("slotIdx", "prediction").show(false)
+            // predict and export results
+            // convert "prediction" column to human-readable label column "zs"
+            val labelDict = entityDict.map { case (k, v) => (v.toDouble, k) }
+            val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
+            val af = sequencer.transform(predict(encoder, uf, featuresCol))
+            val bf = sequencer.transform(predict(encoder, vf, featuresCol))
+            export(af.select("zs", "slots"), config, "train")
+            export(bf.select("zs", "slots"), config, "valid")
 
           case "eval" =>
             val encoder =  Models.loadModel[Float](modelPath)
             encoder.summary()
+            val uf = spark.read.parquet("dat/woz/nlu/uf")
             val vf = spark.read.parquet("dat/woz/nlu/vf")
-            val pf = predict(encoder, vf, featuresCol)
-            pf.select("slotIdx", "prediction").show(false)
-            pf.show()
+            // predict and export results
+            val preprocessor = PipelineModel.load(s"$basePath/pre")
+            val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
+            val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+            // convert "prediction" column to human-readable label column "zs"
+            val labelDict = entityDict.map { case (k, v) => (v.toDouble, k) }
+            val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
+            val af = sequencer.transform(predict(encoder, uf, featuresCol))
+            val bf = sequencer.transform(predict(encoder, vf, featuresCol))
+            export(af.select("zs", "slots"), config, "train")
+            export(bf.select("zs", "slots"), config, "valid")
           case "joint" =>
             val encoder = createJointEncoderLSTM(100, 50, 30, config)
             encoder.summary()

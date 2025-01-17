@@ -6,7 +6,7 @@ case class ConfigNLU(
   executorCores: Int = 8, // Y
   executorMemory: String = "8g", // Z
   driverMemory: String = "16g", // D
-  maxSeqLen: Int = 20,
+  maxSeqLen: Int = 25,
   batchSize: Int = 32,
   learningRate: Double = 1E-4,
   embeddingSize: Int = 32,
