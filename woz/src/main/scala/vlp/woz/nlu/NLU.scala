@@ -1,7 +1,7 @@
 package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
-import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, InputLayer, KerasLayerWrapper, LSTM, Merge, Reshape, Select, SelectTable, SplitTensor, Squeeze, ZeroPadding1D}
+import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, InputLayer, KerasLayerWrapper, LSTM, Merge, RepeatVector, Reshape, Select, SelectTable, SplitTensor, Squeeze, ZeroPadding1D}
 import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion, Transpose}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
@@ -202,12 +202,14 @@ object NLU {
     // select the last hidden state of rnn2 as the representation for act prediction
     val actDense = Select[Float](1, -1).inputs(rnn2)
     val actOutput = Dense[Float](numActs, activation = "sigmoid").inputs(actDense)
+    // duplicate the actOutput [a] => [a, a]
+    val duplicate = RepeatVector[Float](2).inputs(actOutput)
     // right pad the entity output
     val transposeEntity = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(entityOutput)
     val zeroPaddingEntity = new ZeroPadding1D[Float](padding = Array(0, numActs)).inputs(transposeEntity)
     val transposeBackEntity = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPaddingEntity)
     // left pad the act output
-    val reshapeActOutput = new Reshape[Float](targetShape = Array(1, numActs)).inputs(actOutput)
+    val reshapeActOutput = new Reshape[Float](targetShape = Array(2, numActs)).inputs(duplicate)
     val transposeAct = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(reshapeActOutput)
     val zeroPaddingAct = new ZeroPadding1D[Float](padding = Array(numEntities, 0)).inputs(transposeAct)
     val transposeBackAct = new KerasLayerWrapper(new Transpose[Float](permutations = Array((2, 3)))).inputs(zeroPaddingAct)
@@ -328,14 +330,26 @@ object NLU {
             val (uf, vf) = config.modelType match {
               case "lstm" =>
                 (
-                  sequencerTokens.transform(sequencerEntities.transform(sequencerActs.transform(trainDF))),
-                  sequencerTokens.transform(sequencerEntities.transform(sequencerActs.transform(devDF)))
+                  sequencerTokens.transform(sequencerEntities.transform(trainDF)),
+                  sequencerTokens.transform(sequencerEntities.transform(devDF))
                 )
               case "bert" =>
                 val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresBERT")
                 (
-                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(sequencerActs.transform(trainDF)))),
-                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(sequencerActs.transform(devDF))))
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF))),
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
+                )
+              case "join" =>
+                // shift the act indices by numEntities
+                val shift = udf((xs: Seq[Int]) => xs.map(_ + entities.length))
+                val (pf, qf) = (
+                  sequencerActs.transform(trainDF).withColumn("actIdxShifted", col("actIdx")),
+                  sequencerActs.transform(devDF).withColumn("actIdxShifted", col("actIdx"))
+                )
+                val assembler = new VectorAssembler().setInputCols(Array("slotIdx", "actIdxShifted")).setOutputCol("label")
+                (
+                  assembler.transform(sequencerTokens.transform(sequencerEntities.transform(pf))),
+                  assembler.transform(sequencerTokens.transform(sequencerEntities.transform(qf)))
                 )
             }
             // save uf and vf for other modes (eval/predict)
@@ -349,23 +363,31 @@ object NLU {
             }
             encoder.summary()
 
-            val labelSize = if (config.modelType == "join") Array(config.maxSeqLen + 2) else Array(config.maxSeqLen)
-            val w = labelWeights(spark, uf, "slotIdx")
+            val (labelCol, labelSize) = if (config.modelType == "join")
+              ("label", Array(config.maxSeqLen + 2))
+            else ("slotIdx", Array(config.maxSeqLen))
+
+            val w = if (config.modelType == "join") {
+              val w1 = labelWeights(spark, uf, "slotIdx").toArray().map(_ * config.lambdaSlot)
+              val w2 = labelWeights(spark, uf, "actIdx").toArray().map(_ * config.lambdaAct)
+              Tensor[Float](w1 ++ w2, Array(w1.length + w2.length))
+            } else labelWeights(spark, uf, "slotIdx")
+            println(w)
 
             val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = false, paddingValue = -1)
             val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/woz/")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/woz/")
             val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
-            uf.select(featuresCol, "slotIdx").show(false)
-            estimator.setLabelCol("slotIdx").setFeaturesCol(featuresCol)
+            uf.select(featuresCol, labelCol).show(false)
+            estimator.setLabelCol(labelCol).setFeaturesCol(featuresCol)
               .setBatchSize(batchSize)
               .setOptimMethod(new Adam[Float](config.learningRate))
               .setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
-            estimator.fit(vf)
+            estimator.fit(uf.sample(0.1))
 
             encoder.saveModel(modelPath, overWrite = true)
 

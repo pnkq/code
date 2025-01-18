@@ -29,20 +29,22 @@
 
 ## Joint Models
 
-**LSTM**
-
 1. Input is a sequence of tokens: `[t1, t2,..., tN]`;
 2. Embed this sequence by an `Embedding` layer to get a sequence of embedding vectors: `[w1, w2,..., wN]`;  
-3. Pass this sequence to a (possibly multilayer) bidirectional LSTM encoder to get a sequence of state vectors `[h1, h2,..., hN]`;
+3. Pass this sequence to a (possibly multilayer) bidirectional encoder to get a sequence of state vectors `[h1, h2,..., hN]`;
 4. Split into 2 branches:
   a) Pass state vectors to a `Dense(numEntities, softmax)` layer to get output sequence `[o1, o2, ..., oN]`.
-  b) Get the last state `hN`, pass it to a `Dense(numActs, sigmoid)` layer to get an output vector `a`. 
-5. Combine 4a) and 4b) into a sequence of (N+1) vectors: `[o1, o2, ..., oN, a]`. However, we use a clever trick to get the NLL criterion work as follows:
+  b) Get the last state `hN`, pass it to a `Dense(numActs, sigmoid)` layer to get an output vector `a`.
+  c) Duplicate `a` to have another output vector `a`
+5. Combine 4a) and 4c) into a sequence of (N+2) vectors: `[o1, o2, ..., oN, a, a]`. However, we use a clever trick to get the NLL criterion work as follows:
   a) Right pad each vector `o` by `numActs` zero.
-  b) Left pad vector `a` by `numEntities` zero and concat it to the end of `o` sequence.
-  This will result in a sequence of (N+1) vectors, each has a dimension of (numEntities + numActs) elements. 
+  b) Left pad each vector `a` by `numEntities` zero and concat them to the end of `o` sequence.
+  This will result in a sequence of (N+2) vectors, each has a dimension of (numEntities + numActs) elements. 
 6. In the target vector, we need to shift the act indices by `numEntities` for the negative log-likelihood (NLL) training criterion to work properly.
 
+In the joint model:
+- The feature size is `Array(maxSeqLen)` as in a single model.
+- The label size is `Array(maxSeqLen + 2)` where `Array(2)` represents a target act vector. 
 
 # Statistics
 
