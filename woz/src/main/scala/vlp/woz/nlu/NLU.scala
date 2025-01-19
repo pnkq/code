@@ -13,7 +13,6 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.ml.feature._
-import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml._
 import org.apache.spark.ml.feature._
@@ -263,6 +262,17 @@ object NLU {
     Files.write(Paths.get(s"dat/woz/nlu/${config.modelType}-${config.numLayers}-$split.txt"), s.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }
 
+  private def evaluateAct(spark: SparkSession, result: DataFrame): Double = {
+    import spark.implicits._
+    val df = result.map { row =>
+      val ys = row.getAs[DenseVector](0).toArray.takeRight(2).filter(_ >= 0)
+      val zs = row.getAs[Seq[Float]](1).toArray.takeRight(ys.length).map(_.toDouble)
+      (ys, zs)
+    }.toDF("label", "prediction")
+    df.show(false)
+    val evaluator = new MultilabelClassificationEvaluator().setMetricName("accuracy")
+    evaluator.evaluate(df)
+  }
 
   def main(args: Array[String]): Unit = {
     val opts = new OptionParser[ConfigNLU](getClass.getName) {
@@ -387,16 +397,24 @@ object NLU {
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
-            estimator.fit(uf.sample(0.1))
+            estimator.fit(uf)
 
             encoder.saveModel(modelPath, overWrite = true)
 
             // predict and export results
+            val pf = predict(encoder, uf, featuresCol)
+            val qf = predict(encoder, vf, featuresCol)
+            // extract act prediction for the joint model:
+            if (config.modelType == "join") {
+              println("Train multi-label performance (f1Measure): ", evaluateAct(spark, pf.select("label", "prediction")))
+              println("Valid multi-label performance (f1Measure): ", evaluateAct(spark, qf.select("label", "prediction")))
+            }
             // convert "prediction" column to human-readable label column "zs"
             val labelDict = entityDict.map { case (k, v) => (v.toDouble, k) }
             val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
-            val af = sequencer.transform(predict(encoder, uf, featuresCol))
-            val bf = sequencer.transform(predict(encoder, vf, featuresCol))
+            val af = sequencer.transform(pf)
+            val bf = sequencer.transform(qf)
+            // slot prediction as CoNLL format files
             export(af.select("zs", "slots"), config, "train")
             export(bf.select("zs", "slots"), config, "valid")
 
@@ -407,13 +425,20 @@ object NLU {
             val vf = spark.read.parquet("dat/woz/nlu/vf")
             // predict and export results
             val preprocessor = PipelineModel.load(s"$basePath/pre")
+            val pf = predict(encoder, uf, featuresCol)
+            val qf = predict(encoder, vf, featuresCol)
+            qf.select("label", "prediction").show(false)
+            if (config.modelType == "join") {
+              println("Train multi-label performance (f1Measure): ", evaluateAct(spark, pf.select("label", "prediction")))
+              println("Valid multi-label performance (f1Measure): ", evaluateAct(spark, qf.select("label", "prediction")))
+            }
+            // convert "prediction" column to human-readable label column "zs"
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
             val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
-            // convert "prediction" column to human-readable label column "zs"
             val labelDict = entityDict.map { case (k, v) => (v.toDouble, k) }
             val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
-            val af = sequencer.transform(predict(encoder, uf, featuresCol))
-            val bf = sequencer.transform(predict(encoder, vf, featuresCol))
+            val af = sequencer.transform(pf)
+            val bf = sequencer.transform(qf)
             export(af.select("zs", "slots"), config, "train")
             export(bf.select("zs", "slots"), config, "valid")
           case "join" =>
