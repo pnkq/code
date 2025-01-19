@@ -106,8 +106,10 @@ There are 12,309 samples whose length <= 20, which accounts for 12,309/14,748 = 
 
 # TODO
 
-- Export tagging results
-- Implement the joint model
 - Build global act graph
 - Learn act node embeddings over the global act graph
 - Start manuscript (sentence embedding models)
+
+# DONE
+- Export tagging results
+- Implement the joint model

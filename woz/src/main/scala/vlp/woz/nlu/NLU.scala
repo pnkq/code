@@ -262,15 +262,23 @@ object NLU {
     Files.write(Paths.get(s"dat/woz/nlu/${config.modelType}-${config.numLayers}-$split.txt"), s.getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }
 
+  /**
+   * Evaluates the performance of act classification (multilabel classification)
+   * @param spark Spark session
+   * @param result a prediction data frame by the BigDL model
+   * @return a score (f1Measure)
+   */
   private def evaluateAct(spark: SparkSession, result: DataFrame): Double = {
     import spark.implicits._
     val df = result.map { row =>
       val ys = row.getAs[DenseVector](0).toArray.takeRight(2).filter(_ >= 0)
+      // after filtering, ys may be empty (training data does not have acts in the valid data)
       val zs = row.getAs[Seq[Float]](1).toArray.takeRight(ys.length).map(_.toDouble)
       (ys, zs)
-    }.toDF("label", "prediction")
+    }.toDF("label", "prediction").filter(size(col("label")) > 0)
     df.show(false)
-    val evaluator = new MultilabelClassificationEvaluator().setMetricName("accuracy")
+    println(s"Number of samples = ${df.count}")
+    val evaluator = new MultilabelClassificationEvaluator()
     evaluator.evaluate(df)
   }
 
@@ -429,8 +437,8 @@ object NLU {
             val qf = predict(encoder, vf, featuresCol)
             qf.select("label", "prediction").show(false)
             if (config.modelType == "join") {
-              println("Train multi-label performance (f1Measure): ", evaluateAct(spark, pf.select("label", "prediction")))
-              println("Valid multi-label performance (f1Measure): ", evaluateAct(spark, qf.select("label", "prediction")))
+              println("Train multi-label performance (f1Measure): " + evaluateAct(spark, pf.select("label", "prediction")))
+              println("Valid multi-label performance (f1Measure): " + evaluateAct(spark, qf.select("label", "prediction")))
             }
             // convert "prediction" column to human-readable label column "zs"
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
