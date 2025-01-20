@@ -11,7 +11,7 @@ case class ConfigNLU(
   learningRate: Double = 1E-4,
   embeddingSize: Int = 32,
   recurrentSize: Int = 64, // x2 for bidirectional
-  numLayers: Int = 1,
+  numLayers: Int = 2,
   numHeads: Int = 4,
   hiddenSize: Int = 64,
   modelType: String = "lstm",

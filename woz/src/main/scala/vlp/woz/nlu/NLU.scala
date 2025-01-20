@@ -20,7 +20,7 @@ import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation._
 import org.apache.spark.ml.linalg.DenseVector
 import scopt.OptionParser
-import vlp.woz.Sequencer4BERT
+import vlp.woz.{Sequencer4BERT, WordShaper}
 import vlp.woz.act.Act
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -149,20 +149,26 @@ object NLU {
     val vectorizerToken = new CountVectorizer().setInputCol("tokens").setOutputCol("tokenVec")
     val vectorizerSlot = new CountVectorizer().setInputCol("slots").setOutputCol("slotVec")
     val vectorizerAct = new CountVectorizer().setInputCol("actNames").setOutputCol("actVec")
-    val pipeline = new Pipeline().setStages(Array(vectorizerToken, vectorizerSlot, vectorizerAct))
+    val wordShaper = new WordShaper().setInputCol("tokens").setOutputCol("shapes")
+    val vectorizerShape = new CountVectorizer().setInputCol("shapes").setOutputCol("shapeVec")
+    val pipeline = new Pipeline().setStages(Array(vectorizerToken, vectorizerSlot, vectorizerAct, wordShaper, vectorizerShape))
     val model = pipeline.fit(df)
-    if (savePath.nonEmpty) model.write.save(savePath)
+    if (savePath.nonEmpty) model.write.overwrite().save(savePath)
     model
   }
 
-  private def createEncoderLSTM(numTokens: Int, numEntities: Int, config: ConfigNLU): Sequential[Float] = {
-    val sequential = Sequential[Float]()
-    sequential.add(InputLayer[Float](inputShape = Shape(config.maxSeqLen)))
-    sequential.add(Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize))
-    for (j <- 0 until config.numLayers)
-      sequential.add(Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)))
-    sequential.add(Dense[Float](numEntities, activation = "softmax"))
-    sequential
+  private def createEncoderLSTM(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
+    val input = Input[Float](inputShape = Shape(2*config.maxSeqLen))
+    val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
+    val selectToken = Select[Float](1, 0).inputs(reshape)
+    val embeddingToken = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(selectToken)
+    val selectShape = Select[Float](1, 1).inputs(reshape)
+    val embeddingShape = Embedding[Float](inputDim = 13, outputDim = 13).inputs(selectShape)
+    val merge = Merge.merge(inputs = List(embeddingToken, embeddingShape), mode = "concat", concatAxis = -1)
+    val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(merge)
+    val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
+    val output = Dense[Float](numEntities, activation = "softmax").inputs(rnn2)
+    Model[Float](input, output)
   }
 
   private def createEncoderBERT(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
@@ -313,7 +319,7 @@ object NLU {
         val basePath = "dat/woz/nlu"
         val modelPath = s"bin/woz-${config.modelType}-${config.numLayers}.bigdl"
         val (featuresCol, featureSize) = config.modelType match {
-          case "lstm" => ("features", Array(config.maxSeqLen))
+          case "lstm" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
           case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
           case "join" => ("features", Array(config.maxSeqLen))
         }
@@ -328,16 +334,19 @@ object NLU {
             val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
+            val shapes = preprocessor.stages(4).asInstanceOf[CountVectorizerModel].vocabulary
             // BigDL uses 1-based index for targets (entity, act). For token embedding, we can use 0-based index.
             val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2)).toMap
             val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             // act indices are shifted by length(entities)
             val actDict = acts.zipWithIndex.map(p => (p._1, p._2 + 1 + entities.length)).toMap
+            val shapeDict = shapes.zipWithIndex.map(p => (p._1, p._2)).toMap
 
-            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("features")
+            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresToken")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
             // most utterances have at most 2 acts; so a 2-dimension vector for act encoding is sufficient.
             val sequencerActs = new Sequencer(actDict, 2, -1f).setInputCol("actNames").setOutputCol("actIdx")
+            val sequencerShapes = new Sequencer(shapeDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresShape")
 
             val (train, dev) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
             // remove samples which are longer than maxSeqLen
@@ -347,27 +356,28 @@ object NLU {
             )
             val (uf, vf) = config.modelType match {
               case "lstm" =>
+                val assembler = new VectorAssembler().setInputCols(Array("featuresToken", "featuresShape")).setOutputCol("features")
                 (
-                  sequencerTokens.transform(sequencerEntities.transform(trainDF)),
-                  sequencerTokens.transform(sequencerEntities.transform(devDF))
+                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
+                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
                 )
               case "bert" =>
                 val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresBERT")
                 (
-                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF))),
-                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
+                  sequencerShapes.transform(sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
+                  sequencerShapes.transform(sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
                 )
               case "join" =>
                 // shift the act indices by numEntities
                 val shift = udf((xs: Seq[Int]) => xs.map(_ + entities.length))
                 val (pf, qf) = (
-                  sequencerActs.transform(trainDF).withColumn("actIdxShifted", col("actIdx")),
-                  sequencerActs.transform(devDF).withColumn("actIdxShifted", col("actIdx"))
+                  sequencerActs.transform(trainDF).withColumn("actIdxShifted", shift(col("actIdx"))),
+                  sequencerActs.transform(devDF).withColumn("actIdxShifted", shift(col("actIdx")))
                 )
                 val assembler = new VectorAssembler().setInputCols(Array("slotIdx", "actIdxShifted")).setOutputCol("label")
                 (
-                  assembler.transform(sequencerTokens.transform(sequencerEntities.transform(pf))),
-                  assembler.transform(sequencerTokens.transform(sequencerEntities.transform(qf)))
+                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(pf)))),
+                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(qf))))
                 )
             }
             // save uf and vf for other modes (eval/predict)
