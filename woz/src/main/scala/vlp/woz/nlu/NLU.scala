@@ -198,8 +198,13 @@ object NLU {
 
   private def createJointEncoderLSTM(numTokens: Int, numEntities: Int, numActs: Int, config: ConfigNLU): KerasNet[Float] = {
     // (1) first part: 2 layers BiLSTM
-    val input = Input[Float](inputShape = Shape(config.maxSeqLen))
-    val embeddings = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(input)
+    val input = Input[Float](inputShape = Shape(2*config.maxSeqLen))
+    val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
+    val selectToken = Select[Float](1, 0).inputs(reshape)
+    val embeddingToken = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(selectToken)
+    val selectShape = Select[Float](1, 1).inputs(reshape)
+    val embeddingShape = Embedding[Float](inputDim = 13, outputDim = 13).inputs(selectShape)
+    val embeddings = Merge.merge(inputs = List(embeddingToken, embeddingShape), mode = "concat", concatAxis = -1) // concat along the feature dimension
     val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(embeddings)
     val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
     val entityOutput = Dense[Float](numEntities, activation = "softmax").inputs(rnn2)
@@ -335,20 +340,23 @@ object NLU {
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
             val shapes = preprocessor.stages(4).asInstanceOf[CountVectorizerModel].vocabulary
-            // BigDL uses 1-based index for targets (entity, act). For token embedding, we can use 0-based index.
-            val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2)).toMap
+            // BigDL uses 1-based index for targets (entity, act).
+            val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             // act indices are shifted by length(entities)
             val actDict = acts.zipWithIndex.map(p => (p._1, p._2 + 1 + entities.length)).toMap
-            val shapeDict = shapes.zipWithIndex.map(p => (p._1, p._2)).toMap
+            val shapeDict = shapes.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
 
             val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresToken")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
             // most utterances have at most 2 acts; so a 2-dimension vector for act encoding is sufficient.
             val sequencerActs = new Sequencer(actDict, 2, -1f).setInputCol("actNames").setOutputCol("actIdx")
-            val sequencerShapes = new Sequencer(shapeDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresShape")
+            val sequencerShapes = new Sequencer(shapeDict, config.maxSeqLen, 0f).setInputCol("shapes").setOutputCol("featuresShape")
 
-            val (train, dev) = (spark.read.json("dat/woz/nlu/train"), spark.read.json("dat/woz/nlu/dev"))
+            val (train, dev) = (
+              preprocessor.transform(spark.read.json("dat/woz/nlu/train")),
+              preprocessor.transform(spark.read.json("dat/woz/nlu/dev"))
+            )
             // remove samples which are longer than maxSeqLen
             val (trainDF, devDF) = (
               train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
@@ -356,10 +364,10 @@ object NLU {
             )
             val (uf, vf) = config.modelType match {
               case "lstm" =>
-                val assembler = new VectorAssembler().setInputCols(Array("featuresToken", "featuresShape")).setOutputCol("features")
+                val assemblerFeature = new VectorAssembler().setInputCols(Array("featuresToken", "featuresShape")).setOutputCol("features")
                 (
-                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
-                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
+                  assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
+                  assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
                 )
               case "bert" =>
                 val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresBERT")
@@ -374,10 +382,11 @@ object NLU {
                   sequencerActs.transform(trainDF).withColumn("actIdxShifted", shift(col("actIdx"))),
                   sequencerActs.transform(devDF).withColumn("actIdxShifted", shift(col("actIdx")))
                 )
-                val assembler = new VectorAssembler().setInputCols(Array("slotIdx", "actIdxShifted")).setOutputCol("label")
+                val assemblerFeature = new VectorAssembler().setInputCols(Array("featuresToken", "featuresShape")).setOutputCol("features")
+                val assemblerLabel = new VectorAssembler().setInputCols(Array("slotIdx", "actIdxShifted")).setOutputCol("label")
                 (
-                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(pf)))),
-                  assembler.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(qf))))
+                  assemblerFeature.transform(assemblerLabel.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(pf))))),
+                  assemblerFeature.transform(assemblerLabel.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(qf)))))
                 )
             }
             // save uf and vf for other modes (eval/predict)
@@ -415,7 +424,7 @@ object NLU {
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
-            estimator.fit(uf)
+            estimator.fit(uf.sample(0.2))
 
             encoder.saveModel(modelPath, overWrite = true)
 
