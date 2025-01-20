@@ -16,7 +16,7 @@ case class ConfigNLU(
   hiddenSize: Int = 64,
   modelType: String = "lstm",
   mode: String = "eval",
-  epochs: Int = 100,
+  epochs: Int = 200,
   lambdaSlot: Float = 0.5f,
   lambdaAct: Float = 0.5f
 )

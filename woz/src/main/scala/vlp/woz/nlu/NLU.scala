@@ -1,7 +1,7 @@
 package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
-import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, InputLayer, KerasLayerWrapper, LSTM, Merge, RepeatVector, Reshape, Select, SelectTable, SplitTensor, Squeeze, ZeroPadding1D}
+import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, KerasLayerWrapper, LSTM, Merge, RepeatVector, Reshape, Select, SelectTable, SplitTensor, Squeeze, ZeroPadding1D}
 import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion, Transpose}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
@@ -15,8 +15,6 @@ import org.apache.spark.sql.DataFrame
 import org.apache.spark.ml.feature._
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml._
-import org.apache.spark.ml.feature._
-import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation._
 import org.apache.spark.ml.linalg.DenseVector
 import scopt.OptionParser
@@ -326,7 +324,7 @@ object NLU {
         val (featuresCol, featureSize) = config.modelType match {
           case "lstm" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
           case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
-          case "join" => ("features", Array(config.maxSeqLen))
+          case "join" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
         }
 
         config.mode match {
@@ -349,8 +347,6 @@ object NLU {
 
             val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresToken")
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
-            // most utterances have at most 2 acts; so a 2-dimension vector for act encoding is sufficient.
-            val sequencerActs = new Sequencer(actDict, 2, -1f).setInputCol("actNames").setOutputCol("actIdx")
             val sequencerShapes = new Sequencer(shapeDict, config.maxSeqLen, 0f).setInputCol("shapes").setOutputCol("featuresShape")
 
             val (train, dev) = (
@@ -376,17 +372,15 @@ object NLU {
                   sequencerShapes.transform(sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
                 )
               case "join" =>
-                // shift the act indices by numEntities
-                val shift = udf((xs: Seq[Int]) => xs.map(_ + entities.length))
-                val (pf, qf) = (
-                  sequencerActs.transform(trainDF).withColumn("actIdxShifted", shift(col("actIdx"))),
-                  sequencerActs.transform(devDF).withColumn("actIdxShifted", shift(col("actIdx")))
-                )
+                // most utterances have at most 2 acts; so a 2-dimension vector for act encoding is sufficient.
+                val sequencerActs = new Sequencer(actDict, 2, -1f).setInputCol("actNames").setOutputCol("actIdx")
+                val assemblerLabel = new VectorAssembler().setInputCols(Array("slotIdx", "actIdx")).setOutputCol("label")
                 val assemblerFeature = new VectorAssembler().setInputCols(Array("featuresToken", "featuresShape")).setOutputCol("features")
-                val assemblerLabel = new VectorAssembler().setInputCols(Array("slotIdx", "actIdxShifted")).setOutputCol("label")
                 (
-                  assemblerFeature.transform(assemblerLabel.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(pf))))),
-                  assemblerFeature.transform(assemblerLabel.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(qf)))))
+                  assemblerFeature.transform(assemblerLabel.transform(sequencerActs.transform(
+                    sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))))),
+                  assemblerFeature.transform(assemblerLabel.transform(sequencerActs.transform(
+                    sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))))
                 )
             }
             // save uf and vf for other modes (eval/predict)
