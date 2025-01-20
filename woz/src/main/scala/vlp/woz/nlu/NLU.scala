@@ -161,9 +161,9 @@ object NLU {
     val input = Input[Float](inputShape = Shape(2*config.maxSeqLen))
     val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
     val selectToken = Select[Float](1, 0).inputs(reshape)
-    val embeddingToken = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(selectToken)
+    val embeddingToken = Embedding[Float](inputDim = numTokens + 1, outputDim = config.embeddingSize).inputs(selectToken)
     val selectShape = Select[Float](1, 1).inputs(reshape)
-    val embeddingShape = Embedding[Float](inputDim = 13, outputDim = 13).inputs(selectShape)
+    val embeddingShape = Embedding[Float](inputDim = 13 + 1, outputDim = 8).inputs(selectShape)
     val merge = Merge.merge(inputs = List(embeddingToken, embeddingShape), mode = "concat", concatAxis = -1)
     val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(merge)
     val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
@@ -185,7 +185,7 @@ object NLU {
     val masksReshaped = Reshape[Float](targetShape = Array(1, 1, config.maxSeqLen)).setName("maskReshape").inputs(selectMasks)
 
     // use a BERT layer, not output all blocks (there will be 2 outputs)
-    val bert = BERT[Float](numTokens, config.embeddingSize, config.numLayers, config.numHeads, config.maxSeqLen, config.hiddenSize, outputAllBlock = false).setName("BERT")
+    val bert = BERT[Float](numTokens + 1, config.embeddingSize, config.numLayers, config.numHeads, config.maxSeqLen, config.hiddenSize, outputAllBlock = false).setName("BERT")
     val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
     // get the pooled output which processes the hidden state of the last layer with regard to the first
     //  token of the sequence. This would be useful for classification tasks.
@@ -201,9 +201,9 @@ object NLU {
     val input = Input[Float](inputShape = Shape(2*config.maxSeqLen))
     val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
     val selectToken = Select[Float](1, 0).inputs(reshape)
-    val embeddingToken = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(selectToken)
+    val embeddingToken = Embedding[Float](inputDim = numTokens + 1, outputDim = config.embeddingSize).inputs(selectToken)
     val selectShape = Select[Float](1, 1).inputs(reshape)
-    val embeddingShape = Embedding[Float](inputDim = 13, outputDim = 13).inputs(selectShape)
+    val embeddingShape = Embedding[Float](inputDim = 13 + 1, outputDim = 8).inputs(selectShape)
     val embeddings = Merge.merge(inputs = List(embeddingToken, embeddingShape), mode = "concat", concatAxis = -1) // concat along the feature dimension
     val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(embeddings)
     val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
