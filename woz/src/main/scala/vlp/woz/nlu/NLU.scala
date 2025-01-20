@@ -424,7 +424,7 @@ object NLU {
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
               .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
-            estimator.fit(uf.sample(0.2))
+            estimator.fit(uf)
 
             encoder.saveModel(modelPath, overWrite = true)
 
