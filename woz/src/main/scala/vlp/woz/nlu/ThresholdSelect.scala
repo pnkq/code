@@ -23,17 +23,10 @@ class ThresholdSelect[T: ClassTag](threshold: Float = 0.5f)(implicit ev: TensorN
   override def updateOutput(input: Tensor[T]): Tensor[T] = {
     val dimension = input.size.length
     val (values, indices) = input.max(dimension)
-    val (v, i) = (values.asInstanceOf[Tensor[Float]].toArray(), indices.asInstanceOf[Tensor[Int]].toArray())
-    // sort the score in descending order and filter elements greater than threshold
-    val selectedIndices = v.zip(i).sortBy(_._1)(Ordering[Float].reverse).filter(_._1 >= threshold).map(_._2)
-    // take 2 elements
-    val choice = if (selectedIndices.isEmpty) Array(-1, -1) else {
-      if (selectedIndices.length == 1) selectedIndices ++ Array(-1) else selectedIndices.take(2)
-    }
-    val result = Tensor(choice)
+    val (v, i) = (values.asInstanceOf[Tensor[Float]], indices.asInstanceOf[Tensor[Float]])
+    val result = v.squeeze(dimension).map(i.squeeze(dimension), (a, b) => a + b) // 42.28447 => [index = 42, value = 0.28847]
     output.resizeAs(result)
     result.cast[T](output)
-    output.squeeze(dimension)
     output
   }
 
@@ -63,7 +56,7 @@ class ThresholdSelectLayer[T: ClassTag](val inputShape: Shape = null, threshold:
 
   override def computeOutputShape(inputShape: Shape): Shape = {
     val input = inputShape.toSingle().toArray
-    Shape(input.slice(0, input.length - 1)) // don't take the last dimension
+    Shape(input.slice(0, input.length - 1))
   }
 }
 

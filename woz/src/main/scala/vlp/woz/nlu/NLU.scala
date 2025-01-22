@@ -246,10 +246,10 @@ object NLU {
     model.transform(vf)
   }
 
-  private def predictActs(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features", maxSeqLen: Int): DataFrame = {
+  private def predictActs(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features"): DataFrame = {
     val sequential = Sequential[Float]()
     sequential.add(encoder)
-    sequential.add(ThresholdSelect[Float](threshold = 0.5f))
+    sequential.add(ThresholdSelectLayer[Float](threshold = 0.5f))
     // pass to a Spark model and run prediction
     val model = NNModel[Float](sequential).setFeaturesCol(featuresCol)
     model.transform(vf)
@@ -482,6 +482,14 @@ object NLU {
           case "join" =>
             val encoder = createJointEncoderLSTM(100, 50, 30, config)
             encoder.summary()
+          case "act" =>
+            val encoder =  Models.loadModel[Float](modelPath)
+            encoder.summary()
+            val vf = spark.read.parquet("dat/woz/nlu/vf")
+            // predict and export results
+            val preprocessor = PipelineModel.load(s"$basePath/pre")
+            val qf = predictActs(encoder, vf, featuresCol)
+            qf.select("prediction").show(false)
         }
         spark.stop()
       case None =>
