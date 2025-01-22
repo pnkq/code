@@ -106,6 +106,7 @@ There are 12,309 samples whose length <= 20, which accounts for 12,309/14,748 = 
 
 # TODO
 
+- Implement act inference (sigmoid threshold of 0.5)
 - Build global act graph
 - Learn act node embeddings over the global act graph
 - Start manuscript (sentence embedding models)

@@ -9,7 +9,7 @@ case class ConfigNLU(
   maxSeqLen: Int = 25,
   batchSize: Int = 32,
   learningRate: Double = 1E-4,
-  embeddingSize: Int = 32,
+  embeddingSize: Int = 100,
   recurrentSize: Int = 64, // x2 for bidirectional
   numLayers: Int = 2,
   numHeads: Int = 4,

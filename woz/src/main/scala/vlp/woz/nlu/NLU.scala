@@ -226,13 +226,30 @@ object NLU {
     Model(input, merge)
   }
 
-  private def predict(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features", argmax: Boolean=true): DataFrame = {
+  /**
+   * Predict sequence labels where the label with maximum probability is chosen at each time step.
+   * @param encoder BigDL model
+   * @param vf input data frame
+   * @param featuresCol feature column name
+   * @param argmax add argmax layer
+   * @return a data frame
+   */
+  private def predictSlots(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features", argmax: Boolean = true): DataFrame = {
     val sequential = Sequential[Float]()
     sequential.add(encoder)
     // bigdl produces 3-d output results (including batch dimension), we need to convert it to 2-d results.
     if (argmax)
       sequential.add(ArgMaxLayer[Float]())
     sequential.summary()
+    // pass to a Spark model and run prediction
+    val model = NNModel[Float](sequential).setFeaturesCol(featuresCol)
+    model.transform(vf)
+  }
+
+  private def predictActs(encoder: KerasNet[Float], vf: DataFrame, featuresCol: String = "features", maxSeqLen: Int): DataFrame = {
+    val sequential = Sequential[Float]()
+    sequential.add(encoder)
+    sequential.add(ThresholdSelect[Float](threshold = 0.5f))
     // pass to a Spark model and run prediction
     val model = NNModel[Float](sequential).setFeaturesCol(featuresCol)
     model.transform(vf)
@@ -423,8 +440,8 @@ object NLU {
             encoder.saveModel(modelPath, overWrite = true)
 
             // predict and export results
-            val pf = predict(encoder, uf, featuresCol)
-            val qf = predict(encoder, vf, featuresCol)
+            val pf = predictSlots(encoder, uf, featuresCol)
+            val qf = predictSlots(encoder, vf, featuresCol)
             // extract act prediction for the joint model:
             if (config.modelType == "join") {
               println("Train multi-label performance (f1Measure): ", evaluateAct(spark, pf.select("label", "prediction")))
@@ -446,8 +463,8 @@ object NLU {
             val vf = spark.read.parquet("dat/woz/nlu/vf")
             // predict and export results
             val preprocessor = PipelineModel.load(s"$basePath/pre")
-            val pf = predict(encoder, uf, featuresCol)
-            val qf = predict(encoder, vf, featuresCol)
+            val pf = predictSlots(encoder, uf, featuresCol)
+            val qf = predictSlots(encoder, vf, featuresCol)
             qf.select("label", "prediction").show(false)
             if (config.modelType == "join") {
               println("Train multi-label performance (f1Measure): " + evaluateAct(spark, pf.select("label", "prediction")))

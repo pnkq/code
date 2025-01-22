@@ -23,7 +23,7 @@ class ArgMax[T: ClassTag]()(implicit ev: TensorNumeric[T]) extends TensorModule[
 
   override def updateOutput(input: Tensor[T]): Tensor[T] = {
     val dimension = input.size.length
-    val (_, result) = input.asInstanceOf[Tensor[NumericWildcard]].max(dimension)
+    val (_, result) = input.max(dimension)
     output.resizeAs(result)
     result.cast[T](output)
     output.squeeze(dimension)
@@ -56,7 +56,7 @@ class ArgMaxLayer[T: ClassTag](val inputShape: Shape = null)(implicit ev: Tensor
 
   override def computeOutputShape(inputShape: Shape): Shape = {
     val input = inputShape.toSingle().toArray
-    Shape(input.slice(0, input.size - 1)) // don't take the last dimension
+    Shape(input.slice(0, input.length - 1)) // don't take the last dimension
   }
 }
 
