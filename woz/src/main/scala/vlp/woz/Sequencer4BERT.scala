@@ -15,14 +15,14 @@ import org.apache.spark.sql.types.DataType
   *
   * phuonglh@gmail.com
   */
-class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], maxSequenceLength: Int, padding: Float) 
+class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], val maxSequenceLength: Int, val padding: Int)
   extends UnaryTransformer[Seq[String], Vector, Sequencer4BERT] with DefaultParamsWritable {
 
   var dictionaryBr: Option[Broadcast[Map[String, Int]]] = None
   var maxSeqLen: Int = -1
-  var pad: Float = -1f
+  var pad: Float = -1
 
-  def this(dictionary: Map[String, Int], maxSequenceLength: Int, padding: Float) = {
+  def this(dictionary: Map[String, Int], maxSequenceLength: Int, padding: Int) = {
     this(Identifiable.randomUID("seq4BERT"), dictionary, maxSequenceLength, padding)
     val sparkContext = SparkSession.getActiveSession.get.sparkContext
     dictionaryBr = Some(sparkContext.broadcast(dictionary))

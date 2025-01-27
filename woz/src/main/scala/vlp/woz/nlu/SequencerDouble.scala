@@ -32,7 +32,7 @@ class SequencerDouble(val uid: String, val dictionary: Map[Double, String])
     f
   }
 
-  override protected def outputDataType: DataType = ArrayType(StringType, false)
+  override protected def outputDataType: DataType = ArrayType(StringType, containsNull = false)
 }
 
 object SequencerDouble extends DefaultParamsReadable[SequencerDouble] {

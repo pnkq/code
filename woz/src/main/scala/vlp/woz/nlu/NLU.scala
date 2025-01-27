@@ -58,7 +58,7 @@ object NLU {
     * @param spans an array of spans
     * @return a sequence of tuples.
     */
-  def tokenize(utterance: String, acts: Array[Act], spans: Array[Span]): Seq[(Int, Array[(String, String)])] = {
+  private def tokenize(utterance: String, acts: Array[Act], spans: Array[Span]): Seq[(Int, Array[(String, String)])] = {
     if (spans.length > 0) {
       val intervals: Array[(Int, Int)] = spans.map { span => (span.start.get.toInt, span.end.get.toInt) }
       val (a, b) = (intervals.head._1, intervals.last._2)
@@ -122,7 +122,7 @@ object NLU {
     * @param spark a spark session
     * @param path a path to a split data
     */
-  def transformActs(spark: SparkSession, path: String): DataFrame = {
+  private def transformActs(spark: SparkSession, path: String): DataFrame = {
     import spark.implicits._
     val af = spark.read.json(path).as[Element]
     println("Number of rows = " + af.count())
@@ -289,7 +289,7 @@ object NLU {
   }
 
   /**
-   * Evaluates the performance of act classification (multilabel classification)
+   * Evaluates the performance of act classification (multi-label classification)
    * @param spark Spark session
    * @param result a prediction data frame by the BigDL model
    * @return a score (f1Measure)
@@ -362,9 +362,9 @@ object NLU {
             val actDict = acts.zipWithIndex.map(p => (p._1, p._2 + 1 + entities.length)).toMap
             val shapeDict = shapes.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
 
-            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresToken")
-            val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1f).setInputCol("slots").setOutputCol("slotIdx")
-            val sequencerShapes = new Sequencer(shapeDict, config.maxSeqLen, 0f).setInputCol("shapes").setOutputCol("featuresShape")
+            val sequencerTokens = new Sequencer(vocabDict, config.maxSeqLen, 0).setInputCol("tokens").setOutputCol("featuresToken")
+            val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1).setInputCol("slots").setOutputCol("slotIdx")
+            val sequencerShapes = new Sequencer(shapeDict, config.maxSeqLen, 0).setInputCol("shapes").setOutputCol("featuresShape")
 
             val (train, dev) = (
               preprocessor.transform(spark.read.json("dat/woz/nlu/train")),
@@ -383,14 +383,14 @@ object NLU {
                   assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
                 )
               case "bert" =>
-                val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0f).setInputCol("tokens").setOutputCol("featuresBERT")
+                val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0).setInputCol("tokens").setOutputCol("featuresBERT")
                 (
                   sequencerShapes.transform(sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
                   sequencerShapes.transform(sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
                 )
               case "join" =>
                 // most utterances have at most 2 acts; so a 2-dimension vector for act encoding is sufficient.
-                val sequencerActs = new Sequencer(actDict, 2, -1f).setInputCol("actNames").setOutputCol("actIdx")
+                val sequencerActs = new Sequencer(actDict, 2, -1).setInputCol("actNames").setOutputCol("actIdx")
                 val assemblerLabel = new VectorAssembler().setInputCols(Array("slotIdx", "actIdx")).setOutputCol("label")
                 val assemblerFeature = new VectorAssembler().setInputCols(Array("featuresToken", "featuresShape")).setOutputCol("features")
                 (
@@ -417,7 +417,7 @@ object NLU {
 
             val w = if (config.modelType == "join") {
               val w1 = labelWeights(spark, uf, "slotIdx").toArray().map(_ * config.lambdaSlot)
-              val w2 = labelWeights(spark, uf, "actIdx").toArray().map(_ * config.lambdaAct)
+              val w2 = labelWeights(spark, uf, "actIdx").toArray().map(_ * (1 - config.lambdaSlot))
               Tensor[Float](w1 ++ w2, Array(w1.length + w2.length))
             } else labelWeights(spark, uf, "slotIdx")
             println(w)
@@ -487,7 +487,7 @@ object NLU {
             encoder.summary()
             val vf = spark.read.parquet("dat/woz/nlu/vf")
             // predict and export results
-            val preprocessor = PipelineModel.load(s"$basePath/pre")
+            // val preprocessor = PipelineModel.load(s"$basePath/pre")
             val qf = predictActs(encoder, vf, featuresCol)
             qf.select("prediction").show(false)
         }

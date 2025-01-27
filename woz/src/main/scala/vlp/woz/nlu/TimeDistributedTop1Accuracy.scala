@@ -8,7 +8,7 @@ import com.intel.analytics.bigdl.dllib.tensor.TensorNumericMath.TensorNumeric
 /**
  * phuonglh@gamil.com
  *
- * @param paddingValue a padding value in the target sequence, default is -1f.
+ * @param paddingValue a padding value in the target sequence, default is -1.
  * @param ev
  *
  * Note: 1-based label index for token classification
