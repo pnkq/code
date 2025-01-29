@@ -1,6 +1,5 @@
 package vlp.woz.act
 
-import com.intel.analytics.bigdl.dllib.NNContext
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.models.{Models, KerasNet}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam

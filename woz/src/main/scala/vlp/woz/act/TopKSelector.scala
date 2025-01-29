@@ -29,10 +29,10 @@ class TopKSelector(val uid: String, val k: Int, val threshold: Float = 0.1f) ext
       if (candidates.isEmpty) topK.take(1).map(_._2.toDouble) else candidates.map(_._2.toDouble)
     }
 
-    f(_)
+    f
   }
 
-  override protected def outputDataType: DataType = ArrayType(DoubleType, false)
+  override protected def outputDataType: DataType = ArrayType(DoubleType, containsNull = false)
 }
 
 object TopKSelector extends DefaultParamsReadable[TopKSelector] {
