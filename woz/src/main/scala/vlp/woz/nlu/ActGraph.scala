@@ -6,7 +6,6 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{col, isnull, lag, not}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
-
 /**
  * A tool to construct act graph.
  *
@@ -46,20 +45,17 @@ object ActGraph {
     val acts = df1.select("acts(-1)", "actNames").flatMap { row =>
       val prevActs = row.getSeq[String](0)
       val currActs = row.getSeq[String](1)
-      for (p <- prevActs; c <- currActs) yield (Edge(node2Id(p), node2Id(c), 0))
-    }
-    EdgeRDD.fromEdges(acts.rdd)
+      for (p <- prevActs; c <- currActs) yield Edge(node2Id(p), node2Id(c), 1)
+    }.rdd
+    // combine the counts on the same edge
+    val combined = acts.groupBy(edge => (edge.srcId, edge.dstId))
+      .mapValues(vs => vs.map(_.attr).sum).reduceByKey(_ + _)
+      .map(triple => Edge(triple._1._1, triple._1._2, triple._2))
+    EdgeRDD.fromEdges(combined)
   }
 
-  def main(args: Array[String]): Unit = {
-    val spark = SparkSession.builder().master("local[4]").appName(ActGraph.getClass.getName).getOrCreate()
-    spark.sparkContext.setLogLevel("WARN")
-
-//    val df = spark.read.json("dat/woz/nlu/dev")
-//    df.show()
-//    val (vertices, map) = createVertices(spark, df)
-//    println(map)
-
+  private def test1(spark: SparkSession): Unit = {
+    // take the first two dialogs and check the constructed act graph
     val dialogs = Seq(
       ("SNG1143.json", "0", Seq("ATTRACTION-INFORM")),
       ("SNG1143.json", "1", Seq("ATTRACTION-NOOFFER","ATTRACTION-REQUEST")),
@@ -82,6 +78,21 @@ object ActGraph {
     println(map)
     val edges = createEdges(spark, df, map)
     edges.foreach(println)
+  }
+
+  def main(args: Array[String]): Unit = {
+    val spark = SparkSession.builder().master("local[4]").appName(ActGraph.getClass.getName).getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+
+    val df = spark.read.json("dat/woz/nlu/dev")
+    df.show()
+    val (vertices, node2Id) = createVertices(spark, df)
+    node2Id.foreach(println)
+    val edges = createEdges(spark, df, node2Id)
+    println(s"Number of edges = ${edges.count()}")
+    edges.foreach(println)
+
+    
     spark.stop()
   }
 }
