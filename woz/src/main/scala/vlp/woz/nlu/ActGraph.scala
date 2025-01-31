@@ -92,7 +92,7 @@ object ActGraph {
     println(s"Number of edges = ${edges.count()}")
     edges.foreach(println)
 
-    
+
     spark.stop()
   }
 }
