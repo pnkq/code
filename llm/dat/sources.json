@@ -125,6 +125,18 @@
         "hashtag/kinh-te-4.htm", "hashtag/hang-hoa-nguyen-lieu-54.htm", "hashtag/cartimes-56.htm", "hashtag/dia-phuong-8307.htm", "hashtag/chinh-sach-3.htm", "hashtag/tai-chinh-doanh-nghiep-453.htm"],
       "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.htm",
       "exclude": []
+    },
+    {
+      "site": "https://vtcnews.vn",
+      "category": ["/kinh-te-29.html", "bao-ve-nguoi-tieu-dung-51.html", "bat-dong-san-112.html", "dau-tu-199.html", "tai-chinh-200.html", "doanh-nhan-201.html", "du-lich-195.html"],
+      "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.html",
+      "exclude": []
+    },
+    {
+      "site": "https://znews.vn",
+      "category": ["kinh-doanh-tai-chinh.html", "doanh-nhan.html", "bat-dong-san.html", "tai-chinh.html", "kinh-doanh-thi-truong.html", "kinh-te-so.html", "tien-cua-toi.html", "hang-khong.html", "tieu-diem/cong-nghiep.html", "nong-nghiep.html", "ttdn.html"],
+      "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.html",
+      "exclude": []
     }
   ]
 }
