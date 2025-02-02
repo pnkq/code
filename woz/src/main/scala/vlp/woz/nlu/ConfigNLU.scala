@@ -18,5 +18,5 @@ case class ConfigNLU(
   mode: String = "eval",
   epochs: Int = 200,
   lambdaSlot: Float = 0.5f,
-  embeddingType: String = "d" // d=DeBERTa, b=BERT, x=XLM-RoBERTa
+  embeddingType: String = "b" // d=DeBERTa, b=BERT, x=XLM-RoBERTa
 )

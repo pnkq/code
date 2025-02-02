@@ -146,7 +146,7 @@ object NLU {
     }
   }
 
-  private def preprocess(df: DataFrame, savePath: String = ""): PipelineModel = {
+  private def preprocess(df: DataFrame, savePath: String): PipelineModel = {
     val vectorizerToken = new CountVectorizer().setInputCol("tokens").setOutputCol("tokenVec")
     val vectorizerSlot = new CountVectorizer().setInputCol("slots").setOutputCol("slotVec")
     val vectorizerAct = new CountVectorizer().setInputCol("actNames").setOutputCol("actVec")
@@ -158,7 +158,7 @@ object NLU {
     model
   }
 
-  private def preprocessJSL(df: DataFrame, config: ConfigNLU, savePath: String = ""): PipelineModel = {
+  private def preprocessJSL(train: DataFrame, dev: DataFrame, test: DataFrame, config: ConfigNLU, savePath: String): Unit = {
     val document = new DocumentAssembler().setInputCol("utterance").setOutputCol("document")
     val tokenizer = new com.johnsnowlabs.nlp.annotator.Tokenizer().setInputCols(Array("document")).setOutputCol("token")
     val embeddings = config.embeddingType match {
@@ -168,11 +168,19 @@ object NLU {
       case _ => DeBertaEmbeddings.pretrained("deberta_v3_large", "vie").setInputCols("document", "token").setOutputCol("embeddings").setCaseSensitive(true)
     }
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols("xs").setOutputAsVector(false) // output as arrays
-    val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher))
-    val preprocessor = pipeline.fit(df)
-    val output = preprocessor.transform(df)
-    output.write.mode("overwrite").save(savePath)
-    preprocessor
+    // subsequence stages are the same as the supervised preprocessor
+    val vectorizerSlot = new CountVectorizer().setInputCol("slots").setOutputCol("slotVec")
+    val vectorizerAct = new CountVectorizer().setInputCol("actNames").setOutputCol("actVec")
+    val wordShaper = new WordShaper().setInputCol("tokens").setOutputCol("shapes")
+    val vectorizerShape = new CountVectorizer().setInputCol("shapes").setOutputCol("shapeVec")
+    val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher, vectorizerSlot, vectorizerAct, wordShaper, vectorizerShape))
+    val preprocessor = pipeline.fit(train)
+    val uf = preprocessor.transform(train)
+    uf.write.mode("overwrite").save(s"$savePath/jsl-${config.embeddingType}/uf")
+    val vf = preprocessor.transform(dev)
+    vf.write.mode("overwrite").save(s"$savePath/jsl-${config.embeddingType}/vf")
+    val wf = preprocessor.transform(test)
+    wf.write.mode("overwrite").save(s"$savePath/jsl-${config.embeddingType}/wf")
   }
 
   private def createEncoderLSTM(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
@@ -337,6 +345,7 @@ object NLU {
       opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 16g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either {eval, train, predict}")
+      opt[String]('e', "embeddingType").action((x, conf) => conf.copy(embeddingType = x)).text("embedding type, b/d/x")
       opt[Double]('a', "learningRate").action((x, conf) => conf.copy(learningRate = x)).text("learning rate")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
       opt[Int]('j', "numLayers").action((x, conf) => conf.copy(numLayers = x)).text("number of RNN layers or Transformer blocks")
@@ -370,8 +379,13 @@ object NLU {
             val df = spark.read.json("dat/woz/nlu/train")
             preprocess(df, s"$basePath/pre")
           case "initJSL" =>
-            val df = spark.read.json("dat/woz/nlu/train")
-            preprocessJSL(df, config, s"$basePath/preJSL-${config.embeddingType}")
+            val (train, dev, test) = (
+              spark.read.json("dat/woz/nlu/train"),
+              spark.read.json("dat/woz/nlu/dev"),
+              spark.read.json("dat/woz/nlu/test")
+            )
+            preprocessJSL(train, dev, test, config, basePath)
+
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
             val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
