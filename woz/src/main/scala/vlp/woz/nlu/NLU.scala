@@ -9,6 +9,9 @@ import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
+import com.johnsnowlabs.nlp.{DocumentAssembler, EmbeddingsFinisher}
+import com.johnsnowlabs.nlp.annotator.{BertEmbeddings, XlmRoBertaEmbeddings}
+import com.johnsnowlabs.nlp.embeddings.DeBertaEmbeddings
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.DataFrame
@@ -151,8 +154,24 @@ object NLU {
     val vectorizerShape = new CountVectorizer().setInputCol("shapes").setOutputCol("shapeVec")
     val pipeline = new Pipeline().setStages(Array(vectorizerToken, vectorizerSlot, vectorizerAct, wordShaper, vectorizerShape))
     val model = pipeline.fit(df)
-    if (savePath.nonEmpty) model.write.overwrite().save(savePath)
+    if (savePath.nonEmpty) model.write.overwrite.save(savePath)
     model
+  }
+
+  private def preprocessJSL(df: DataFrame, config: ConfigNLU, savePath: String = ""): PipelineModel = {
+    val document = new DocumentAssembler().setInputCol("utterance").setOutputCol("document")
+    val tokenizer = new com.johnsnowlabs.nlp.annotator.Tokenizer().setInputCols(Array("document")).setOutputCol("token")
+    val embeddings = config.embeddingType match {
+      case "b" => BertEmbeddings.pretrained("bert_embeddings_bert_large_cased_whole_word_masking", "en").setInputCols("document", "token").setOutputCol("embeddings").setCaseSensitive(true)
+      case "d" => DeBertaEmbeddings.pretrained("deberta_v3_large", "en").setInputCols("document", "token").setOutputCol("embeddings").setCaseSensitive(true)
+      case "x" => XlmRoBertaEmbeddings.pretrained("xlm_roberta_large", "xx").setInputCols("document", "token").setOutputCol("embeddings").setCaseSensitive(true)
+      case _ => DeBertaEmbeddings.pretrained("deberta_v3_large", "vie").setInputCols("document", "token").setOutputCol("embeddings").setCaseSensitive(true)
+    }
+    val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols("xs").setOutputAsVector(false) // output as arrays
+    val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher))
+    val preprocessor = pipeline.fit(df)
+    preprocessor.write.overwrite.save(savePath)
+    preprocessor
   }
 
   private def createEncoderLSTM(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
@@ -349,6 +368,9 @@ object NLU {
             saveDatasets(spark)
             val df = spark.read.json("dat/woz/nlu/train")
             preprocess(df, s"$basePath/pre")
+          case "initJSL" =>
+            val df = spark.read.json("dat/woz/nlu/train")
+            preprocessJSL(df, config, s"$basePath/preJSL")
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
             val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary

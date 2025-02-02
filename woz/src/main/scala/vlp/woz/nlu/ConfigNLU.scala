@@ -17,5 +17,6 @@ case class ConfigNLU(
   modelType: String = "lstm",
   mode: String = "eval",
   epochs: Int = 200,
-  lambdaSlot: Float = 0.5f
+  lambdaSlot: Float = 0.5f,
+  embeddingType: String = "d" // d=DeBERTa, b=BERT, x=XLM-RoBERTa
 )
