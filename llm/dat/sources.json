@@ -128,7 +128,7 @@
     },
     {
       "site": "https://vtcnews.vn",
-      "category": ["/kinh-te-29.html", "bao-ve-nguoi-tieu-dung-51.html", "bat-dong-san-112.html", "dau-tu-199.html", "tai-chinh-200.html", "doanh-nhan-201.html", "du-lich-195.html"],
+      "category": ["kinh-te-29.html", "bao-ve-nguoi-tieu-dung-51.html", "bat-dong-san-112.html", "dau-tu-199.html", "tai-chinh-200.html", "doanh-nhan-201.html", "du-lich-195.html"],
       "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.html",
       "exclude": []
     },
