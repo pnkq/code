@@ -170,7 +170,8 @@ object NLU {
     val finisher = new EmbeddingsFinisher().setInputCols("embeddings").setOutputCols("xs").setOutputAsVector(false) // output as arrays
     val pipeline = new Pipeline().setStages(Array(document, tokenizer, embeddings, finisher))
     val preprocessor = pipeline.fit(df)
-    preprocessor.write.overwrite.save(savePath)
+    val output = preprocessor.transform(df)
+    output.write.mode("overwrite").save(savePath)
     preprocessor
   }
 
@@ -370,7 +371,7 @@ object NLU {
             preprocess(df, s"$basePath/pre")
           case "initJSL" =>
             val df = spark.read.json("dat/woz/nlu/train")
-            preprocessJSL(df, config, s"$basePath/preJSL")
+            preprocessJSL(df, config, s"$basePath/preJSL-${config.embeddingType}")
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
             val vocab = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
