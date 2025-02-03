@@ -21,7 +21,7 @@ import org.apache.spark.ml._
 import org.apache.spark.ml.evaluation._
 import org.apache.spark.ml.linalg.DenseVector
 import scopt.OptionParser
-import vlp.woz.{Sequencer4BERT, WordShaper}
+import vlp.woz.{FeatureFlattener, FeaturePadder, Sequencer4BERT, WordShaper}
 import vlp.woz.act.Act
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -397,7 +397,7 @@ object NLU {
           case "lstm" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
           case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
           case "join" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
-          case "lstmJSL" => ("xs", Array(768*config.maxSeqLen))
+          case "lstmJSL" => ("features", Array(768*config.maxSeqLen))
         }
 
         config.mode match {
@@ -433,9 +433,12 @@ object NLU {
               train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
               dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
             )
+            val flattener = new FeatureFlattener().setInputCol("xs").setOutputCol("as")
+            val padder = new FeaturePadder(config.maxSeqLen*768, 0f).setInputCol("as").setOutputCol("features")
+
             val (uf, vf) = (
-              sequencerEntities.transform(trainDF),
-              sequencerEntities.transform(devDF),
+              padder.transform(flattener.transform(sequencerEntities.transform(trainDF))),
+              padder.transform(flattener.transform(sequencerEntities.transform(devDF))),
             )
             val encoder = createEncoderSnowLSTM(entities.length, config)
             val (labelCol, labelSize) = if (config.modelType == "joinJSL")
@@ -447,14 +450,12 @@ object NLU {
               val w2 = labelWeights(spark, uf, "actIdx").toArray().map(_ * (1 - config.lambdaSlot))
               Tensor[Float](w1 ++ w2, Array(w1.length + w2.length))
             } else labelWeights(spark, uf, "slotIdx")
-            println(w)
 
             val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = false, paddingValue = -1)
             val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = s"${config.modelType}-${config.embeddingType}", logDir = "sum/woz/")
             val validationSummary = ValidationSummary(appName = s"${config.modelType}-${config.embeddingType}", logDir = "sum/woz/")
             val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
-            uf.select(featuresCol, labelCol).show(false)
             estimator.setLabelCol(labelCol).setFeaturesCol(featuresCol)
               .setBatchSize(batchSize)
               .setOptimMethod(new Adam[Float](config.learningRate))
