@@ -480,8 +480,8 @@ object NLU {
             val af = sequencer.transform(pf)
             val bf = sequencer.transform(qf)
             // slot prediction as CoNLL format files
-            export(af.select("zs", "slots"), config, "train" + ${config.embeddingType})
-            export(bf.select("zs", "slots"), config, "valid" + ${config.embeddingType})
+            export(af.select("zs", "slots"), config, "train-" + config.embeddingType)
+            export(bf.select("zs", "slots"), config, "valid-" + config.embeddingType)
 
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
