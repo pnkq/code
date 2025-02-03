@@ -183,6 +183,29 @@ object NLU {
     wf.write.mode("overwrite").save(s"$savePath/jsl-${config.embeddingType}/wf")
   }
 
+  /**
+   * Creates an LSTM encoder with pretrained BERT embeddings as input. This encoder does not use shape features.
+   * @param numEntities number of slot labels
+   * @param config config
+   * @return a KerasNet
+   */
+  private def createEncoderSnowLSTM(numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
+    val bigdl = Sequential[Float]()
+    bigdl.add(Reshape[Float](targetShape=Array(config.maxSeqLen, 768), inputShape=Shape(config.maxSeqLen*768)).setName("reshape"))
+    for (j <- 1 to config.numLayers) {
+      bigdl.add(Bidirectional(LSTM[Float](outputDim = config.recurrentSize, returnSequences = true).setName(s"LSTM-$j")))
+    }
+    bigdl.add(Dense[Float](numEntities, activation="softmax").setName("dense"))
+    bigdl
+  }
+
+  /**
+   * Creates an LSTM encoder with randomly initialized token embeddings and shape embeddings.
+   * @param numTokens number of tokens
+   * @param numEntities number of slot labels
+   * @param config config
+   * @return a KerasNet
+   */
   private def createEncoderLSTM(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
     val input = Input[Float](inputShape = Shape(2*config.maxSeqLen))
     val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
@@ -197,6 +220,13 @@ object NLU {
     Model[Float](input, output)
   }
 
+  /**
+   * Creates a supervised BERT encoder with randomly initialized token embeddings. This encoder does not use shape features.
+   * @param numTokens number of tokens
+   * @param numEntities number of slot labels
+   * @param config config
+   * @return a KerasNet
+   */
   private def createEncoderBERT(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
     val input = Input[Float](inputShape = Shape(4*config.maxSeqLen), name = "input")
     val reshape = Reshape[Float](targetShape = Array(4, config.maxSeqLen)).inputs(input)
@@ -209,13 +239,9 @@ object NLU {
     val positionIds = Squeeze[Float](1).inputs(selectPositions)
     val selectMasks = SelectTable[Float](3).setName("masks").inputs(split)
     val masksReshaped = Reshape[Float](targetShape = Array(1, 1, config.maxSeqLen)).setName("maskReshape").inputs(selectMasks)
-
     // use a BERT layer, not output all blocks (there will be 2 outputs)
     val bert = BERT[Float](numTokens + 1, config.embeddingSize, config.numLayers, config.numHeads, config.maxSeqLen, config.hiddenSize, outputAllBlock = false).setName("BERT")
     val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
-    // get the pooled output which processes the hidden state of the last layer with regard to the first
-    //  token of the sequence. This would be useful for classification tasks.
-//    val lastState = SelectTable[Float](1).setName("firstBlock").inputs(bertNode)
     // get all BERT states
     val bertOutput = SelectTable[Float](0).setName("bertOutput").inputs(bertNode)
     val output = Dense[Float](numEntities, activation = "softmax").setName("output").inputs(bertOutput)
@@ -371,6 +397,7 @@ object NLU {
           case "lstm" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
           case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
           case "join" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
+          case "lstmJSL" => ("xs", Array(768*config.maxSeqLen))
         }
 
         config.mode match {
@@ -385,6 +412,76 @@ object NLU {
               spark.read.json("dat/woz/nlu/test")
             )
             preprocessJSL(train, dev, test, config, basePath)
+          case "trainJSL" =>
+            // load pre-saved preprocessor (by init to extract entity and act dictionaries
+            val preprocessor = PipelineModel.load(s"$basePath/pre")
+            val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
+            val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
+            // BigDL uses 1-based index for targets (entity, act).
+            val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+            // act indices are shifted by length(entities)
+            val actDict = acts.zipWithIndex.map(p => (p._1, p._2 + 1 + entities.length)).toMap
+            val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1).setInputCol("slots").setOutputCol("slotIdx")
+
+            // load pre-saved train and dev data frames (by initJSL)
+            val (train, dev) = (
+              spark.read.parquet(s"$basePath/jsl-${config.embeddingType}/uf"),
+              spark.read.parquet(s"$basePath/jsl-${config.embeddingType}/vf")
+            )
+            // remove samples which are longer than maxSeqLen
+            val (trainDF, devDF) = (
+              train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
+            )
+            val (uf, vf) = (
+              sequencerEntities.transform(trainDF),
+              sequencerEntities.transform(devDF),
+            )
+            val encoder = createEncoderSnowLSTM(entities.length, config)
+            val (labelCol, labelSize) = if (config.modelType == "joinJSL")
+              ("label", Array(config.maxSeqLen + 2))
+            else ("slotIdx", Array(config.maxSeqLen))
+
+            val w = if (config.modelType == "joinJSL") {
+              val w1 = labelWeights(spark, uf, "slotIdx").toArray().map(_ * config.lambdaSlot)
+              val w2 = labelWeights(spark, uf, "actIdx").toArray().map(_ * (1 - config.lambdaSlot))
+              Tensor[Float](w1 ++ w2, Array(w1.length + w2.length))
+            } else labelWeights(spark, uf, "slotIdx")
+            println(w)
+
+            val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = false, paddingValue = -1)
+            val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
+            val trainingSummary = TrainSummary(appName = s"${config.modelType}-${config.embeddingType}", logDir = "sum/woz/")
+            val validationSummary = ValidationSummary(appName = s"${config.modelType}-${config.embeddingType}", logDir = "sum/woz/")
+            val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
+            uf.select(featuresCol, labelCol).show(false)
+            estimator.setLabelCol(labelCol).setFeaturesCol(featuresCol)
+              .setBatchSize(batchSize)
+              .setOptimMethod(new Adam[Float](config.learningRate))
+              .setMaxEpoch(config.epochs)
+              .setTrainSummary(trainingSummary)
+              .setValidationSummary(validationSummary)
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
+            estimator.fit(uf)
+
+            encoder.saveModel(modelPath, overWrite = true)
+
+            // predict and export results
+            val pf = predictSlots(encoder, uf, featuresCol)
+            val qf = predictSlots(encoder, vf, featuresCol)
+            // extract act prediction for the joint model:
+            if (config.modelType == "joinJSL") {
+              println("Train multi-label performance (f1Measure): ", evaluateAct(spark, pf.select("label", "prediction")))
+              println("Valid multi-label performance (f1Measure): ", evaluateAct(spark, qf.select("label", "prediction")))
+            }
+            // convert "prediction" column to human-readable label column "zs"
+            val labelDict = entityDict.map { case (k, v) => (v.toDouble, k) }
+            val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
+            val af = sequencer.transform(pf)
+            val bf = sequencer.transform(qf)
+            // slot prediction as CoNLL format files
+            export(af.select("zs", "slots"), config, "train" + ${config.embeddingType})
+            export(bf.select("zs", "slots"), config, "valid" + ${config.embeddingType})
 
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
