@@ -192,6 +192,7 @@ object NLU {
   private def createEncoderSnowLSTM(numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
     val bigdl = Sequential[Float]()
     bigdl.add(Reshape[Float](targetShape=Array(config.maxSeqLen, 768), inputShape=Shape(config.maxSeqLen*768)).setName("reshape"))
+    bigdl.add(Dense[Float](config.embeddingSize)) // add affine layer to convert 768-dimension vectors to embeddingSize vectors
     for (j <- 1 to config.numLayers) {
       bigdl.add(Bidirectional(LSTM[Float](outputDim = config.recurrentSize, returnSequences = true).setName(s"LSTM-$j")))
     }
@@ -210,9 +211,9 @@ object NLU {
     val input = Input[Float](inputShape = Shape(2*config.maxSeqLen))
     val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
     val selectToken = Select[Float](1, 0).inputs(reshape)
-    val embeddingToken = Embedding[Float](inputDim = numTokens + 1, outputDim = config.embeddingSize).inputs(selectToken)
+    val embeddingToken = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(selectToken)
     val selectShape = Select[Float](1, 1).inputs(reshape)
-    val embeddingShape = Embedding[Float](inputDim = 13 + 1, outputDim = 8).inputs(selectShape)
+    val embeddingShape = Embedding[Float](inputDim = 13, outputDim = 8).inputs(selectShape)
     val merge = Merge.merge(inputs = List(embeddingToken, embeddingShape), mode = "concat", concatAxis = -1)
     val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(merge)
     val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
@@ -240,7 +241,7 @@ object NLU {
     val selectMasks = SelectTable[Float](3).setName("masks").inputs(split)
     val masksReshaped = Reshape[Float](targetShape = Array(1, 1, config.maxSeqLen)).setName("maskReshape").inputs(selectMasks)
     // use a BERT layer, not output all blocks (there will be 2 outputs)
-    val bert = BERT[Float](numTokens + 1, config.embeddingSize, config.numLayers, config.numHeads, config.maxSeqLen, config.hiddenSize, outputAllBlock = false).setName("BERT")
+    val bert = BERT[Float](numTokens, config.embeddingSize, config.numLayers, config.numHeads, config.maxSeqLen, config.hiddenSize, outputAllBlock = false).setName("BERT")
     val bertNode = bert.inputs(Array(inputIds, segmentIds, positionIds, masksReshaped))
     // get all BERT states
     val bertOutput = SelectTable[Float](0).setName("bertOutput").inputs(bertNode)
@@ -253,9 +254,9 @@ object NLU {
     val input = Input[Float](inputShape = Shape(2*config.maxSeqLen))
     val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
     val selectToken = Select[Float](1, 0).inputs(reshape)
-    val embeddingToken = Embedding[Float](inputDim = numTokens + 1, outputDim = config.embeddingSize).inputs(selectToken)
+    val embeddingToken = Embedding[Float](inputDim = numTokens, outputDim = config.embeddingSize).inputs(selectToken)
     val selectShape = Select[Float](1, 1).inputs(reshape)
-    val embeddingShape = Embedding[Float](inputDim = 13 + 1, outputDim = 8).inputs(selectShape)
+    val embeddingShape = Embedding[Float](inputDim = 13, outputDim = 8).inputs(selectShape)
     val embeddings = Merge.merge(inputs = List(embeddingToken, embeddingShape), mode = "concat", concatAxis = -1) // concat along the feature dimension
     val rnn1 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(embeddings)
     val rnn2 = Bidirectional[Float](LSTM[Float](outputDim = config.recurrentSize, returnSequences = true)).inputs(rnn1)
@@ -490,8 +491,8 @@ object NLU {
             val entities = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
             val acts = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
             val shapes = preprocessor.stages(4).asInstanceOf[CountVectorizerModel].vocabulary
+            val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2)).toMap
             // BigDL uses 1-based index for targets (entity, act).
-            val vocabDict = vocab.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             val entityDict = entities.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
             // act indices are shifted by length(entities)
             val actDict = acts.zipWithIndex.map(p => (p._1, p._2 + 1 + entities.length)).toMap
