@@ -29,10 +29,10 @@ class SequencerNER(val uid: String, val dictionary: Map[String, Int])
       xs.map(x => dictionaryBr.get.value.getOrElse(x, 0).toDouble).toArray
     }
 
-    f(_)
+    f
   }
 
-  override protected def outputDataType: DataType = ArrayType(DoubleType, false)
+  override protected def outputDataType: DataType = ArrayType(DoubleType, containsNull = false)
 }
 
 object SequencerNER extends DefaultParamsReadable[SequencerNER] {

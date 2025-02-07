@@ -42,10 +42,10 @@ class SequencerX(val uid: String, val dictionary: Map[String, Seq[Double]], val 
       }
     }
 
-    f(_)
+    f
   }
 
-  override protected def outputDataType: DataType = ArrayType(VectorType, false)
+  override protected def outputDataType: DataType = ArrayType(VectorType, containsNull = false)
 }
 
 object SequencerX extends DefaultParamsReadable[SequencerX] {

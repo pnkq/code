@@ -28,7 +28,7 @@ class Shifter(override val uid: String, val offset: Int, padding: Float = -1f)
       Vectors.dense(vector.toArray.map(v => if (v != padding.toFloat) v + offset else padding))
     }
 
-    f(_)
+    f
   }
   override protected def outputDataType: DataType = SQLDataTypes.VectorType
 }
