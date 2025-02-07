@@ -51,7 +51,7 @@ class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], val maxS
         val a = tokens    ++ Array.fill[Double](maxSeqLen - xs.size)(pad)
         val b = types     ++ Array.fill[Double](maxSeqLen - xs.size)(0)
         val c = positions ++ Array.fill[Double](maxSeqLen - xs.size)(pad)
-        val d = masks     ++ Array.fill[Double](maxSeqLen - xs.size)(1)
+        val d = masks     ++ Array.fill[Double](maxSeqLen - xs.size)(0) // padded tokens are not attended to
         Vectors.dense(a ++ b ++ c ++ d)
       }
     }
