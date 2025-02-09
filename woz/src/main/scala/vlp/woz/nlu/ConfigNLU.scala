@@ -10,11 +10,11 @@ case class ConfigNLU(
   batchSize: Int = 32,
   learningRate: Double = 1E-4,
   embeddingSize: Int = 200,
-  recurrentSize: Int = 128, // x2 for bidirectional
+  recurrentSize: Int = 128, // x2 for bidirectional RNN
   numLayers: Int = 2,
   numHeads: Int = 4,
-  hiddenSize: Int = 64,
-  modelType: String = "lstm",
+  hiddenSize: Int = 256, // used in transformer and BERT
+  modelType: String = "lstm", // [lstm, tran, bert, join]
   mode: String = "eval",
   epochs: Int = 200,
   lambdaSlot: Float = 0.8f,

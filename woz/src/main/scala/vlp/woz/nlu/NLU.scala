@@ -1,7 +1,7 @@
 package vlp.woz.nlu
 
 import com.intel.analytics.bigdl.dllib.keras.{Model, Sequential}
-import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, KerasLayerWrapper, LSTM, Merge, RepeatVector, Reshape, Select, SelectTable, SplitTensor, Squeeze, ZeroPadding1D}
+import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense, Embedding, Input, KerasLayerWrapper, LSTM, Merge, RepeatVector, Reshape, Select, SelectTable, SplitTensor, Squeeze, TransformerLayerP, ZeroPadding1D}
 import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion, Transpose}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
@@ -21,7 +21,7 @@ import org.apache.spark.ml._
 import org.apache.spark.ml.evaluation._
 import org.apache.spark.ml.linalg.DenseVector
 import scopt.OptionParser
-import vlp.woz.{FeatureFlattener, FeaturePadder, Sequencer4BERT, WordShaper}
+import vlp.woz.{FeatureFlattener, FeaturePadder, Sequencer4BERT, Sequencer4Transformer, WordShaper}
 import vlp.woz.act.Act
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -222,6 +222,30 @@ object NLU {
   }
 
   /**
+   * Creates a supervised transformer encoder with randomly initialized token embeddings. This encoder does not use shape features.
+   * @param numTokens number of tokens
+   * @param numEntities number of slot labels
+   * @param config config
+   * @return a KerasNet
+   */
+  private def createEncoderTransformer(numTokens: Int, numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
+    val input = Input[Float](inputShape = Shape(2*config.maxSeqLen), name = "input")
+    val reshape = Reshape[Float](targetShape = Array(2, config.maxSeqLen)).inputs(input)
+    val split = SplitTensor[Float](1, 2).inputs(reshape)
+    val selectIds = SelectTable[Float](0).setName("inputId").inputs(split)
+    val inputIds = Squeeze[Float](1).inputs(selectIds)
+    val selectPositions = SelectTable[Float](1).setName("positionId").inputs(split)
+    val positionIds = Squeeze[Float](1).inputs(selectPositions)
+    val transformer = TransformerLayerP[Float](
+        vocab = numTokens, seqLen = config.maxSeqLen, nBlock = config.numLayers, nHead = config.numHeads,
+        hiddenSize = config.embeddingSize, ffnSize = config.hiddenSize, bidirectional = true, outputAllBlock = false
+    ).setName("transformer").inputs(Array(inputIds, positionIds))
+    val transformerOutput = SelectTable[Float](0).setName("transOutput").inputs(transformer)
+    val output = Dense[Float](numEntities, activation = "softmax").setName("output").inputs(transformerOutput)
+    Model[Float](input, output)
+  }
+
+  /**
    * Creates a supervised BERT encoder with randomly initialized token embeddings. This encoder does not use shape features.
    * @param numTokens number of tokens
    * @param numEntities number of slot labels
@@ -395,9 +419,10 @@ object NLU {
         val basePath = "dat/woz/nlu"
         val modelPath = s"bin/woz-${config.modelType}-${config.numLayers}.bigdl"
         val (featuresCol, featureSize) = config.modelType match {
-          case "lstm" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
-          case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))
-          case "join" => ("features", Array(2*config.maxSeqLen)) // [featuresToken :: featuresShape]
+          case "lstm" => ("features", Array(2*config.maxSeqLen))      // [featuresToken :: featuresShape]
+          case "tran" => ("features", Array(2*config.maxSeqLen))      // [featuresToken :: positions]
+          case "bert" => ("featuresBERT", Array(4*config.maxSeqLen))  // [featuresToken :: types :: positions :: masks]
+          case "join" => ("features", Array(2*config.maxSeqLen))      // [featuresToken :: featuresShape]
           case "lstmJSL" => ("features", Array(768*config.maxSeqLen))
         }
 
@@ -518,11 +543,17 @@ object NLU {
                   assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
                   assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
                 )
+              case "tran" =>
+                val sequencerTrans = new Sequencer4Transformer(vocabDict, config.maxSeqLen, 0).setInputCol("tokens").setOutputCol("features")
+                (
+                  sequencerTrans.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF))),
+                  sequencerTrans.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
+                )
               case "bert" =>
                 val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0).setInputCol("tokens").setOutputCol("featuresBERT")
                 (
-                  sequencerShapes.transform(sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
-                  sequencerShapes.transform(sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF))),
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
                 )
               case "join" =>
                 // most utterances have at most 2 acts; so a 2-dimension vector for act encoding is sufficient.
@@ -542,6 +573,7 @@ object NLU {
 
             val encoder = config.modelType match {
               case "lstm" => createEncoderLSTM(vocab.length, entities.length, config)
+              case "tran" => createEncoderTransformer(vocab.length, entities.length, config)
               case "bert" => createEncoderBERT(vocab.length, entities.length, config)
               case "join" => createJointEncoderLSTM(vocab.length, entities.length, acts.length, config)
             }
