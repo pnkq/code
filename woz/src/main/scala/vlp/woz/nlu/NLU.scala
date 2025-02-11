@@ -184,18 +184,15 @@ object NLU {
   }
 
   /**
-   * Creates an LSTM encoder with pretrained BERT embeddings as input. This encoder does not use shape features.
+   * Creates an encoder with pretrained BERT embeddings as input. This encoder does not use shape features.
    * @param numEntities number of slot labels
    * @param config config
    * @return a KerasNet
    */
-  private def createEncoderSnowLSTM(numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
+  private def createEncoderSnow(numEntities: Int, config: ConfigNLU): KerasNet[Float] = {
     val bigdl = Sequential[Float]()
     bigdl.add(Reshape[Float](targetShape=Array(config.maxSeqLen, 768), inputShape=Shape(config.maxSeqLen*768)).setName("reshape"))
     bigdl.add(Dense[Float](config.embeddingSize)) // add affine layer to convert 768-dimension vectors to embeddingSize vectors
-    for (j <- 1 to config.numLayers) {
-      bigdl.add(Bidirectional(LSTM[Float](outputDim = config.recurrentSize, returnSequences = true).setName(s"LSTM-$j")))
-    }
     bigdl.add(Dense[Float](numEntities, activation="softmax").setName("dense"))
     bigdl
   }
@@ -466,7 +463,7 @@ object NLU {
               padder.transform(flattener.transform(sequencerEntities.transform(trainDF))),
               padder.transform(flattener.transform(sequencerEntities.transform(devDF))),
             )
-            val encoder = createEncoderSnowLSTM(entities.length, config)
+            val encoder = createEncoderSnow(entities.length, config)
             val (labelCol, labelSize) = if (config.modelType == "joinJSL")
               ("label", Array(config.maxSeqLen + 2))
             else ("slotIdx", Array(config.maxSeqLen))
