@@ -10,20 +10,20 @@ import org.apache.spark.sql.types.DataType
 
 
 /**
-  * A sequence vectorizer transforms a sequence of tokens into 4 sequences of indices for use 
-  * in a BERT model. This transformer pads or truncate long sentence to a given `maxSequenceLength`.
+  * A sequence vectorizer transforms a sequence of tokens into 2 sequences of indices for use
+  * in a Transformer model. This transformer pads or truncate long sentence to a given `maxSequenceLength`.
   *
   * phuonglh@gmail.com
   */
-class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], val maxSequenceLength: Int, val padding: Int)
-  extends UnaryTransformer[Seq[String], Vector, Sequencer4BERT] with DefaultParamsWritable {
+class Sequencer4Transformer(val uid: String, val dictionary: Map[String, Int], val maxSequenceLength: Int, val padding: Int)
+  extends UnaryTransformer[Seq[String], Vector, Sequencer4Transformer] with DefaultParamsWritable {
 
   var dictionaryBr: Option[Broadcast[Map[String, Int]]] = None
   var maxSeqLen: Int = -1
   var pad: Int = -1
 
   def this(dictionary: Map[String, Int], maxSequenceLength: Int, padding: Int) = {
-    this(Identifiable.randomUID("seq4BERT"), dictionary, maxSequenceLength, padding)
+    this(Identifiable.randomUID("seq4Trans"), dictionary, maxSequenceLength, padding)
     val sparkContext = SparkSession.getActiveSession.get.sparkContext
     dictionaryBr = Some(sparkContext.broadcast(dictionary))
     this.maxSeqLen = maxSequenceLength
@@ -35,24 +35,17 @@ class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], val maxS
       val n = xs.size
       // token ids
       val tokens = xs.map(x => dictionaryBr.get.value.getOrElse(x, 0).toDouble).toArray
-      // token type, all are 0 (0 for sentence A, 1 for sentence B -- here we have only one sentence)
-      val types = Array.fill[Double](n)(0)
       // positions, start from 0 until xs.size
       val positions = Array.fill[Double](n)(0)
       for (j <- 0 until n)
         positions(j) = j
-      // attention masks with indices in [0, 1]
-      val masks = Array.fill[Double](n)(1)
-
       // truncate or pad
       if (xs.size >= maxSeqLen) {
-        Vectors.dense(tokens.take(maxSeqLen) ++ types.take(maxSeqLen) ++ positions.take(maxSeqLen) ++ masks.take(maxSeqLen))
+        Vectors.dense(tokens.take(maxSeqLen) ++ positions.take(maxSeqLen))
       } else {
         val a = tokens    ++ Array.fill[Double](maxSeqLen - xs.size)(pad)
-        val b = types     ++ Array.fill[Double](maxSeqLen - xs.size)(0)
         val c = positions ++ Array.fill[Double](maxSeqLen - xs.size)(pad)
-        val d = masks     ++ Array.fill[Double](maxSeqLen - xs.size)(0) // padded tokens are not attended to
-        Vectors.dense(a ++ b ++ c ++ d)
+        Vectors.dense(a ++ c)
       }
     }
 
@@ -62,6 +55,6 @@ class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], val maxS
   override protected def outputDataType: DataType = VectorType
 }
 
-object Sequencer4BERT extends DefaultParamsReadable[Sequencer4BERT] {
-  override def load(path: String): Sequencer4BERT = super.load(path)
+object Sequencer4Transformer extends DefaultParamsReadable[Sequencer4Transformer] {
+  override def load(path: String): Sequencer4Transformer = super.load(path)
 }

@@ -59,7 +59,7 @@ class Sequencer4BERT(val uid: String, val dictionary: Map[String, Int], val maxS
       }
     }
 
-    f(_)
+    f
   }
 
   override protected def outputDataType: DataType = VectorType
