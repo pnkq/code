@@ -111,7 +111,7 @@
       "site": "https://forbes.vn",
       "category": ["kinh-doanh/", "doanh-nghiep/", "cong-nghe/"],
       "pattern": "/[\\p{Alnum}/-]+",
-      "exclude": []
+      "exclude": ["/uploads/", "/plugins/", "/themes/", "xmlrpc]
     },
     {
       "site": "https://congthuong.vn",
@@ -135,7 +135,13 @@
     {
       "site": "https://znews.vn",
       "category": ["kinh-doanh-tai-chinh.html", "doanh-nhan.html", "bat-dong-san.html", "tai-chinh.html", "kinh-doanh-thi-truong.html", "kinh-te-so.html", "tien-cua-toi.html", "hang-khong.html", "tieu-diem/cong-nghiep.html", "nong-nghiep.html", "ttdn.html"],
-      "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.html",
+      "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.html(#[\\p{Alnum}_-]+)?",
+      "exclude": []
+    },
+    {
+      "site": "https://hanoi.gov.vn",
+      "category": ["chi-dao-dieu-hanh", "chi-dao-cua-thanh-uy-ha-noi", "chi-dao-cua-ubnd-thanh-pho-ha-noi",  "tin-tuc-su-kien", "tin-tuc-su-kien-noi-bat", "tin-so-nganh", "tin-quan-huyen"],
+      "pattern": "/[\\p{Alnum}/-]+(\\d{4,})\\.htm",
       "exclude": []
     }
   ]
