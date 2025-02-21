@@ -111,7 +111,7 @@
       "site": "https://forbes.vn",
       "category": ["kinh-doanh/", "doanh-nghiep/", "cong-nghe/"],
       "pattern": "/[\\p{Alnum}/-]+",
-      "exclude": ["/uploads/", "/plugins/", "/themes/", "xmlrpc]
+      "exclude": ["/uploads/", "/plugins/", "/themes/", "xmlrpc"]
     },
     {
       "site": "https://congthuong.vn",
