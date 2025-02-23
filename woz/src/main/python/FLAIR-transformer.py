@@ -26,6 +26,6 @@ model = SequenceTagger(hidden_size=256, embeddings=embeddings, tag_dictionary=la
 # 6. initialize trainer
 trainer = ModelTrainer(model, corpus)
 
-# 7. start training
-trainer.train('taggers/woz-xlmr-256', learning_rate=5e-6, mini_batch_size=32, max_epochs=100)
+# 7. start fine-tuning
+trainer.fine_tune('taggers/woz-xlmr-256', learning_rate=5e-6, mini_batch_size=16, max_epochs=100)
 
