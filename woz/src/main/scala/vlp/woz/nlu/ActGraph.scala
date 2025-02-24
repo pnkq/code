@@ -40,7 +40,6 @@ object ActGraph {
     val window = Window.partitionBy("dialogId").orderBy(col("turnId").cast("int"))
     // add 1 column for previous acts
     val df1 = df.withColumn("acts(-1)", lag("actNames", 1).over(window)).filter(not(isnull(col("acts(-1)"))))
-    df1.show(false)
     import spark.implicits._
     val acts = df1.select("acts(-1)", "actNames").flatMap { row =>
       val prevActs = row.getSeq[String](0)
@@ -84,14 +83,31 @@ object ActGraph {
     val spark = SparkSession.builder().master("local[4]").appName(ActGraph.getClass.getName).getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
 
-    val df = spark.read.json("dat/woz/nlu/dev")
+    val df = spark.read.json("dat/woz/nlu/train")
     df.show()
     val (vertices, node2Id) = createVertices(spark, df)
+    println(s"Number of nodes = ${node2Id.size}.")
     node2Id.foreach(println)
     val edges = createEdges(spark, df, node2Id)
-    println(s"Number of edges = ${edges.count()}")
-    edges.foreach(println)
+    println(s"Number of edges = ${edges.count()}.")
+//    edges.foreach(println)
 
+    // print some stats of the act graph
+    // max number of incoming/outgoing arcs to a node
+    println("indegrees: ")
+    val indegrees = edges.groupBy(_.srcId).map(pair => (pair._1, pair._2.size)).sortBy(_._2).collect()
+    indegrees.foreach(println)
+
+    println("outdegrees: ")
+    val outdegrees = edges.groupBy(_.dstId).map(pair => (pair._1, pair._2.size)).sortBy(_._2).collect()
+    outdegrees.foreach(println)
+
+    // max/min count on each edge
+    val (maxCount, minCount) = (edges.map(_.attr).max, edges.map(_.attr).min)
+    println(s"maxCount = $maxCount, minCount = $minCount")
+
+    val maxEdges = edges.sortBy(_.attr, ascending = false).take(5)
+    maxEdges.foreach(println)
 
     spark.stop()
   }
