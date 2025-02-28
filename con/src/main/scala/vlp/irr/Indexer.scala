@@ -37,12 +37,11 @@ object Indexer {
     val uf = hf.withColumn("pairs", g(col("url"), col("indices")))
 
     val vf = uf.select(explode(col("pairs")).alias("p"))
-    vf.show(false)
     vf.printSchema()
 
-    val yf = vf.groupBy("p._2").agg(collect_set("p._1"))
-    yf.show(2, false)
-    println(yf.count)
+    val yf = vf.groupBy("p._2").agg(collect_set("p._1").alias("u"))
+
+    yf.repartition(5).write.json("dat/idx")
 
     spark.stop()
   }
