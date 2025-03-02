@@ -18,7 +18,8 @@ label_dict = corpus.make_label_dictionary(label_type=label_type)
 print(label_dict)
 
 # 4. initialize embeddings
-embeddings = TransformerWordEmbeddings(model='xlm-roberta-large', layers="-1", subtoken_pooling="first", fine_tune=True, use_context=True)
+model_name='roberta-large'
+embeddings = TransformerWordEmbeddings(model=model_name, layers="-1", subtoken_pooling="first", fine_tune=True, use_context=True)
 
 # 5. initialize sequence tagger
 model = SequenceTagger(hidden_size=256, embeddings=embeddings, tag_dictionary=label_dict, tag_type=label_type, use_crf=False, use_rnn=False, reproject_embeddings=False)
@@ -27,5 +28,5 @@ model = SequenceTagger(hidden_size=256, embeddings=embeddings, tag_dictionary=la
 trainer = ModelTrainer(model, corpus)
 
 # 7. start fine-tuning
-trainer.fine_tune('taggers/woz-xlmr-256', learning_rate=5e-6, mini_batch_size=16, max_epochs=100)
+trainer.fine_tune(f'taggers/{model_name}', learning_rate=5e-6, mini_batch_size=16, max_epochs=100)
 

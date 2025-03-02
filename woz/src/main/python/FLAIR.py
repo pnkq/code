@@ -21,11 +21,12 @@ print(label_dict)
 embeddings = WordEmbeddings('glove')
 
 # 5. initialize sequence tagger
-model = SequenceTagger(hidden_size=512, embeddings=embeddings, tag_dictionary=label_dict, tag_type=label_type)
+hidden_size=512
+model = SequenceTagger(hidden_size=hidden_size, embeddings=embeddings, tag_dictionary=label_dict, tag_type=label_type)
 
 # 6. initialize trainer
 trainer = ModelTrainer(model, corpus)
 
 # 7. start training
-trainer.train('taggers/woz-glove-512', learning_rate=0.1, mini_batch_size=64, max_epochs=100)
+trainer.train(f'taggers/glove-{hidden_size}', learning_rate=0.1, mini_batch_size=64, max_epochs=100)
 
