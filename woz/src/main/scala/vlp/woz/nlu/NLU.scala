@@ -655,6 +655,35 @@ object NLU {
             // val preprocessor = PipelineModel.load(s"$basePath/pre")
             val qf = predictActs(encoder, vf, featuresCol)
             qf.select("prediction").show(false)
+          case "fastText" =>
+            // export datasets to fastText data format for text classification
+            val (train, dev, test) = (
+              spark.read.json("dat/woz/nlu/train"),
+              spark.read.json("dat/woz/nlu/dev"),
+              spark.read.json("dat/woz/nlu/test")
+            )
+            // remove samples which are longer than maxSeqLen
+            val (trainDF, devDF, testDF) = (
+              train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              test.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
+            )
+            import spark.implicits._
+            def export(df: DataFrame): Array[String] = {
+              val ef = df.select("utterance", "actNames").map { row =>
+                val utterance = row.getString(0)
+                val acts = row.getSeq[String](1)
+                val labels = acts.map(a => s"__${a}__")
+                labels.mkString(" ") + " " + utterance
+              }
+              ef.collect()
+            }
+            Array(train, dev, test).zip(Array("train", "dev", "test")).foreach {
+              case (df, split) =>
+                val lines = export(df)
+                Files.write(Paths.get(s"dat/woz/nlu/act/$split.csv"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            }
+
           case "conll" =>
             // export datasets to CoNLL format (two columns)
             val (train, dev, test) = (
