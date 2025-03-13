@@ -8,7 +8,7 @@ from flair.trainers import ModelTrainer
 columns = {0: 'token', 1: 'ner'}
 
 data_folder = '/home/phuonglh/code/woz/dat/woz/nlu/'
-corpus: Corpus = ColumnCorpus(data_folder, columns, train_file='train.txt', dev_file='dev.txt', test_file='test.txt')
+corpus: Corpus = ColumnCorpus(data_folder, columns, train_file='train-joint.txt', dev_file='dev-joint.txt', test_file='test-joint.txt')
 
 # 2. what label do we want to predict?
 label_type = 'ner'
@@ -21,12 +21,12 @@ print(label_dict)
 embeddings = WordEmbeddings('glove')
 
 # 5. initialize sequence tagger
-hidden_size=512
+hidden_size=256
 model = SequenceTagger(hidden_size=hidden_size, embeddings=embeddings, tag_dictionary=label_dict, tag_type=label_type)
 
 # 6. initialize trainer
 trainer = ModelTrainer(model, corpus)
 
 # 7. start training
-trainer.train(f'taggers/glove-{hidden_size}', learning_rate=0.1, mini_batch_size=64, max_epochs=100)
+trainer.train(f'taggers-joint/glove-{hidden_size}', learning_rate=0.1, mini_batch_size=64, max_epochs=100)
 

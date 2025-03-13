@@ -655,6 +655,36 @@ object NLU {
             // val preprocessor = PipelineModel.load(s"$basePath/pre")
             val qf = predictActs(encoder, vf, featuresCol)
             qf.select("prediction").show(false)
+          case "tsv" =>
+            // export datasets to TSV format for multi-label text classification
+            val (train, dev, test) = (
+              spark.read.json("dat/woz/nlu/train"),
+              spark.read.json("dat/woz/nlu/dev"),
+              spark.read.json("dat/woz/nlu/test")
+            )
+            // remove samples which are longer than maxSeqLen
+            val (trainDF, devDF, testDF) = (
+              train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              test.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
+            )
+            import spark.implicits._
+            def export(df: DataFrame): Array[String] = {
+              val ef = df.select("utterance", "actNames").map { row =>
+                val utterance = row.getString(0)
+                val acts = row.getSeq[String](1)
+                val labels = if (acts.length >= 2) acts.take(2) else {
+                  if (acts.isEmpty) Seq("NA", "NA") else Seq(acts.head, "NA")
+                }
+                (labels :+ utterance).mkString("\t")
+              }
+              ef.collect()
+            }
+            Array(train, dev, test).zip(Array("train", "dev", "test")).foreach {
+              case (df, split) =>
+                val lines = export(df)
+                Files.write(Paths.get(s"dat/woz/nlu/act/$split.tsv"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            }
           case "fastText" =>
             // export datasets to fastText data format for text classification
             val (train, dev, test) = (
@@ -681,9 +711,8 @@ object NLU {
             Array(train, dev, test).zip(Array("train", "dev", "test")).foreach {
               case (df, split) =>
                 val lines = export(df)
-                Files.write(Paths.get(s"dat/woz/nlu/act/$split.csv"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                Files.write(Paths.get(s"dat/woz/nlu/act/$split.txt"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             }
-
           case "conll" =>
             // export datasets to CoNLL format (two columns)
             val (train, dev, test) = (
@@ -713,6 +742,42 @@ object NLU {
                 val lines = export(df)
                 Files.write(Paths.get(s"dat/woz/nlu/$split.txt"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             }
+          case "conll-joint" =>
+            // export datasets to CoNLL format (two columns)
+            val (train, dev, test) = (
+              spark.read.json("dat/woz/nlu/train"),
+              spark.read.json("dat/woz/nlu/dev"),
+              spark.read.json("dat/woz/nlu/test")
+            )
+            // remove samples which are longer than maxSeqLen
+            val (trainDF, devDF, testDF) = (
+              train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              test.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
+            )
+            import spark.implicits._
+            def export(df: DataFrame): Array[String] = {
+              val ef = df.select("tokens", "slots", "actNames").map { row =>
+                val tokens = row.getSeq[String](0)
+                val slots = row.getSeq[String](1)
+                val acts = row.getSeq[String](2)
+                val us = tokens.zip(slots).map {
+                  pair => pair._1 + " " + pair._2
+                }
+                val labels = if (acts.length >= 2) acts.take(2) else {
+                  if (acts.isEmpty) Seq("NA") else Seq(acts.head)
+                }
+                val vs = labels.map { a => "EOS" + " " + a }
+                (us ++ vs).mkString("\n") + "\n"
+              }
+              ef.collect()
+            }
+            Array(train, dev, test).zip(Array("train", "dev", "test")).foreach {
+              case (df, split) =>
+                val lines = export(df)
+                Files.write(Paths.get(s"dat/woz/nlu/$split-joint.txt"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            }
+
         }
         spark.stop()
       case None =>
