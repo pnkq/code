@@ -1,0 +1,5 @@
+package fse
+
+object MNIST {
+
+}
