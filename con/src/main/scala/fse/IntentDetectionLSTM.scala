@@ -86,7 +86,7 @@ object IntentDetectionLSTM {
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-3))
-      .setMaxEpoch(15)
+      .setMaxEpoch(30)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)
