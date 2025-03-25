@@ -40,10 +40,7 @@ object IntentDetectionLSTM {
 
   def main(args: Array[String]): Unit = {
     val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[4]")
-      .set("spark.executor.cores", "8")
-      .set("spark.cores.max", "8")
-      .set("spark.executor.memory", "4g")
-      .set("spark.driver.memory", "8g")
+      .set("spark.executor.memory", "4g").set("spark.driver.memory", "8g")
     val sc = new SparkContext(conf)
     Engine.init
 
@@ -91,8 +88,6 @@ object IntentDetectionLSTM {
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)
     estimator.fit(uf)
-
-
     spark.stop()
   }
 }
