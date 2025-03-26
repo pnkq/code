@@ -446,22 +446,25 @@ object NLU {
             val actDict = acts.zipWithIndex.map(p => (p._1, p._2 + 1 + entities.length)).toMap
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1).setInputCol("slots").setOutputCol("slotIdx")
 
-            // load pre-saved train and dev data frames (by initJSL)
-            val (train, dev) = (
+            // load pre-saved data frames (by initJSL)
+            val (train, dev, test) = (
               spark.read.parquet(s"$basePath/jsl-${config.embeddingType}/uf"),
-              spark.read.parquet(s"$basePath/jsl-${config.embeddingType}/vf")
+              spark.read.parquet(s"$basePath/jsl-${config.embeddingType}/vf"),
+              spark.read.parquet(s"$basePath/jsl-${config.embeddingType}/wf")
             )
             // remove samples which are longer than maxSeqLen
-            val (trainDF, devDF) = (
+            val (trainDF, devDF, testDF) = (
               train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
-              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
+              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              test.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
             )
             val flattener = new FeatureFlattener().setInputCol("xs").setOutputCol("as")
             val padder = new FeaturePadder(config.maxSeqLen*768, 0f).setInputCol("as").setOutputCol("features")
 
-            val (uf, vf) = (
+            val (uf, vf, wf) = (
               padder.transform(flattener.transform(sequencerEntities.transform(trainDF))),
               padder.transform(flattener.transform(sequencerEntities.transform(devDF))),
+              padder.transform(flattener.transform(sequencerEntities.transform(testDF)))
             )
             val encoder = createEncoderSnow(entities.length, config)
             val (labelCol, labelSize) = if (config.modelType == "joinJSL")
@@ -493,19 +496,23 @@ object NLU {
             // predict and export results
             val pf = predictSlots(encoder, uf, featuresCol)
             val qf = predictSlots(encoder, vf, featuresCol)
+            val rf = predictSlots(encoder, wf, featuresCol)
             // extract act prediction for the joint model:
             if (config.modelType == "joinJSL") {
               println("Train multi-label performance (f1Measure): ", evaluateAct(spark, pf.select("label", "prediction")))
               println("Valid multi-label performance (f1Measure): ", evaluateAct(spark, qf.select("label", "prediction")))
+              println(" Test multi-label performance (f1Measure): ", evaluateAct(spark, rf.select("label", "prediction")))
             }
             // convert "prediction" column to human-readable label column "zs"
             val labelDict = entityDict.map { case (k, v) => (v.toDouble, k) }
             val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
             val af = sequencer.transform(pf)
             val bf = sequencer.transform(qf)
+            val cf = sequencer.transform(rf)
             // slot prediction as CoNLL format files
             export(af.select("zs", "slots"), config, "train-" + config.embeddingType)
             export(bf.select("zs", "slots"), config, "valid-" + config.embeddingType)
+            export(cf.select("zs", "slots"), config, "test-" + config.embeddingType)
 
           case "train" =>
             val preprocessor = PipelineModel.load(s"$basePath/pre")
@@ -524,33 +531,38 @@ object NLU {
             val sequencerEntities = new Sequencer(entityDict, config.maxSeqLen, -1).setInputCol("slots").setOutputCol("slotIdx")
             val sequencerShapes = new Sequencer(shapeDict, config.maxSeqLen, 0).setInputCol("shapes").setOutputCol("featuresShape")
 
-            val (train, dev) = (
+            val (train, dev, test) = (
               preprocessor.transform(spark.read.json("dat/woz/nlu/train")),
-              preprocessor.transform(spark.read.json("dat/woz/nlu/dev"))
+              preprocessor.transform(spark.read.json("dat/woz/nlu/dev")),
+              preprocessor.transform(spark.read.json("dat/woz/nlu/test"))
             )
             // remove samples which are longer than maxSeqLen
-            val (trainDF, devDF) = (
+            val (trainDF, devDF, testDF) = (
               train.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
-              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
+              dev.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen),
+              test.withColumn("n", size(col("tokens"))).filter(col("n") <= config.maxSeqLen)
             )
-            val (uf, vf) = config.modelType match {
+            val (uf, vf, wf) = config.modelType match {
               case "lstm" =>
                 val assemblerFeature = new VectorAssembler().setInputCols(Array("featuresToken", "featuresShape")).setOutputCol("features")
                 (
                   assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))),
-                  assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))
+                  assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))),
+                  assemblerFeature.transform(sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(testDF))))
                 )
               case "tran" =>
                 val sequencerTrans = new Sequencer4Transformer(vocabDict, config.maxSeqLen, 0).setInputCol("tokens").setOutputCol("features")
                 (
                   sequencerTrans.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF))),
-                  sequencerTrans.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
+                  sequencerTrans.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))),
+                  sequencerTrans.transform(sequencerTokens.transform(sequencerEntities.transform(testDF))),
                 )
               case "bert" =>
                 val sequencerBERT = new Sequencer4BERT(vocabDict, config.maxSeqLen, 0).setInputCol("tokens").setOutputCol("featuresBERT")
                 (
                   sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF))),
-                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))),
+                  sequencerBERT.transform(sequencerTokens.transform(sequencerEntities.transform(testDF))),
                 )
               case "join" =>
                 // most utterances have at most 2 acts; so a 2-dimension vector for act encoding is sufficient.
@@ -561,12 +573,15 @@ object NLU {
                   assemblerFeature.transform(assemblerLabel.transform(sequencerActs.transform(
                     sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(trainDF)))))),
                   assemblerFeature.transform(assemblerLabel.transform(sequencerActs.transform(
-                    sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF))))))
+                    sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(devDF)))))),
+                  assemblerFeature.transform(assemblerLabel.transform(sequencerActs.transform(
+                    sequencerShapes.transform(sequencerTokens.transform(sequencerEntities.transform(testDF))))))
                 )
             }
             // save uf and vf for other modes (eval/predict)
             uf.repartition(2).write.mode("overwrite").parquet("dat/woz/nlu/uf")
             vf.repartition(1).write.mode("overwrite").parquet("dat/woz/nlu/vf")
+            wf.repartition(1).write.mode("overwrite").parquet("dat/woz/nlu/wf")
 
             val encoder = config.modelType match {
               case "lstm" => createEncoderLSTM(vocab.length, entities.length, config)
@@ -607,29 +622,35 @@ object NLU {
             // predict and export results
             val pf = predictSlots(encoder, uf, featuresCol)
             val qf = predictSlots(encoder, vf, featuresCol)
+            val rf = predictSlots(encoder, wf, featuresCol)
             // extract act prediction for the joint model:
             if (config.modelType == "join") {
               println("Train multi-label performance (f1Measure): ", evaluateAct(spark, pf.select("label", "prediction")))
               println("Valid multi-label performance (f1Measure): ", evaluateAct(spark, qf.select("label", "prediction")))
+              println(" Test multi-label performance (f1Measure): ", evaluateAct(spark, rf.select("label", "prediction")))
             }
             // convert "prediction" column to human-readable label column "zs"
             val labelDict = entityDict.map { case (k, v) => (v.toDouble, k) }
             val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
             val af = sequencer.transform(pf)
             val bf = sequencer.transform(qf)
+            val cf = sequencer.transform(rf)
             // slot prediction as CoNLL format files
             export(af.select("zs", "slots"), config, "train")
             export(bf.select("zs", "slots"), config, "valid")
+            export(cf.select("zs", "slots"), config, "valid")
 
           case "eval" =>
             val encoder =  Models.loadModel[Float](modelPath)
             encoder.summary()
             val uf = spark.read.parquet("dat/woz/nlu/uf")
             val vf = spark.read.parquet("dat/woz/nlu/vf")
+            val wf = spark.read.parquet("dat/woz/nlu/wf")
             // predict and export results
             val preprocessor = PipelineModel.load(s"$basePath/pre")
             val pf = predictSlots(encoder, uf, featuresCol)
             val qf = predictSlots(encoder, vf, featuresCol)
+            val rf = predictSlots(encoder, wf, featuresCol)
             qf.select("label", "prediction").show(false)
             if (config.modelType == "join") {
               println("Train multi-label performance (f1Measure): " + evaluateAct(spark, pf.select("label", "prediction")))
@@ -642,8 +663,10 @@ object NLU {
             val sequencer = new SequencerDouble(labelDict).setInputCol("prediction").setOutputCol("zs")
             val af = sequencer.transform(pf)
             val bf = sequencer.transform(qf)
+            val cf = sequencer.transform(rf)
             export(af.select("zs", "slots"), config, "train")
             export(bf.select("zs", "slots"), config, "valid")
+            export(cf.select("zs", "slots"), config, "valid")
           case "join" =>
             val encoder = createJointEncoderLSTM(100, 50, 30, config)
             encoder.summary()
