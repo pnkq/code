@@ -44,7 +44,7 @@
 
 In the joint model:
 - The feature size is `Array(maxSeqLen)` as in a single model.
-- The label size is `Array(maxSeqLen + 2)` where `Array(2)` represents a target act vector. 
+- The label size is `Array(maxSeqLen + 2)` where `Array(2)` represents a target act vector of two possible labels.
 
 # Statistics
 
@@ -103,6 +103,13 @@ Frequency of lengths of each turn (in tokens) in the validation corpus:
 | 36| 1     |
 
 There are 12,309 samples whose length <= 20, which accounts for 12,309/14,748 = 83.46\%. If we use the maxSeqLen=25, the ratio is 93.94\%.
+
+# RUNNING
+
+  BigDL:
+    `bloop run -p woz -m vlp.woz.nlu.NLU -- -m train -t lstm/tran/bert/join`
+  JSL:
+    `bloop run -p woz -m vlp.woz.nlu.NLU -- -m trainJSL -t lstm/tran/bert/join -e b/d/x`
 
 # TODO
 
