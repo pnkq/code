@@ -10,13 +10,13 @@ case class ConfigNLU(
   batchSize: Int = 32,
   learningRate: Double = 1E-4,
   embeddingSize: Int = 200,
-  recurrentSize: Int = 128, // x2 for bidirectional RNN
-  numLayers: Int = 2,
+  recurrentSize: Int = 256, // x2 for bidirectional RNN
+  numLayers: Int = 1,
   numHeads: Int = 4,
   hiddenSize: Int = 256, // used in transformer and BERT
   modelType: String = "lstm", // [lstm, tran, bert, join]
   mode: String = "eval",
-  epochs: Int = 200,
+  epochs: Int = 40,
   lambdaSlot: Float = 0.8f,
-  embeddingType: String = "b" // d=DeBERTa, b=BERT, x=XLM-RoBERTa
+  embeddingType: String = "b" // for trainJSL mode only, [d=DeBERTa, b=BERT, x=XLM-RoBERTa]
 )

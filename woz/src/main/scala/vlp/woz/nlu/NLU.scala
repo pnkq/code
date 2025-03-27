@@ -5,7 +5,7 @@ import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense,
 import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion, Transpose}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
-import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
+import com.intel.analytics.bigdl.dllib.optim.{Adam, Loss, Trigger}
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
@@ -477,7 +477,7 @@ object NLU {
               Tensor[Float](w1 ++ w2, Array(w1.length + w2.length))
             } else labelWeights(spark, uf, "slotIdx")
 
-            val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = false, paddingValue = -1)
+            val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = true, logProbAsInput = false, paddingValue = -1)
             val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = s"${config.modelType}-${config.embeddingType}", logDir = "sum/woz/")
             val validationSummary = ValidationSummary(appName = s"${config.modelType}-${config.embeddingType}", logDir = "sum/woz/")
@@ -602,7 +602,7 @@ object NLU {
             } else labelWeights(spark, uf, "slotIdx")
             println(w)
 
-            val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = false, paddingValue = -1)
+            val criterion = ClassNLLCriterion[Float](weights = w, sizeAverage = true, logProbAsInput = false, paddingValue = -1)
             val estimator = NNEstimator(encoder, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
             val trainingSummary = TrainSummary(appName = config.modelType, logDir = "sum/woz/")
             val validationSummary = ValidationSummary(appName = config.modelType, logDir = "sum/woz/")
@@ -614,7 +614,7 @@ object NLU {
               .setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1), new Loss()), batchSize)
             estimator.fit(uf)
 
             encoder.saveModel(modelPath, overWrite = true)
@@ -638,7 +638,7 @@ object NLU {
             // slot prediction as CoNLL format files
             export(af.select("zs", "slots"), config, "train")
             export(bf.select("zs", "slots"), config, "valid")
-            export(cf.select("zs", "slots"), config, "valid")
+            export(cf.select("zs", "slots"), config, "test")
 
           case "eval" =>
             val encoder =  Models.loadModel[Float](modelPath)
@@ -666,7 +666,7 @@ object NLU {
             val cf = sequencer.transform(rf)
             export(af.select("zs", "slots"), config, "train")
             export(bf.select("zs", "slots"), config, "valid")
-            export(cf.select("zs", "slots"), config, "valid")
+            export(cf.select("zs", "slots"), config, "test")
           case "join" =>
             val encoder = createJointEncoderLSTM(100, 50, 30, config)
             encoder.summary()
