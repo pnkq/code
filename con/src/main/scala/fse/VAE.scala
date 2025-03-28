@@ -88,7 +88,7 @@ object VAE {
 //    val criterion = ParallelCriterion()
 //    criterion.add(KLDCriterion(), 1.0)
 //    criterion.add(BCECriterion(sizeAverage = false), 1.0/batchSize)
-    val criterion = BCECriterion()
+    val criterion = BCECriterion(sizeAverage = false)
 
     val estimator = NNEstimator(model, criterion, Array(28*28), Array(28*28))
     val trainingSummary = TrainSummary(appName = "vae", logDir = "sum/vae/")
