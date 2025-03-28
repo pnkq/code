@@ -28,7 +28,7 @@ import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSu
 object MNIST {
   private val numCores = Runtime.getRuntime.availableProcessors()
 
-  private val decode = udf((bytes: Array[Byte]) => {
+  val decode = udf((bytes: Array[Byte]) => {
     val bufferImage = ImageIO.read(new ByteArrayInputStream(bytes))
     // an array of Byte of 784 integers
     val x = bufferImage.getRaster.getDataBuffer.asInstanceOf[DataBufferByte].getData
@@ -74,7 +74,7 @@ object MNIST {
 //    ffn(train, test)
 
     // 2. CNN
-    val inc = udf((i: Long) => (i + 1d))
+    val inc = udf((i: Long) => i + 1d)
     val (uf, vf) = (
       train.withColumn("number", inc(col("label"))),
       test.withColumn("number", inc(col("label")))
