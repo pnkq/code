@@ -72,7 +72,6 @@ object VAE {
     val decoder = createDecoder(hiddenSize)
     val decoderNode = decoder.inputs(sampler)
     val model = Model(input = input, output = Array(encoderNode, decoderNode))
-//    val model = Model(input = input, output = decoderNode)
     (model, decoder)
   }
 
@@ -113,7 +112,7 @@ object VAE {
     model.summary()
     decoder.summary()
 
-    val batchSize = numCores * 16
+    val batchSize = numCores * 8
     val criterion = ParallelCriterion()
     criterion.add(KLDCriterion(), 1.0)
     criterion.add(BCECriterion(sizeAverage = false), 1.0/batchSize)
@@ -124,11 +123,11 @@ object VAE {
 //    estimator.setFeaturesCol("x").setLabelCol("x")
 //      .setBatchSize(batchSize)
 //      .setOptimMethod(new Adam(1E-3))
-//      .setMaxEpoch(1)
+//      .setMaxEpoch(2)
 //      .setTrainSummary(trainingSummary)
 //    estimator.fit(uf)
-//    model.saveModel("bin/vae.2.bigl", overWrite = true)
-//    decoder.saveModel("bin/vae-dec.2.bigl", overWrite = true)
+//    model.saveModel("bin/vae.bigl", overWrite = true)
+//    decoder.saveModel("bin/vae-dec.bigl", overWrite = true)
 
     val vf = uf.select("x").rdd.map(row => {
       val x = row.getSeq[Float](0).toArray
@@ -137,7 +136,9 @@ object VAE {
     })
     model.compile(optimizer = new Adam(1E-3), loss = criterion)
     model.setTensorBoard("./sum", "vae")
-    model.fit(x = vf, batchSize = batchSize, nbEpoch = 5)
+    model.fit(x = vf, batchSize = batchSize, nbEpoch = 1)
+    model.saveModel("bin/vae.bigl", overWrite = true)
+    decoder.saveModel("bin/vae-dec.bigl", overWrite = true)
 
     // generate some images from a multivariate normal distribution N(0, hiddenSize)
     val mean = Array.fill(hiddenSize)(0d)
@@ -146,7 +147,7 @@ object VAE {
     val mvn = new MultivariateNormalDistribution(mean, covariance)
     for (k <- 0 to 9) {
       val x = mvn.sample().map(_.toFloat)
-      val y = decoder.forward(Tensor(x, Array(1, hiddenSize))).toTensor.squeeze().toArray()
+      val y = decoder.forward(Tensor(x, Array(1, hiddenSize))).toTensor.squeeze().toArray().map(_ * 255)
       export(y, s"2/digits-$k.png")
     }
 
