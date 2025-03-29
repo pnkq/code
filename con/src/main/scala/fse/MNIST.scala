@@ -30,8 +30,9 @@ object MNIST {
 
   val decode = udf((bytes: Array[Byte]) => {
     val bufferImage = ImageIO.read(new ByteArrayInputStream(bytes))
-    // an array of Byte of 784 integers
+    // an array of Byte of 784 integers, with negative values corrected
     val x = bufferImage.getRaster.getDataBuffer.asInstanceOf[DataBufferByte].getData
+      .map(v => if (v < 0) v + 128 else v)
     Vectors.dense(x.map(_.toDouble))
   })
 

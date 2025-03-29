@@ -1,5 +1,6 @@
 package fse
 
+import com.intel.analytics.bigdl.dllib.feature.dataset.Sample
 import com.intel.analytics.bigdl.dllib.keras.Model
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import org.apache.spark.SparkContext
@@ -7,14 +8,20 @@ import org.apache.spark.sql.SparkSession
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.layers._
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
-import com.intel.analytics.bigdl.dllib.nn.{BCECriterion, ClassNLLCriterion, KLDCriterion, ParallelCriterion}
+import com.intel.analytics.bigdl.dllib.nn.{BCECriterion, KLDCriterion, ParallelCriterion}
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
-import com.intel.analytics.bigdl.dllib.optim.{Loss, Top1Accuracy, Trigger}
+import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
-import fse.IntentDetectionLSTM.{createModel, numCores}
+import org.apache.commons.math3.distribution.MultivariateNormalDistribution
 import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.sql.functions.{col, udf}
+
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.io.File
+import javax.imageio.ImageIO
 
 
 /**
@@ -23,13 +30,14 @@ import org.apache.spark.sql.functions.{col, udf}
  */
 object VAE {
   private val numCores = Runtime.getRuntime.availableProcessors()
+
   /**
    * Create an encoder graph for an image.
    *
-   * @param nChannel
-   * @param nCol
-   * @param nRow
-   * @param hiddenSize
+   * @param nChannel number of color channels (1, 3)
+   * @param nCol number of rows (width)
+   * @param nRow number of columns (height)
+   * @param hiddenSize latent size of the encoder
    * @return a model.
    */
   private def createEncoder(nChannel: Int, nCol: Int, nRow: Int, hiddenSize: Int): Model[Float] = {
@@ -63,10 +71,22 @@ object VAE {
     val sampler = GaussianSampler().inputs(encoderNode)
     val decoder = createDecoder(hiddenSize)
     val decoderNode = decoder.inputs(sampler)
-//    val model = Model(input = input, output = Array(encoderNode, decoderNode))
-    val model = Model(input = input, output = decoderNode)
+    val model = Model(input = input, output = Array(encoderNode, decoderNode))
+//    val model = Model(input = input, output = decoderNode)
     (model, decoder)
   }
+
+  private def export(x: Array[Float], path: String) = {
+    println(x.mkString(", "))
+    val g = x.map(v => Math.min(255, Math.max(0, v.toInt)))
+    val image = new BufferedImage(28, 28, BufferedImage.TYPE_BYTE_GRAY)
+    for (k <- g.indices) {
+      val color = new Color(255-g(k), 255-g(k), 255-g(k))
+      image.setRGB(k % 28, k / 28, color.getRGB)
+    }
+    ImageIO.write(image, "png", new File(path))
+  }
+
 
   def main(args: Array[String]): Unit = {
     val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[4]")
@@ -76,30 +96,61 @@ object VAE {
     val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
 
-    val (train, test) = (
-      spark.read.parquet("dat/mnist/train-00000-of-00001.parquet").withColumn("features", fse.MNIST.decode(col("image.bytes"))),
-      spark.read.parquet("dat/mnist/test-00000-of-00001.parquet").withColumn("features", fse.MNIST.decode(col("image.bytes")))
-    )
+    val train = spark.read.parquet("dat/mnist/train-00000-of-00001.parquet")
+      .withColumn("features", fse.MNIST.decode(col("image.bytes")))
+    train.printSchema()
+    train.select("label", "features").show(5, truncate = false)
+    // export the first image
+    val y = train.select("features").head.getAs[Vector](0).toArray.map(_.toFloat)
+    export(y, "0.png")
 
-    val (model, decoder) = vae(1, 28, 28, 10)
+    // threshold function on gray image pixels
+    val sample = udf((x: Vector) => x.toArray.map(v => if (v > 128) 1f else 0f))
+    val uf = train.withColumn("x", sample(col("features")))
+
+    val hiddenSize = 2
+    val (model, decoder) = vae(1, 28, 28, hiddenSize)
     model.summary()
     decoder.summary()
-    val batchSize = numCores * 4
-//    val criterion = ParallelCriterion()
-//    criterion.add(KLDCriterion(), 1.0)
-//    criterion.add(BCECriterion(sizeAverage = false), 1.0/batchSize)
-    val criterion = BCECriterion(sizeAverage = false)
 
-    val estimator = NNEstimator(model, criterion, Array(28*28), Array(28*28))
-    val trainingSummary = TrainSummary(appName = "vae", logDir = "sum/vae/")
-    val validationSummary = ValidationSummary(appName = "vae", logDir = "sum/vae/")
-    estimator.setLabelCol("features")
-      .setBatchSize(batchSize)
-      .setOptimMethod(new Adam(2E-3))
-      .setMaxEpoch(30)
-      .setTrainSummary(trainingSummary)
-    estimator.fit(test)
+    val batchSize = numCores * 16
+    val criterion = ParallelCriterion()
+    criterion.add(KLDCriterion(), 1.0)
+    criterion.add(BCECriterion(sizeAverage = false), 1.0/batchSize)
+//    val criterion = BCECriterion(sizeAverage = false)
+
+//    val estimator = NNEstimator(model, criterion, Array(28*28), Array(28*28))
+//    val trainingSummary = TrainSummary(appName = "vae", logDir = "sum/")
+//    estimator.setFeaturesCol("x").setLabelCol("x")
+//      .setBatchSize(batchSize)
+//      .setOptimMethod(new Adam(1E-3))
+//      .setMaxEpoch(1)
+//      .setTrainSummary(trainingSummary)
+//    estimator.fit(uf)
+//    model.saveModel("bin/vae.2.bigl", overWrite = true)
+//    decoder.saveModel("bin/vae-dec.2.bigl", overWrite = true)
+
+    val vf = uf.select("x").rdd.map(row => {
+      val x = row.getSeq[Float](0).toArray
+      val t = Tensor(x, Array(x.length))
+      Sample[Float](featureTensors = Array(t), labelTensors = Array(t, t))
+    })
+    model.compile(optimizer = new Adam(1E-3), loss = criterion)
+    model.setTensorBoard("./sum", "vae")
+    model.fit(x = vf, batchSize = batchSize, nbEpoch = 5)
+
+    // generate some images from a multivariate normal distribution N(0, hiddenSize)
+    val mean = Array.fill(hiddenSize)(0d)
+    val covariance = Array.ofDim[Double](hiddenSize, hiddenSize)
+    for (i <- 0 until hiddenSize) covariance(i)(i) = 1.0
+    val mvn = new MultivariateNormalDistribution(mean, covariance)
+    for (k <- 0 to 9) {
+      val x = mvn.sample().map(_.toFloat)
+      val y = decoder.forward(Tensor(x, Array(1, hiddenSize))).toTensor.squeeze().toArray()
+      export(y, s"2/digits-$k.png")
+    }
 
     spark.stop()
   }
 }
+

@@ -1,7 +1,7 @@
 package fse
 
 import org.apache.spark.ml.Pipeline
-import org.apache.spark.ml.feature.{StringIndexer, Tokenizer}
+import org.apache.spark.ml.feature.{RegexTokenizer, StringIndexer}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.unsafe.hash.Murmur3_x86_32.hashUnsafeBytes2
@@ -26,7 +26,7 @@ object IntentDetectionLSTM {
 
   private def createPreprocessor(df: DataFrame) = {
     val indexer = new StringIndexer().setInputCol("category").setOutputCol("index")
-    val tokenizer = new Tokenizer().setInputCol("text").setOutputCol("tokens")
+    val tokenizer = new RegexTokenizer().setInputCol("text").setOutputCol("tokens").setPattern("""[\s,.:!']+""")
     val pipeline = new Pipeline().setStages(Array(indexer, tokenizer))
     pipeline.fit(df)
   }
@@ -34,7 +34,8 @@ object IntentDetectionLSTM {
   private def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int, labelSize: Int) = {
     val sequential = Sequential()
     sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen))
-    sequential.add(LSTM(32))
+//    sequential.add(LSTM(64, returnSequences = true))
+    sequential.add(LSTM(64))
     sequential.add(Dense(labelSize, activation = "softmax"))
   }
 
@@ -50,8 +51,10 @@ object IntentDetectionLSTM {
     val basePath = "dat/hwu/"
     val paths = Array("train", "val", "test").map(p => s"$basePath/$p.csv")
     val train = spark.read.option("header", value = true).csv(paths.head)
+    val valid = spark.read.option("header", value = true).csv(paths(1))
     val preprocessor = createPreprocessor(train)
     val df = preprocessor.transform(train)
+    val dfV = preprocessor.transform(valid)
     df.show(false)
 
     val maxSeqLen = 20
@@ -71,10 +74,13 @@ object IntentDetectionLSTM {
 
     val ef = df.withColumn("features", hash(col("tokens"))).withColumn("label", inc(col("index")))
     ef.select("label", "features").show(false)
+    val efV = dfV.withColumn("features", hash(col("tokens"))).withColumn("label", inc(col("index")))
 
-    val (uf, vf) = (ef, ef)
+    val (uf, vf) = (ef, efV)
 
-    val model = createModel(maxSeqLen, vocabSize, 50, 64)
+    val model = createModel(maxSeqLen, vocabSize, 100, 64)
+    model.summary()
+
     val criterion = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false)
     val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(1))
     val trainingSummary = TrainSummary(appName = "lstm", logDir = "sum/hwu/")
