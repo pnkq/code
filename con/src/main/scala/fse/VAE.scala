@@ -7,14 +7,11 @@ import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.layers._
+import com.intel.analytics.bigdl.dllib.keras.models.Models
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.{BCECriterion, KLDCriterion, ParallelCriterion}
-import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
-import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
-import org.apache.commons.math3.distribution.MultivariateNormalDistribution
-import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.sql.functions.{col, udf}
 
@@ -22,6 +19,7 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import scala.util.Random
 
 
 /**
@@ -54,13 +52,15 @@ object VAE {
 
   private def createDecoder(hiddenSize: Int): Model[Float] = {
     val input = Input(inputShape = Shape(hiddenSize))
-    val dense = Dense(32 * 7 * 7, activation = "relu").inputs(input)
+    val dense = Dense(32 * 7 * 7).inputs(input)
     val reshape = Reshape(targetShape = Array(32, 7, 7)).inputs(dense)
-    val resize1 = ResizeBilinear(outputHeight = 14, outputWidth = 14).inputs(reshape)
+    val relu = Activation("relu").inputs(reshape)
+    val resize1 = ResizeBilinear(outputHeight = 14, outputWidth = 14).inputs(relu)
     val conv1 = Convolution2D(16, 5, 5, subsample = (1, 1), activation = "relu", borderMode = "same").inputs(resize1)
     val resize2 = ResizeBilinear(outputHeight = 28, outputWidth = 28).inputs(conv1)
-    val conv2 = Convolution2D(1, 5, 5, subsample = (1, 1), activation = "sigmoid", borderMode = "same").inputs(resize2)
-    val output = Reshape(targetShape = Array(28*28)).inputs(conv2)
+    val conv2 = Convolution2D(1, 5, 5, subsample = (1, 1), borderMode = "same").inputs(resize2)
+    val sigmoid = Activation("sigmoid").inputs(conv2)
+    val output = Reshape(targetShape = Array(28*28)).inputs(sigmoid)
     Model(input = input, output = output)
   }
 
@@ -101,13 +101,13 @@ object VAE {
     train.select("label", "features").show(5, truncate = false)
     // export the first image
     val y = train.select("features").head.getAs[Vector](0).toArray.map(_.toFloat)
-    export(y, "0.png")
+    export(y, "bin/0.png")
 
     // threshold function on gray image pixels
-    val sample = udf((x: Vector) => x.toArray.map(v => if (v > 128) 1f else 0f))
-    val uf = train.withColumn("x", sample(col("features")))
+    val binarize = udf((x: Vector) => x.toArray.map(v => if (v >= 128) 1f else 0f))
+    val uf = train.withColumn("x", binarize(col("features")))
 
-    val hiddenSize = 2
+    val hiddenSize = 10
     val (model, decoder) = vae(1, 28, 28, hiddenSize)
     model.summary()
     decoder.summary()
@@ -116,39 +116,28 @@ object VAE {
     val criterion = ParallelCriterion()
     criterion.add(KLDCriterion(), 1.0)
     criterion.add(BCECriterion(sizeAverage = false), 1.0/batchSize)
-//    val criterion = BCECriterion(sizeAverage = false)
 
-//    val estimator = NNEstimator(model, criterion, Array(28*28), Array(28*28))
-//    val trainingSummary = TrainSummary(appName = "vae", logDir = "sum/")
-//    estimator.setFeaturesCol("x").setLabelCol("x")
-//      .setBatchSize(batchSize)
-//      .setOptimMethod(new Adam(1E-3))
-//      .setMaxEpoch(2)
-//      .setTrainSummary(trainingSummary)
-//    estimator.fit(uf)
-//    model.saveModel("bin/vae.bigl", overWrite = true)
-//    decoder.saveModel("bin/vae-dec.bigl", overWrite = true)
+    val trainMode = true
+    val generator = if (!trainMode) Models.loadModel("bin/vae-dec.bigl") else {
+      val vf = uf.select("x").rdd.map(row => {
+        val x = row.getSeq[Float](0).toArray
+        val t = Tensor(x, Array(x.length))
+        Sample[Float](featureTensors = Array(t), labelTensors = Array(t, t))
+      })
+      model.compile(optimizer = new Adam(1E-3), loss = criterion)
+      model.setTensorBoard("./sum", "vae")
+      model.fit(x = vf, batchSize = batchSize, nbEpoch = 5)
+      model.saveModel("bin/vae.bigl", overWrite = true)
+      decoder.saveModel("bin/vae-dec.bigl", overWrite = true)
+    }
 
-    val vf = uf.select("x").rdd.map(row => {
-      val x = row.getSeq[Float](0).toArray
-      val t = Tensor(x, Array(x.length))
-      Sample[Float](featureTensors = Array(t), labelTensors = Array(t, t))
-    })
-    model.compile(optimizer = new Adam(1E-3), loss = criterion)
-    model.setTensorBoard("./sum", "vae")
-    model.fit(x = vf, batchSize = batchSize, nbEpoch = 1)
-    model.saveModel("bin/vae.bigl", overWrite = true)
-    decoder.saveModel("bin/vae-dec.bigl", overWrite = true)
-
-    // generate some images from a multivariate normal distribution N(0, hiddenSize)
-    val mean = Array.fill(hiddenSize)(0d)
-    val covariance = Array.ofDim[Double](hiddenSize, hiddenSize)
-    for (i <- 0 until hiddenSize) covariance(i)(i) = 1.0
-    val mvn = new MultivariateNormalDistribution(mean, covariance)
+    // generate some images from a noise vector of hiddenSize,
+    // each element is generated by a standard normal distribution so we scale by 255 to get grayscale images
+    val random = new Random(2207)
     for (k <- 0 to 9) {
-      val x = mvn.sample().map(_.toFloat)
-      val y = decoder.forward(Tensor(x, Array(1, hiddenSize))).toTensor.squeeze().toArray().map(_ * 255)
-      export(y, s"2/digits-$k.png")
+      val x = (0 until hiddenSize).map(_ => random.nextGaussian().toFloat).toArray
+      val y = generator.forward(Tensor(x, Array(1, hiddenSize))).toTensor.squeeze().toArray().map(_ * 255)
+      export(y, s"bin/gen-$k.png")
     }
 
     spark.stop()
