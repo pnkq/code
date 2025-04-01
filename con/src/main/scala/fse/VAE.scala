@@ -4,7 +4,7 @@ import com.intel.analytics.bigdl.dllib.feature.dataset.Sample
 import com.intel.analytics.bigdl.dllib.keras.Model
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{DataFrame, SparkSession}
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.layers._
 import com.intel.analytics.bigdl.dllib.keras.models.Models
@@ -86,6 +86,9 @@ object VAE {
     ImageIO.write(image, "png", new File(path))
   }
 
+  private def exportLatentVectors(df: DataFrame, encoder: Model[Float], path: String) = {
+
+  }
 
   def main(args: Array[String]): Unit = {
     val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[4]")
@@ -139,6 +142,9 @@ object VAE {
       val y = generator.forward(Tensor(x, Array(1, hiddenSize))).toTensor.squeeze().toArray().map(_ * 255)
       export(y, s"bin/gen-$k.png")
     }
+
+    // export learned latent vectors of images to an external files for further analysis (t-SNE, PCA, etc)
+    exportLatentVectors(train, encoder, "dat/mnist/z.txt")
 
     spark.stop()
   }
