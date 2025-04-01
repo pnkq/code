@@ -52,27 +52,26 @@ object VAE {
 
   private def createDecoder(hiddenSize: Int): Model[Float] = {
     val input = Input(inputShape = Shape(hiddenSize))
-    val dense = Dense(32 * 7 * 7).inputs(input)
+    val dense = Dense(32 * 7 * 7, "relu").inputs(input)
     val reshape = Reshape(targetShape = Array(32, 7, 7)).inputs(dense)
-    val relu = Activation("relu").inputs(reshape)
-    val resize1 = ResizeBilinear(outputHeight = 14, outputWidth = 14).inputs(relu)
+    val resize1 = ResizeBilinear(outputHeight = 14, outputWidth = 14).inputs(reshape)
     val conv1 = Convolution2D(16, 5, 5, subsample = (1, 1), activation = "relu", borderMode = "same").inputs(resize1)
     val resize2 = ResizeBilinear(outputHeight = 28, outputWidth = 28).inputs(conv1)
-    val conv2 = Convolution2D(1, 5, 5, subsample = (1, 1), borderMode = "same").inputs(resize2)
-    val sigmoid = Activation("sigmoid").inputs(conv2)
-    val output = Reshape(targetShape = Array(28*28)).inputs(sigmoid)
+    val conv2 = Convolution2D(1, 5, 5, subsample = (1, 1), borderMode = "same", activation = "sigmoid").inputs(resize2)
+    val output = Reshape(targetShape = Array(28*28)).inputs(conv2)
     Model(input = input, output = output)
   }
 
-  private def vae(nChannel: Int, nCol: Int, nRow: Int, hiddenSize: Int): (Model[Float], Model[Float]) = {
+  private def vae(nChannel: Int, nCol: Int, nRow: Int, hiddenSize: Int): (Model[Float], Model[Float], Model[Float]) = {
     val input = Input(inputShape = Shape(nChannel * nCol * nRow))
     val reshape = Reshape(targetShape = Array(nChannel, nCol, nRow)).inputs(input)
-    val encoderNode = createEncoder(nChannel, nCol, nRow, hiddenSize).inputs(reshape)
+    val encoder = createEncoder(nChannel, nCol, nRow, hiddenSize)
+    val encoderNode = encoder.inputs(reshape)
     val sampler = GaussianSampler().inputs(encoderNode)
     val decoder = createDecoder(hiddenSize)
     val decoderNode = decoder.inputs(sampler)
     val model = Model(input = input, output = Array(encoderNode, decoderNode))
-    (model, decoder)
+    (model, decoder, encoder)
   }
 
   private def export(x: Array[Float], path: String) = {
@@ -87,7 +86,10 @@ object VAE {
   }
 
   private def exportLatentVectors(df: DataFrame, encoder: Model[Float], path: String) = {
-
+    val sample = udf((image: Vector) => {
+      val x = Tensor(image.toArray.map(_.toFloat), Array(image.size))
+      val output = encoder.forward(x).toTable
+    })
   }
 
   def main(args: Array[String]): Unit = {
@@ -111,7 +113,7 @@ object VAE {
     val uf = train.withColumn("x", binarize(col("features")))
 
     val hiddenSize = 10
-    val (model, decoder) = vae(1, 28, 28, hiddenSize)
+    val (model, decoder, encoder) = vae(1, 28, 28, hiddenSize)
     model.summary()
     decoder.summary()
 
@@ -132,6 +134,7 @@ object VAE {
       model.fit(x = vf, batchSize = batchSize, nbEpoch = 5)
       model.saveModel("bin/vae.bigl", overWrite = true)
       decoder.saveModel("bin/vae-dec.bigl", overWrite = true)
+      encoder.saveModel("bin/vae-enc.bigl", overWrite = true)
     }
 
     // generate some images from a noise vector of hiddenSize,
