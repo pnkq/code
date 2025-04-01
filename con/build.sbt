@@ -9,7 +9,7 @@ lazy val commonSettings = Seq(
   name := "con",
   organization := "phuonglh.com",
   version := "1.0.0",
-  scalaVersion := "2.12.19",
+//  scalaVersion := "2.12.19",
 
   libraryDependencies ++= Seq(
     "org.apache.spark" %% "spark-core" % sparkVersion,
@@ -20,8 +20,6 @@ lazy val commonSettings = Seq(
     "com.intel.analytics.bigdl.core.native.math" % "bigdl-core-math-mac" % "2.3.0",
     "com.github.scopt" %% "scopt" % "4.1.0",
     "com.johnsnowlabs.nlp" %% "spark-nlp" % sparkNLPVersion,
-    "org.openjfx" % "javafx" % "22" pomOnly(),
-    "org.projectlombok" % "lombok" % "1.18.2" % "provided" // fix a bug wih Red Hat Fedora
   )
 )
 

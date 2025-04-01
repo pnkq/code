@@ -71,7 +71,7 @@ object MNIST {
       spark.read.parquet("dat/mnist/test-00000-of-00001.parquet").withColumn("features", decode(col("image.bytes")))
     )
 
-    // 1. FFN
+//     1. FFN
 //    ffn(train, test)
 
     // 2. CNN
@@ -85,7 +85,7 @@ object MNIST {
     val trainingSummary = TrainSummary(appName = "cnn", logDir = "sum/cnn/")
     val validationSummary = ValidationSummary(appName = "cnn", logDir = "sum/cnn/")
     val batchSize = numCores * 4
-    estimator.setBatchSize(batchSize).setOptimMethod(new Adam(2E-4)).setMaxEpoch(40)
+    estimator.setBatchSize(batchSize).setOptimMethod(new Adam(2E-4)).setMaxEpoch(10)
       .setLabelCol("number")
       .setTrainSummary(trainingSummary).setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy, new Top5Accuracy, new Loss), batchSize)
