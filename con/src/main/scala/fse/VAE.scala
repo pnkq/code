@@ -4,11 +4,12 @@ import com.intel.analytics.bigdl.dllib.feature.dataset.Sample
 import com.intel.analytics.bigdl.dllib.keras.Model
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.layers._
 import com.intel.analytics.bigdl.dllib.keras.models.Models
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
+import com.intel.analytics.bigdl.dllib.nn.abstractnn.Activity
 import com.intel.analytics.bigdl.dllib.nn.{BCECriterion, KLDCriterion, ParallelCriterion}
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
@@ -52,7 +53,7 @@ object VAE {
 
   private def createDecoder(hiddenSize: Int): Model[Float] = {
     val input = Input(inputShape = Shape(hiddenSize))
-    val dense = Dense(32 * 7 * 7, "relu").inputs(input)
+    val dense = Dense(32 * 7 * 7, activation = "relu").inputs(input)
     val reshape = Reshape(targetShape = Array(32, 7, 7)).inputs(dense)
     val resize1 = ResizeBilinear(outputHeight = 14, outputWidth = 14).inputs(reshape)
     val conv1 = Convolution2D(16, 5, 5, subsample = (1, 1), activation = "relu", borderMode = "same").inputs(resize1)
@@ -89,7 +90,12 @@ object VAE {
     val sample = udf((image: Vector) => {
       val x = Tensor(image.toArray.map(_.toFloat), Array(image.size))
       val output = encoder.forward(x).toTable
+      val mu = output(1).asInstanceOf[Activity].toTensor[Float]
+      val sigma = output(2).asInstanceOf[Activity].toTensor[Float]
+      (mu, sigma)
     })
+    val output = df.withColumn("latent", sample(col("x")))
+    output.select("latent").repartition(1).write.mode(SaveMode.Overwrite).json(path)
   }
 
   def main(args: Array[String]): Unit = {
@@ -147,7 +153,7 @@ object VAE {
     }
 
     // export learned latent vectors of images to an external files for further analysis (t-SNE, PCA, etc)
-    exportLatentVectors(train, encoder, "dat/mnist/z.txt")
+    exportLatentVectors(train, encoder, "dat/mnist/z")
 
     spark.stop()
   }

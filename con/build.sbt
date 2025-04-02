@@ -20,6 +20,10 @@ lazy val commonSettings = Seq(
     "com.intel.analytics.bigdl.core.native.math" % "bigdl-core-math-mac" % "2.3.0",
     "com.github.scopt" %% "scopt" % "4.1.0",
     "com.johnsnowlabs.nlp" %% "spark-nlp" % sparkNLPVersion,
+    "org.projectlombok" % "lombok" % "1.18.2" % "provided",
+    "org.apache.logging.log4j" % "log4j-api" % "2.17.1",
+    "org.apache.logging.log4j" % "log4j-core" % "2.17.1",
+    "org.tensorflow" % "proto" % "1.15.0"
   )
 )
 
