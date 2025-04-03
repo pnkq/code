@@ -5,7 +5,7 @@ import com.intel.analytics.bigdl.dllib.keras.layers.{BERT, Bidirectional, Dense,
 import com.intel.analytics.bigdl.dllib.keras.models.{KerasNet, Models}
 import com.intel.analytics.bigdl.dllib.nn.{ClassNLLCriterion, TimeDistributedCriterion, Transpose}
 import com.intel.analytics.bigdl.dllib.nnframes.{NNEstimator, NNModel}
-import com.intel.analytics.bigdl.dllib.optim.{Adam, Loss, Trigger}
+import com.intel.analytics.bigdl.dllib.optim.{Adam, Trigger}
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.{Engine, Shape}
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
@@ -617,8 +617,8 @@ object NLU {
               .setMaxEpoch(config.epochs)
               .setTrainSummary(trainingSummary)
               .setValidationSummary(validationSummary)
-              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1), new Loss()), batchSize)
-            estimator.fit(vf.sample(0.1))
+              .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(paddingValue = -1)), batchSize)
+            estimator.fit(uf)
 
             encoder.saveModel(modelPath, overWrite = true)
 
