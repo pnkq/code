@@ -47,7 +47,7 @@ T = tsne(A, 2, 50, 1000, 20.0)
 size(T,1)
 
 # ╔═╡ 2aa65b2d-46e7-4ac0-a30f-af7064424902
-theplot = scatter(T[:,1], T[:,2], color=Y[1:size(T,1)])
+theplot = scatter(T[:,1], T[:,2], color=Y[1:size(T,1)], legend=false)
 
 # ╔═╡ ece555ba-85d1-417e-9312-c509e0993999
 Plots.png(theplot, "tsne.png")
