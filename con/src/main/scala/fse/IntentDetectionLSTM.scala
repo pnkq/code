@@ -35,7 +35,7 @@ object IntentDetectionLSTM {
     val sequential = Sequential()
     sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen))
 //    sequential.add(LSTM(64, returnSequences = true))
-    sequential.add(LSTM(64))
+    sequential.add(LSTM(100))
     sequential.add(Dense(labelSize, activation = "softmax"))
   }
 
@@ -57,7 +57,7 @@ object IntentDetectionLSTM {
     val dfV = preprocessor.transform(valid)
     df.show(false)
 
-    val maxSeqLen = 20
+    val maxSeqLen = 25
     val vocabSize = 4096
 
     val hash = udf((tokens: Array[String]) => {
@@ -89,7 +89,7 @@ object IntentDetectionLSTM {
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-3))
-      .setMaxEpoch(30)
+      .setMaxEpoch(80)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)
