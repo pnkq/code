@@ -21,25 +21,27 @@ object PyG {
     if (args.length == 0) {
       println("Need an argument of language: eng/fra/ind/vie")
     }
-    var basePath = "dat/dep/" 
+    val basePath = "dat/dep/"
     val language = args(0)
     val path = basePath + language + "-train.tsv"
 
-    val edges = Source.fromFile(path, "utf-8").getLines().toList.map { line => 
+    val source = Source.fromFile(path, "utf-8")
+    val edges = source.getLines().toList.map { line =>
       val parts = line.split("""\s+""")
       (parts(0), parts(1))
     }
+    source.close()
 
     println(s"Number of edges = ${edges.size}")
 
 
-    val nodeSet = (edges.map { t => t._1 } ++ edges.map {t => t._2 }).toSet.toList
+    val nodeSet = (edges.map { t => t._1 } ++ edges.map { t => t._2 }).distinct
     println(s"Number of nodes = ${nodeSet.size}")
 
-    val labelSet = nodeSet.map { s => 
+    val labelSet = nodeSet.map { s =>
       val j = s.lastIndexOf(":")
-      s.substring(j+1)
-    }.toSet.toList
+      s.substring(j + 1)
+    }.distinct
     println(s"Number of labels = ${labelSet.size}")
 
     edges.take(10).foreach(println)
@@ -51,9 +53,9 @@ object PyG {
     val vs = edges.map { t => node2Id(t._2) }
     val ys = nodeSet.map { node =>
       val j = node.lastIndexOf(":")
-      val label = node.substring(j+1)
+      val label = node.substring(j + 1)
       (node2Id(node), label2Id(label))
-    }.toList.sortBy(_._1).map(_._2)
+    }.sortBy(_._1).map(_._2)
 
     val pathOut = basePath + language + "-pyg.tsv"
     Files.write(Paths.get(pathOut), us.mkString(" ").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
