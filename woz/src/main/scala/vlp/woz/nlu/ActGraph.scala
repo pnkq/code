@@ -6,6 +6,9 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{col, isnull, lag, not}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
+import java.nio.file.{Files, Paths, StandardOpenOption}
+
+
 /**
  * A tool to construct act graph.
  *
@@ -22,7 +25,7 @@ object ActGraph {
   private def createVertices(spark: SparkSession, df: DataFrame): (RDD[(VertexId, String)], Map[String, Long]) = {
     import spark.implicits._
     val vs = df.select("actNames").flatMap(row => row.getSeq[String](0)).distinct().collect()
-    val is = (1L to vs.length)
+    val is = 1L to vs.length
     val pairRDD = spark.sparkContext.parallelize(is.zip(vs))
     val map = vs.zip(is).toMap
     (VertexRDD(pairRDD), map)
@@ -73,7 +76,7 @@ object ActGraph {
     )
     import spark.implicits._
     val df = spark.createDataset(dialogs).toDF("dialogId", "turnId", "actNames")
-    val (vertices, map) = createVertices(spark, df)
+    val (_, map) = createVertices(spark, df)
     println(map)
     val edges = createEdges(spark, df, map)
     edges.foreach(println)
@@ -83,7 +86,7 @@ object ActGraph {
     val spark = SparkSession.builder().master("local[4]").appName(ActGraph.getClass.getName).getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
 
-    val df = spark.read.json("dat/woz/nlu/train")
+    val df = spark.read.json("dat/woz/nlu/train").union(spark.read.json("dat/woz/nlu/dev"))
     df.show()
     val (vertices, node2Id) = createVertices(spark, df)
     println(s"Number of nodes = ${node2Id.size}.")
@@ -108,6 +111,19 @@ object ActGraph {
 
     val maxEdges = edges.sortBy(_.attr, ascending = false).take(5)
     maxEdges.foreach(println)
+
+    // export the act graph to the PyG graph format
+    // (nodeId.txt, graphPyG.tsv)
+    val nodeNames = vertices.map(pair => (pair._1.longValue(), pair._2)).sortBy(_._1)
+      .map(_._2).collect()
+    Files.writeString(Paths.get("dat/woz/nlu/nodeId.txt"), nodeNames.mkString("\n"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    val uvs = edges.map(e => (e.srcId.longValue(), e.dstId.longValue())).collect()
+    val us = uvs.map(_._1).mkString("\t") + "\n"
+    val vs = uvs.map(_._2).mkString("\t") + "\n"
+    val ys = us // node labels are source node ids
+    Files.writeString(Paths.get("dat/woz/nlu/nodePyG.tsv"), us, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    Files.writeString(Paths.get("dat/woz/nlu/nodePyG.tsv"), vs, StandardOpenOption.APPEND)
+    Files.writeString(Paths.get("dat/woz/nlu/nodePyG.tsv"), ys, StandardOpenOption.APPEND)
 
     spark.stop()
   }
