@@ -132,11 +132,11 @@ object DEP {
     val scores = for (prediction <- predictions) yield {
       val zf = prediction.select("o", "z").map { row =>
         val o = row.getAs[Vector](0).toArray.filter(_ >= 0)
-        val p = row.getSeq[Float](1).take(o.size)
+        val p = row.getSeq[Float](1).take(o.length)
         (o, p)
       }
       // show the prediction, each row is a graph
-      zf.toDF("offsets", "prediction").show(5, false)
+      zf.toDF("offsets", "prediction").show(5, truncate=false)
       // flatten the prediction, convert to double for evaluation using Spark lib
       val yz = zf.flatMap(p => p._1.zip(p._2.map(_.toDouble))).toDF("y", "z")
       yz.show(15)
@@ -218,7 +218,6 @@ object DEP {
         val offsets = preprocessor.stages(0).asInstanceOf[CountVectorizerModel].vocabulary
         println(offsets.mkString(", "))
         val offsetMap = offsets.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap // 1-based index for BigDL
-        val offsetIndex = offsets.zipWithIndex.map(p => (p._2 + 1, p._1)).toMap
         val numOffsets = offsets.length
         val tokens = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary
         val tokensMap = tokens.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap   // 1-based index for BigDL
@@ -376,7 +375,7 @@ object DEP {
             tensor(j) = 1f/ws(j) // give higher weight to minority labels
           tensor
         }
-        val numCores = Runtime.getRuntime().availableProcessors()
+        val numCores = Runtime.getRuntime.availableProcessors()
         val batchSize = if (config.batchSize % numCores != 0) numCores * 4; else config.batchSize
         config.mode match {
           case "train" =>
@@ -400,7 +399,7 @@ object DEP {
             // evaluate the model
             val scores = eval(bigdl, config, uf, vf, featureColName)
             val heads = if (config.modelType != "b") 0 else config.heads
-            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores.head}%.4g;${scores(1)}%.4g"
             println(result)
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "eval" =>
@@ -412,7 +411,7 @@ object DEP {
             // write out training/test scores
             val scores = eval(bigdl, config, uf, wf, featureColName)
             val heads = if (config.modelType != "b") 0 else config.heads
-            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores.head}%.4g;${scores(1)}%.4g"
             println(result)
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "predict" =>
@@ -440,7 +439,7 @@ object DEP {
             // evaluate the model on the training and test set
             val scores = eval(bigdl, config, uf, wf, featureColName)
             val heads = if (config.modelType != "b") 0 else config.heads
-            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores(0)}%.4g;${scores(1)}%.4g"
+            val result = f"\n${config.language};${config.modelType};${config.tokenEmbeddingSize};${config.tokenHiddenSize};${config.layers};$heads;${scores.head}%.4g;${scores(1)}%.4g"
             println(result)
             Files.write(Paths.get(config.scorePath), result.getBytes, StandardOpenOption.APPEND, StandardOpenOption.CREATE)
           case "preprocess" =>
@@ -449,6 +448,24 @@ object DEP {
             val vocab = preprocessor.stages(1).asInstanceOf[CountVectorizerModel].vocabulary.toSet
             println("#(vocab) = " + vocab.size)
             println(vocab)
+          case "flair" =>
+            // export train/valid/test datasets to column-format compatible to Flair toolkit: "token label"
+            import spark.implicits._
+            def export(df: DataFrame): Array[String] = {
+              val ef = df.select("tokens", "offsets").map { row =>
+                val tokens = row.getSeq[String](0)
+                val offsets = row.getSeq[String](1)
+                tokens.zip(offsets).map {
+                  pair => pair._1 + " " + pair._2
+                }.mkString("\n") + "\n"
+              }
+              ef.collect()
+            }
+            Array(df, dfV, dfW).zip(Array("train", "dev", "test")).foreach {
+              case (df, split) =>
+                val lines = export(df)
+                Files.write(Paths.get(s"dat/dep/flair/${config.language}-$split.txt"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            }
         }
         spark.stop()
       case None => println("Invalid config!")
