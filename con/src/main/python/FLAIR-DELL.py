@@ -7,8 +7,8 @@ from flair.trainers import ModelTrainer
 # 1. load the corpus
 columns = {0: 'token', 1: 'ner'}
 
-data_folder = '/Users/phuonglh/code/con/dat/dep/flair/'
-corpus: Corpus = ColumnCorpus(data_folder, columns, train_file='vie-train.txt', dev_file='vie-dev.txt', test_file='vie-test.txt')
+data_folder = '/home/phuonglh/code/con/dat/dep/flair/'
+corpus: Corpus = ColumnCorpus(data_folder, columns, train_file='ind-train.txt', dev_file='ind-dev.txt', test_file='ind-test.txt')
 
 # 2. what label do we want to predict?
 label_type = 'ner'
@@ -18,9 +18,9 @@ label_dict = corpus.make_label_dictionary(label_type=label_type)
 print(label_dict)
 
 # 4. initialize embeddings
-model_name="vinai/phobert-base"
-#model_name="xlm-roberta-large"
-#model_name="bert-large-cased"
+#model_name="vinai/phobert-base"    # for Vietnamese
+#model_name="bert-large-cased"      # for English
+model_name="xlm-roberta-large"      # for Indonesian
 #model_name="roberta-large"
 #model_name="microsoft/deberta-v3-base"
 embeddings = TransformerWordEmbeddings(model=model_name, layers="-1", subtoken_pooling="first", fine_tune=False, use_context=False)
