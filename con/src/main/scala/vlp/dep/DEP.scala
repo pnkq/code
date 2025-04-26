@@ -452,11 +452,12 @@ object DEP {
             // export train/valid/test datasets to column-format compatible to Flair toolkit: "token label"
             import spark.implicits._
             def export(df: DataFrame): Array[String] = {
-              val ef = df.select("tokens", "offsets").map { row =>
+              val ef = df.select("tokens", "offsets", "labels").map { row =>
                 val tokens = row.getSeq[String](0)
                 val offsets = row.getSeq[String](1)
-                tokens.zip(offsets).map {
-                  pair => pair._1 + " " + pair._2
+                val labels = row.getSeq[String](2)
+                tokens.zip(offsets.zip(labels)).map {
+                  pair => pair._1 + " " + pair._2._1 + "-" + pair._2._2
                 }.mkString("\n") + "\n"
               }
               ef.collect()
@@ -464,7 +465,7 @@ object DEP {
             Array(df, dfV, dfW).zip(Array("train", "dev", "test")).foreach {
               case (df, split) =>
                 val lines = export(df)
-                Files.write(Paths.get(s"dat/dep/flair/${config.language}-$split.txt"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                Files.write(Paths.get(s"dat/dep/flair/${config.language}-$split-las.txt"), lines.mkString("\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             }
         }
         spark.stop()
