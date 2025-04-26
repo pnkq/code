@@ -8,19 +8,19 @@ from flair.trainers import ModelTrainer
 columns = {0: 'token', 1: 'ner'}
 
 data_folder = '/home/phuonglh/code/con/dat/dep/flair/'
-corpus: Corpus = ColumnCorpus(data_folder, columns, train_file='ind-train.txt', dev_file='ind-dev.txt', test_file='ind-test.txt')
+corpus: Corpus = ColumnCorpus(data_folder, columns, train_file='eng-train-las.txt', dev_file='eng-dev-las.txt', test_file='eng-test-las.txt')
 
 # 2. what label do we want to predict?
 label_type = 'ner'
 
 # 3. make the label dictionary from the corpus
-label_dict = corpus.make_label_dictionary(label_type=label_type)
+label_dict = corpus.make_label_dictionary(label_type=label_type, add_unk=True)
 print(label_dict)
 
 # 4. initialize embeddings
-#model_name="vinai/phobert-base"    # for Vietnamese
+model_name="vinai/phobert-base-v2"    # for Vietnamese
 #model_name="bert-large-cased"      # for English
-model_name="xlm-roberta-large"      # for Indonesian
+#model_name="xlm-roberta-large"      # for Indonesian
 #model_name="roberta-large"
 #model_name="microsoft/deberta-v3-base"
 embeddings = TransformerWordEmbeddings(model=model_name, layers="-1", subtoken_pooling="first", fine_tune=False, use_context=False)
@@ -33,5 +33,5 @@ model = SequenceTagger(hidden_size=hidden_size, embeddings=embeddings, tag_dicti
 trainer = ModelTrainer(model, corpus)
 
 # 7. start fine-tuning
-trainer.fine_tune(f'flair/{model_name}-{hidden_size}', learning_rate=1e-3, mini_batch_size=16, max_epochs=40)
+trainer.fine_tune(f'flair/{model_name}-{hidden_size}-las', learning_rate=1e-3, mini_batch_size=16, max_epochs=40)
 

@@ -457,7 +457,7 @@ object DEP {
                 val offsets = row.getSeq[String](1)
                 val labels = row.getSeq[String](2)
                 tokens.zip(offsets.zip(labels)).map {
-                  pair => pair._1 + " " + pair._2._1 + "-" + pair._2._2
+                  pair => pair._1 + " " + pair._2._1 + ":" + pair._2._2
                 }.mkString("\n") + "\n"
               }
               ef.collect()
