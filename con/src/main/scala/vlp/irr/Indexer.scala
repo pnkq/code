@@ -14,7 +14,7 @@ import org.apache.spark.ml.linalg
  */
 object Indexer {
     def main(args: Array[String]): Unit = {
-        val spark = SparkSession.builder().master("local[4]").getOrCreate()
+        val spark = SparkSession.builder().master("local[*]").config("driver-memory", "8g").getOrCreate()
         spark.sparkContext.setLogLevel("WARN")
 
         //    val path = "/home/phuonglh/Downloads/c4-train.00000-of-01024-30K.json.gz"
@@ -34,18 +34,26 @@ object Indexer {
         hf.printSchema()
         hf.select("url", "indices").show(5)
 
-        val f2 = udf((u: String, xs: Seq[Int]) => xs.map((u, _)))
-        val uf = hf.withColumn("pairs", f2(col("url"), col("indices")))
+//         Method 1: flatMap and group by token
+//        val f2 = udf((u: String, xs: Seq[Int]) => xs.map((u, _)))
+//        val uf = hf.withColumn("pairs", f2(col("url"), col("indices")))
+//
+//        val vf = uf.select(explode(col("pairs")).alias("p"))
+//        vf.printSchema()
+//
+//        val yf = vf.groupBy("p._2").agg(collect_set("p._1").alias("u"))
+//        val f3 = udf((i: Int) => vocabulary(i))
+//        val zf = yf.withColumn("t", f3(col("_2"))).select("t", "u")
+//        zf.show()
 
-        val vf = uf.select(explode(col("pairs")).alias("p"))
-        vf.printSchema()
-
-        val yf = vf.groupBy("p._2").agg(collect_set("p._1").alias("u"))
-        val f3 = udf((i: Int) => vocabulary(i))
-        val zf = yf.withColumn("t", f3(col("_2"))).select("t", "u")
-        zf.show()
-
-        zf.repartition(5).write.json("dat/idx")
+        // zf.repartition(5).write.json("dat/idx")
+        // Method 2: filter by token
+        import spark.implicits._
+        val result = vocabulary.indices.par.map { i =>
+            val ff = hf.filter(array_contains(col("indices"), i))
+            (vocabulary(i), ff.select("url").collect().map(_.getString(0)))
+        }
+        println(result.head)
 
         spark.stop()
     }
