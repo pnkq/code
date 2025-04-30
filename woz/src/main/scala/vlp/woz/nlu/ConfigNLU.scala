@@ -18,5 +18,6 @@ case class ConfigNLU(
   mode: String = "eval",
   epochs: Int = 40,
   lambdaSlot: Float = 0.8f,
-  embeddingType: String = "b" // for trainJSL mode only, [d=DeBERTa, b=BERT, x=XLM-RoBERTa]
+  embeddingType: String = "b", // for trainJSL mode only, [d=DeBERTa, b=BERT, x=XLM-RoBERTa]
+  save: Boolean = false
 )
