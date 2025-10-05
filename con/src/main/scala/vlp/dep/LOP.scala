@@ -80,7 +80,7 @@ object LOP {
   }
 
   /**
-    * create a BigDL model corresponding to a model type, return 
+    * Create a BigDL model corresponding to a model type, return a tuple of data.
     *
     * @param config configuration
     * @param numVocab number of input tokens

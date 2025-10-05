@@ -24,7 +24,7 @@ case class Sentence(tokens: ListBuffer[Token]) {
 
   /**
     * Searches for a token with a given id, if that token does not exist then 
-    * returns the ROOT token.
+    * returns the UNK token.
     * @param tokenId the id of the token
     */
   def token(tokenId: String): Token = {

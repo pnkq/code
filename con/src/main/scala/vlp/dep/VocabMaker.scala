@@ -14,12 +14,12 @@ import scala.collection.JavaConverters._
 object VocabMaker {
 
   /**
-   * Reads a large embedding file (GloVe, Numberbatch, Fasttex, etc.) and filters
+   * Reads a large embedding file (GloVe, Numberbatch, FastText, etc.) and filters
    * words using a dependency vocab, writes result to a new embedding file.
-   * @param depVocab
-   * @param embeddingPath
-   * @param outputPath
-   * @return
+   * @param depVocab a vocabulary
+   * @param embeddingPath input large embedding path
+   * @param outputPath output path to write embedding vectors to
+   * @return a path
    */
   def vocabFilter(depVocab: Set[String], embeddingPath: String, outputPath: String) = {
     val lines = if (!embeddingPath.endsWith(".gz")) {
