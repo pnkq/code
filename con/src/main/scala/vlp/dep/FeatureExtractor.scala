@@ -89,8 +89,11 @@ object Extractor {
     * @return a feature string
     */
   def partOfSpeechQueue0(config: Config): String = {
-    val q0 = config.sentence.token(config.queue.front)
-    "tq0:" + q0.partOfSpeech
+    if (config.queue.nonEmpty) {
+      val q0 = config.sentence.token(config.queue.front)
+      "tq0:" + q0.partOfSpeech
+    } else "tq0:None"
+    
   }
 
   /**
@@ -110,8 +113,10 @@ object Extractor {
     * @return a feature string
     */
   def wordQueue0(config: Config): String = {
-    val q0 = config.sentence.token(config.queue.front)
-    "wq0:" + q0.word
+    if (config.queue.nonEmpty) {
+      val q0 = config.sentence.token(config.queue.front)
+      "wq0:" + q0.word
+    } else "wq0:None"
   }
 
   /**
@@ -120,8 +125,10 @@ object Extractor {
     * @return a feature string
     */
   def shapeQueue0(config: Config): String = {
-    val q0 = config.sentence.token(config.queue.front).word
-    "sq0:" + shape(q0)
+    if (config.queue.nonEmpty) {
+      val q0 = config.sentence.token(config.queue.front).word
+      "sq0:" + shape(q0)
+    } else "sq0:None"
   }
 
   /**
@@ -151,8 +158,10 @@ object Extractor {
     * @return a feature string
     */
   def lemmaQueue0(config: Config): String = {
-    val q0 = config.sentence.token(config.queue.front)
-    "lq0:" + q0.lemma
+    if (config.queue.nonEmpty) {
+      val q0 = config.sentence.token(config.queue.front)
+      "lq0:" + q0.lemma
+    } else "lq0:None"
   }
 
   /**

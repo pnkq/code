@@ -91,5 +91,48 @@ class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
     }
     contexts.toList
   }
+}
+
+
+/**
+  * This is a static oracle for arc-standard transition-based dependency parsing.
+  *
+  * @param featureExtractor
+  */
+class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtractor) {
+
+  override def decode(graph: Graph): List[Context] = {
+    // create the initial config
+    val stack = mutable.Stack[String]()
+    val queue = mutable.Queue[String]()
+    graph.sentence.tokens.foreach(token => queue.enqueue(token.id))
+    stack.push(queue.dequeue()) // SHIFT [ROOT]
+    stack.push(queue.dequeue()) // SHIFT [ROOT, w]
+    val arcs = ListBuffer[Dependency]()
+    var config: Config = new ConfigAS(graph.sentence, stack, queue, arcs)
+    val contexts = ListBuffer[Context]()
+    while (!config.isFinal) {
+      // extract features
+      val features = featureExtractor.extract(config)
+      // extract transition
+      val (v, u) = (stack.toSeq(0), stack.toSeq(1))
+      var transition = "SH" // default transition
+      if (graph.hasArc(v, u)) {
+        // choose LA if all arcs from u (the second-topmost) word on the stack have already been assigned by the parser
+        // check if u is the head of a remaining token in the queue (if yes, then we cannot apply LA)
+        if (!queue.exists(w => graph.hasArc(u, w)))
+          transition = "LA-" + graph.sentence.token(u).dependencyLabel
+      } else if (graph.hasArc(u, v)) {
+        // choose RA if all arcs from v (the topmost) word on the stack have already been assigned by the parser
+        // check if v is the head of a remaining token in the queue (if yes, then we cannot apply RA)
+        if (!queue.exists(w => graph.hasArc(v, w)))
+          transition = "RA-" + graph.sentence.token(v).dependencyLabel
+      }
+      // add a parsing context
+      contexts += Context(counter.getAndIncrement(), features, transition)
+      config = config.next(transition)
+    }
+    contexts.toList
+  }
 
 }

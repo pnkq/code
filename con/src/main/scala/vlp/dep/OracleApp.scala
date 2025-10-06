@@ -12,15 +12,21 @@ import scala.collection.mutable.ListBuffer
 object OracleApp {
   
   def createSentence: Sentence = {
-    val m0 = mutable.Map[Label.Value, String](Label.Id -> "0", Label.PartOfSpeech -> "ROOT", Label.Head -> "-1")
+    val m0 = mutable.Map[Label.Value, String](Label.Id -> "0", Label.PartOfSpeech -> "ROOT", Label.Head -> "-1", Label.DependencyLabel -> "NA")
     val t0 = Token("ROOT", m0)
-    val m1 = mutable.Map[Label.Value, String](Label.Id -> "1", Label.PartOfSpeech -> "PRON", Label.Head -> "2")
-    val t1 = Token("I", m1)
-    val m2 = mutable.Map[Label.Value, String](Label.Id -> "2", Label.PartOfSpeech -> "VERB", Label.Head -> "0")
-    val t2 = Token("love", m2)
-    val m3 = mutable.Map[Label.Value, String](Label.Id -> "3", Label.PartOfSpeech -> "PRON", Label.Head -> "2")
-    val t3 = Token("you", m3)
-    Sentence(ListBuffer(t0, t1, t2, t3))
+    val m1 = mutable.Map[Label.Value, String](Label.Id -> "1", Label.PartOfSpeech -> "PRON", Label.Head -> "2", Label.DependencyLabel -> "nsubj")
+    val t1 = Token("John", m1)
+    val m2 = mutable.Map[Label.Value, String](Label.Id -> "2", Label.PartOfSpeech -> "VERB", Label.Head -> "0", Label.DependencyLabel -> "root")
+    val t2 = Token("loves", m2)
+    val m3 = mutable.Map[Label.Value, String](Label.Id -> "3", Label.PartOfSpeech -> "PRON", Label.Head -> "2", Label.DependencyLabel -> "dobj")
+    val t3 = Token("Mary", m3)
+    val m4 = mutable.Map[Label.Value, String](Label.Id -> "4", Label.PartOfSpeech -> "ADV", Label.Head -> "5", Label.DependencyLabel -> "advmod")
+    val t4 = Token("very", m4)
+    val m5 = mutable.Map[Label.Value, String](Label.Id -> "5", Label.PartOfSpeech -> "ADV", Label.Head -> "2", Label.DependencyLabel -> "advmod")
+    val t5 = Token("much", m5)
+    val m6 = mutable.Map[Label.Value, String](Label.Id -> "6", Label.PartOfSpeech -> "PUNCT", Label.Head -> "2", Label.DependencyLabel -> "punct")
+    val t6 = Token(".", m6)
+    Sentence(ListBuffer(t0, t1, t2, t3, t4, t5, t6))
   }
 
   def featurize: Unit = {
@@ -41,15 +47,19 @@ object OracleApp {
   }
   
   def main(args: Array[String]): Unit = {
-    // test 1
+    // test 0
     // featurize
+
+    // test 1
+    val oracle = new OracleAS(new FeatureExtractor(false, false))
+    val graph = Graph(createSentence)
+    oracle.decode(graph).foreach(println)
+    println
 
     // test 2
     val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
-    val oracle = new OracleAE(new FeatureExtractor(false, false))
     // decode the last graph (as shown in the end of this file)
-    val contexts = oracle.decode(graphs.last)
-    contexts.foreach(println)
+    oracle.decode(graphs.last).foreach(println)
   }
 }
 

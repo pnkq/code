@@ -9,6 +9,7 @@ import scala.collection.mutable.ListBuffer
  * 
  */ 
 abstract class Config(val sentence: Sentence, val stack: mutable.Stack[String], val queue: mutable.Queue[String], val arcs: ListBuffer[Dependency]) {
+  def checkPrecondition(transition: String): Boolean
   def next(transition: String): Config
   def isReducible(): Boolean
   def isReducible(graph: Graph): Boolean
@@ -43,7 +44,9 @@ abstract class Config(val sentence: Sentence, val stack: mutable.Stack[String], 
   * A config in the arc-eager transition-based dependency parser.
   */
 class ConfigAE(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency]) 
-  extends Config(sentence, stack, queue, arcs) {
+    extends Config(sentence, stack, queue, arcs) {
+
+  def checkPrecondition(transition: String): Boolean = true // phuonglh: TODO
   /**
     * Computes the next config given a transition.
     * @param transition a transition
@@ -114,5 +117,60 @@ class ConfigAE(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.
   def isFinal: Boolean = {
     queue.isEmpty || stack.isEmpty
   }
+}
+
+/**
+  * Configuration of an arc-standard transition-based parser.
+  *
+  * @param sentence
+  * @param stack
+  * @param queue
+  * @param arcs
+  */
+class ConfigAS(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency]) 
+    extends Config(sentence, stack, queue, arcs) {
+
+  def checkPrecondition(transition: String): Boolean = {
+    if (transition == "SH") return queue.nonEmpty
+    if (transition.startsWith("LA")) {
+      if (stack.size <= 2) return false
+      val secondTop = stack.toSeq(1)
+      if (secondTop == "0") return false
+      // secondTop does not already have a head (single-head constraint)
+      return true // TODO
+    }
+    if (transition.startsWith("RA")) {
+      if (stack.size <= 2) return false
+      val top = stack.top
+      // top does not already have a head (single-head constraint)
+      return true // TODO
+    }
+    return true
+  }
+  override def next(transition: String): Config = {
+    if (transition == "SH") {
+      stack.push(queue.dequeue())
+    } else {
+      if (transition.startsWith("LA")) {
+        val v = stack.pop()
+        val u = stack.pop()
+        val label = transition.substring(3)
+        arcs += Dependency(v, u, label)
+        stack.push(v)
+      } else if (transition.startsWith("RA")) {
+        val v = stack.pop()
+        val u = stack.top
+        val label = transition.substring(3)
+        arcs += Dependency(u, v, label)
+      }
+    }
+    return new ConfigAS(sentence, stack, queue, arcs)
+  }
+
+  override def isReducible(): Boolean = false
+
+  override def isReducible(graph: Graph): Boolean = false
+
+  override def isFinal(): Boolean = queue.isEmpty && (stack.size == 1)
 
 }
