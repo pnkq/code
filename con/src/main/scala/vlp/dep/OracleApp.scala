@@ -34,32 +34,45 @@ object OracleApp {
     val config: Config = new ConfigAE(sentence, stack, queue, arcs).next("SH")
     println(config)
 
-    val featureMap = Map[FeatureType.Value, Boolean](
-      FeatureType.Word -> true, 
-      FeatureType.PartOfSpeech -> true)
-    val extractor = new FeatureExtractor(true)
+    val featureMap = Map[FeatureType.Value, Boolean](FeatureType.Word -> true, FeatureType.PartOfSpeech -> true)
+    val extractor = new FeatureExtractor(false, false)
     val features = extractor.extract(config)
     println(features)
   }
   
-  private def readGraphs: Unit = {
-    val graphs = GraphReader.read("dat/dep/eng/en-ud-dev.conllu")
-    println(graphs.size)
-    println(graphs(0))
-    println()
-    println(graphs(1))
-    graphs(1).sentence.tokens.foreach(println)
-  }
-  
-  def oracle: Unit = {
-    val graphs = GraphReader.read("dat/dep/eng/tests.conllu")
+  def main(args: Array[String]): Unit = {
+    // test 1
+    // featurize
+
+    // test 2
+    val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
     val oracle = new OracleAE(new FeatureExtractor(false, false))
-    // decode the last graph
+    // decode the last graph (as shown in the end of this file)
     val contexts = oracle.decode(graphs.last)
     contexts.foreach(println)
   }
-  
-  def main(args: Array[String]): Unit = {
-    oracle
-  }
 }
+
+// # sent_id = reviews-211933-0003
+// # text = He listens and is excellent in diagnosing, addressing and explaining the specific issues and suggesting exercises to use.
+// 1	He	he	PRON	PRP	Case=Nom|Gender=Masc|Number=Sing|Person=3|PronType=Prs	2	nsubj	2:nsubj|5:nsubj	_
+// 2	listens	listen	VERB	VBZ	Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin	0	root	0:root	_
+// 3	and	and	CCONJ	CC	_	5	cc	5:cc	_
+// 4	is	be	AUX	VBZ	Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin	5	cop	5:cop	_
+// 5	excellent	excellent	ADJ	JJ	Degree=Pos	2	conj	2:conj:and	_
+// 6	in	in	SCONJ	IN	_	7	mark	7:mark	_
+// 7	diagnosing	diagnose	VERB	VBG	VerbForm=Ger	5	advcl	5:advcl:in	SpaceAfter=No
+// 8	,	,	PUNCT	,	_	9	punct	9:punct	_
+// 9	addressing	address	VERB	VBG	VerbForm=Ger	7	conj	5:advcl:in|7:conj:and	_
+// 10	and	and	CCONJ	CC	_	11	cc	11:cc	_
+// 11	explaining	explain	VERB	VBG	VerbForm=Ger	7	conj	5:advcl:in|7:conj:and	_
+// 12	the	the	DET	DT	Definite=Def|PronType=Art	14	det	14:det	_
+// 13	specific	specific	ADJ	JJ	Degree=Pos	14	amod	14:amod	_
+// 14	issues	issue	NOUN	NNS	Number=Plur	7	obj	7:obj|9:obj|11:obj	_
+// 15	and	and	CCONJ	CC	_	16	cc	16:cc	_
+// 16	suggesting	suggest	VERB	VBG	VerbForm=Ger	7	conj	5:advcl:in|7:conj:and	_
+// 17	exercises	exercise	NOUN	NNS	Number=Plur	16	obj	16:obj	_
+// 18	to	to	PART	TO	_	19	mark	19:mark	_
+// 19	use	use	VERB	VB	VerbForm=Inf	17	acl	17:acl:to	SpaceAfter=No
+// 20	.	.	PUNCT	.	_	2	punct	2:punct	_
+

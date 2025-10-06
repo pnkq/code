@@ -18,15 +18,15 @@ abstract class Config(val sentence: Sentence, val stack: mutable.Stack[String], 
     * @return a raw sentence.
     */
   def words: String = {
-    "\"" + sentence.tokens.map(t => t.word + "/" + t.id).mkString(" ") + "\""
+    "\"" + sentence.tokens.map(t => t.id + "/" + t.word + "/" + t.partOfSpeech).mkString(" ") + "\""
   }
 
-  def toPrettyString(): String = {
+  override def toString(): String = {
     val sb = new StringBuilder()
     sb.append('[')
     sb.append(words)
     sb.append(", ")
-    sb.append(stack.toString)
+    sb.append(stack)
     sb.append(", ")
     sb.append(queue)
     sb.append(", ")
