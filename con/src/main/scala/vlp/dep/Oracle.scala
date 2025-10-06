@@ -26,20 +26,34 @@ case class Context(id: Int, bof: String, transition: String) {
   }
 }
 
+abstract class Oracle(val featureExtractor: FeatureExtractor) {
+  val counter = new AtomicInteger(0)
+
+  def decode(graph: Graph): List[Context]
+
+  /**
+    * Derives all parsing contexts from a treebank of many dependency graphs.
+    * @param graphs a list of manually-annotated dependency graphs.
+    * @return a list of parsing contexts.
+    */
+  def decode(graphs: List[Graph]): List[Context] = {
+    graphs.par.flatMap(graph => decode(graph)).toList
+  }
+
+}
+
 /**
   * Created by phuonglh on 6/24/17.
   *
-  * This is a static oracle for transition-based dependency parsing. 
+  * This is a static oracle for arc-eager transition-based dependency parsing. 
   * 
   * Decodes a manually-annotated dependency graph for 
   * parsing contexts and their corresponding transitions. This 
   * utility is used to create training data.
   *
   */
-class Oracle(val featureExtractor: FeatureExtractor) {
+class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtractor) {
   
-  val counter = new AtomicInteger(0)
-
   /**
     * Derives a transition sequence from this dependency graph. This 
     * is used to reconstruct the parsing process of a sentence.
@@ -54,7 +68,7 @@ class Oracle(val featureExtractor: FeatureExtractor) {
     graph.sentence.tokens.foreach(token => queue.enqueue(token.id))
     stack.push(queue.dequeue())
     val arcs = ListBuffer[Dependency]()
-    var config = Config(graph.sentence, stack, queue, arcs)
+    var config: Config = new ConfigAE(graph.sentence, stack, queue, arcs)
     val contexts = ListBuffer[Context]()
     while (!config.isFinal) {
       // extract features
@@ -78,12 +92,4 @@ class Oracle(val featureExtractor: FeatureExtractor) {
     contexts.toList
   }
 
-  /**
-    * Derives all parsing contexts from a treebank of many dependency graphs.
-    * @param graphs a list of manually-annotated dependency graphs.
-    * @return a list of parsing contexts.
-    */
-  def decode(graphs: List[Graph]): List[Context] = {
-    graphs.par.flatMap(graph => decode(graph)).toList
-  }
 }

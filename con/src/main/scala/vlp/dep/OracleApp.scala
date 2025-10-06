@@ -31,7 +31,7 @@ object OracleApp {
     val queue = new mutable.Queue[String]()
     sentence.tokens.foreach(token => queue.enqueue(token.id))
     val arcs = new ListBuffer[Dependency]()
-    val config = Config(sentence, stack, queue, arcs).next("SH")
+    val config: Config = new ConfigAE(sentence, stack, queue, arcs).next("SH")
     println(config)
 
     val featureMap = Map[FeatureType.Value, Boolean](
@@ -53,7 +53,7 @@ object OracleApp {
   
   def oracle: Unit = {
     val graphs = GraphReader.read("dat/dep/eng/tests.conllu")
-    val oracle = new Oracle(new FeatureExtractor(false, false))
+    val oracle = new OracleAE(new FeatureExtractor(false, false))
     // decode the last graph
     val contexts = oracle.decode(graphs.last)
     contexts.foreach(println)

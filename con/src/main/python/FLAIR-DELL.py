@@ -18,8 +18,8 @@ label_dict = corpus.make_label_dictionary(label_type=label_type, add_unk=True)
 print(label_dict)
 
 # 4. initialize embeddings
-model_name="vinai/phobert-base-v2"    # for Vietnamese
-#model_name="bert-large-cased"      # for English
+#model_name="vinai/phobert-base-v2"    # for Vietnamese
+model_name="bert-large-cased"      # for English
 #model_name="xlm-roberta-large"      # for Indonesian
 #model_name="roberta-large"
 #model_name="microsoft/deberta-v3-base"

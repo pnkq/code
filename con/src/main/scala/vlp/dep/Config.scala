@@ -8,7 +8,7 @@ import scala.collection.mutable.ListBuffer
  * A general config in a transition-based dependency parser. 
  * 
  */ 
-abstract class Config(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency]) {
+abstract class Config(val sentence: Sentence, val stack: mutable.Stack[String], val queue: mutable.Queue[String], val arcs: ListBuffer[Dependency]) {
   def next(transition: String): Config
   def isReducible(): Boolean
   def isReducible(graph: Graph): Boolean
@@ -42,7 +42,7 @@ abstract class Config(sentence: Sentence, stack: mutable.Stack[String], queue: m
   * 
   * A config in the arc-eager transition-based dependency parser.
   */
-case class ConfigAE(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency]) 
+class ConfigAE(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency]) 
   extends Config(sentence, stack, queue, arcs) {
   /**
     * Computes the next config given a transition.
@@ -66,7 +66,7 @@ case class ConfigAE(sentence: Sentence, stack: mutable.Stack[String], queue: mut
       val label = transition.substring(3)
       arcs += Dependency(u, v, label)
     }
-    ConfigAE(sentence, stack, queue, arcs)
+    new ConfigAE(sentence, stack, queue, arcs)
   }
 
   /**
