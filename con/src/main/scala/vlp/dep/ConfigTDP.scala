@@ -5,7 +5,7 @@ package vlp.dep
   */
 case class ConfigTDP
 (
-  master: String = "local[4]",
+  master: String = "local[*]",
   totalCores: Int = 8,
   executorCores: Int = 8,
   driverMemory: String = "8g",
@@ -21,6 +21,6 @@ case class ConfigTDP
   batchSize: Int = 32,
   extended: Boolean = false, // use super-tag features
   tagEmbeddingSize: Int = 10, // super-tag embedding size
-  hiddenUnits: String = "",
+  hiddenUnits: String = "64",
   discrete: Boolean = true // use discrete super-tag features  
 )
