@@ -12,21 +12,18 @@ import scala.collection.mutable.ListBuffer
 object OracleApp {
   
   def createSentence: Sentence = {
-    val m0 = mutable.Map[Label.Value, String](Label.Id -> "0", Label.PartOfSpeech -> "ROOT", Label.Head -> "-1", Label.DependencyLabel -> "NA")
-    val t0 = Token("ROOT", m0)
-    val m1 = mutable.Map[Label.Value, String](Label.Id -> "1", Label.PartOfSpeech -> "PRON", Label.Head -> "2", Label.DependencyLabel -> "nsubj")
-    val t1 = Token("John", m1)
-    val m2 = mutable.Map[Label.Value, String](Label.Id -> "2", Label.PartOfSpeech -> "VERB", Label.Head -> "0", Label.DependencyLabel -> "root")
-    val t2 = Token("loves", m2)
-    val m3 = mutable.Map[Label.Value, String](Label.Id -> "3", Label.PartOfSpeech -> "PRON", Label.Head -> "2", Label.DependencyLabel -> "dobj")
-    val t3 = Token("Mary", m3)
-    val m4 = mutable.Map[Label.Value, String](Label.Id -> "4", Label.PartOfSpeech -> "ADV", Label.Head -> "5", Label.DependencyLabel -> "advmod")
-    val t4 = Token("very", m4)
-    val m5 = mutable.Map[Label.Value, String](Label.Id -> "5", Label.PartOfSpeech -> "ADV", Label.Head -> "2", Label.DependencyLabel -> "advmod")
-    val t5 = Token("much", m5)
-    val m6 = mutable.Map[Label.Value, String](Label.Id -> "6", Label.PartOfSpeech -> "PUNCT", Label.Head -> "2", Label.DependencyLabel -> "punct")
-    val t6 = Token(".", m6)
-    Sentence(ListBuffer(t0, t1, t2, t3, t4, t5, t6))
+    Sentence(ListBuffer(
+      Token("ROOT", mutable.Map(Label.Id -> "0", Label.Head -> "-1", Label.DependencyLabel -> "NA")),
+      Token("Economic", mutable.Map(Label.Id -> "1", Label.Head -> "2", Label.DependencyLabel -> "nmod")),
+      Token("news", mutable.Map(Label.Id -> "2", Label.Head -> "3", Label.DependencyLabel -> "subj")),
+      Token("had", mutable.Map(Label.Id -> "3", Label.Head -> "0", Label.DependencyLabel -> "root")),
+      Token("little", mutable.Map(Label.Id -> "4", Label.Head -> "5", Label.DependencyLabel -> "nmod")),
+      Token("effect", mutable.Map(Label.Id -> "5", Label.Head -> "3", Label.DependencyLabel -> "nobj")),
+      Token("on", mutable.Map(Label.Id -> "6", Label.Head -> "5", Label.DependencyLabel -> "nmod")),
+      Token("financial", mutable.Map(Label.Id -> "7", Label.Head -> "8", Label.DependencyLabel -> "nmod")),
+      Token("markets", mutable.Map(Label.Id -> "8", Label.Head -> "6", Label.DependencyLabel -> "pmod")),
+      Token(".", mutable.Map(Label.Id -> "9", Label.Head -> "3", Label.DependencyLabel -> "punct"))
+    ))
   }
 
   def featurize: Unit = {
@@ -56,10 +53,10 @@ object OracleApp {
     oracle.decode(graph).foreach(println)
     println
 
-    // test 2
-    val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
-    // decode the last graph (as shown in the end of this file)
-    oracle.decode(graphs.last).foreach(println)
+    // // test 2
+    // val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
+    // // decode the last graph (as shown in the end of this file)
+    // oracle.decode(graphs.last).foreach(println)
   }
 }
 
@@ -86,3 +83,41 @@ object OracleApp {
 // 19	use	use	VERB	VB	VerbForm=Inf	17	acl	17:acl:to	SpaceAfter=No
 // 20	.	.	PUNCT	.	_	2	punct	2:punct	_
 
+// # sent_id = newsgroup-groups.google.com_hiddennook_23708a8afef2f3a8_ENG_20041226_230600-0010
+// # text = Listing his priorities, Abbas told supporters of the ruling Fatah party that he was determined to provide security to his people and continue the struggle against Israel's partially completed West Bank barrier.
+// 1	Listing	list	VERB	VBG	VerbForm=Ger	6	advcl	6:advcl	_
+// 2	his	his	PRON	PRP$	Case=Gen|Gender=Masc|Number=Sing|Person=3|Poss=Yes|PronType=Prs	3	nmod:poss	3:nmod:poss	_
+// 3	priorities	priority	NOUN	NNS	Number=Plur	1	obj	1:obj	SpaceAfter=No
+// 4	,	,	PUNCT	,	_	1	punct	1:punct	_
+// 5	Abbas	Abbas	PROPN	NNP	Number=Sing	6	nsubj	6:nsubj	_
+// 6	told	tell	VERB	VBD	Mood=Ind|Number=Sing|Person=3|Tense=Past|VerbForm=Fin	0	root	0:root	_
+// 7	supporters	supporter	NOUN	NNS	Number=Plur	6	iobj	6:iobj	_
+// 8	of	of	ADP	IN	_	12	case	12:case	_
+// 9	the	the	DET	DT	Definite=Def|PronType=Art	12	det	12:det	_
+// 10	ruling	rule	VERB	VBG	VerbForm=Ger	12	amod	12:amod	_
+// 11	Fatah	Fatah	PROPN	NNP	Number=Sing	12	compound	12:compound	_
+// 12	party	party	NOUN	NN	Number=Sing	7	nmod	7:nmod:of	_
+// 13	that	that	SCONJ	IN	_	16	mark	16:mark	_
+// 14	he	he	PRON	PRP	Case=Nom|Gender=Masc|Number=Sing|Person=3|PronType=Prs	16	nsubj	16:nsubj|18:nsubj:xsubj|24:nsubj:xsubj	_
+// 15	was	be	AUX	VBD	Mood=Ind|Number=Sing|Person=3|Tense=Past|VerbForm=Fin	16	cop	16:cop	_
+// 16	determined	determined	ADJ	JJ	Degree=Pos	6	ccomp	6:ccomp	_
+// 17	to	to	PART	TO	_	18	mark	18:mark	_
+// 18	provide	provide	VERB	VB	VerbForm=Inf	16	xcomp	16:xcomp	_
+// 19	security	security	NOUN	NN	Number=Sing	18	obj	18:obj	_
+// 20	to	to	ADP	IN	_	22	case	22:case	_
+// 21	his	his	PRON	PRP$	Case=Gen|Gender=Masc|Number=Sing|Person=3|Poss=Yes|PronType=Prs	22	nmod:poss	22:nmod:poss	_
+// 22	people	people	NOUN	NNS	Number=Plur	18	obl	18:obl:to	_
+// 23	and	and	CCONJ	CC	_	24	cc	24:cc	_
+// 24	continue	continue	VERB	VB	VerbForm=Inf	18	conj	16:xcomp|18:conj:and	_
+// 25	the	the	DET	DT	Definite=Def|PronType=Art	26	det	26:det	_
+// 26	struggle	struggle	NOUN	NN	Number=Sing	24	obj	24:obj	_
+// 27	against	against	ADP	IN	_	34	case	34:case	_
+// 28-29	Israel's	_	_	_	_	_	_	_	_
+// 28	Israel	Israel	PROPN	NNP	Number=Sing	34	nmod:poss	34:nmod:poss	_
+// 29	's	's	PART	POS	_	28	case	28:case	_
+// 30	partially	partially	ADV	RB	_	31	advmod	31:advmod	_
+// 31	completed	complete	VERB	VBN	Tense=Past|VerbForm=Part|Voice=Pass	34	amod	34:amod	_
+// 32	West	West	PROPN	NNP	Number=Sing	33	compound	33:compound	_
+// 33	Bank	Bank	PROPN	NNP	Number=Sing	34	compound	34:compound	_
+// 34	barrier	barrier	NOUN	NN	Number=Sing	26	nmod	26:nmod:against	SpaceAfter=No
+// 35	.	.	PUNCT	.	_	6	punct	6:punct	_

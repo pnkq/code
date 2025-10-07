@@ -73,14 +73,15 @@ object Extractor {
   }
   
   /**
-    * Part-of-speech of the top element on the config's stack. Suppose that 
-    * the stack is always non-empty -- it contains at least the ROOT element.
+    * Part-of-speech of the top element on the config's stack. 
     * @param config a parsing config.
     * @return a feature string
     */
   def partOfSpeechStack0(config: Config): String = {
-    val s0 = config.sentence.token(config.stack.top)
-    "ts0:" + s0.partOfSpeech
+    if (config.stack.nonEmpty) {
+      val s0 = config.sentence.token(config.stack.top)
+      "ts0:" + s0.partOfSpeech
+    } else "ts0:None"
   }
 
   /**
@@ -103,8 +104,10 @@ object Extractor {
     * @return a feature string
     */
   def wordStack0(config: Config): String = {
-    val s0 = config.sentence.token(config.stack.top)
-    "ws0:" + s0.word
+    if (config.stack.nonEmpty) {
+      val s0 = config.sentence.token(config.stack.top)
+      "ws0:" + s0.word
+    } else "ws0:None"
   }
 
   /**
@@ -137,8 +140,10 @@ object Extractor {
     * @return a feature string
     */
   def shapeStack0(config: Config): String = {
-    val s0 = config.sentence.token(config.stack.top).word
-    "ss0:" + shape(s0)
+    if (config.stack.nonEmpty) {
+      val s0 = config.sentence.token(config.stack.top).word
+      "ss0:" + shape(s0)
+    } else "ss0:None"
   }
   
   /**
@@ -148,8 +153,10 @@ object Extractor {
     * @return a feature string
     */
   def lemmaStack0(config: Config): String = {
-    val s0 = config.sentence.token(config.stack.top)
-    "ls0:" + s0.lemma
+    if (config.stack.nonEmpty) {
+      val s0 = config.sentence.token(config.stack.top)
+      "ls0:" + s0.lemma
+    } else "ls0:None"
   }
 
   /**
@@ -188,8 +195,21 @@ object Extractor {
       "tq1:" + q1.partOfSpeech
     }
   }
+
+  /**
+    * Dependency label of the top element on the stack.
+    * @param config a parsing config
+    * @return a feature string
+    */
+  def dependencyStack0(config: Config): String = {
+    if (config.stack.nonEmpty) {
+      val s0 = config.sentence.token(config.stack.top)
+      "ds0:" + s0.dependencyLabel
+    } else "ds0:None"
+  }
+
   
-  // Joint features
+  // Joint features: TODO (check bounds)
   //
   /**
     * Parts-of-speech of the top elements on the stack and the queue.
@@ -263,16 +283,6 @@ object Extractor {
       val q1 = config.sentence.token(config.queue(1))
       "wq0+wq1:" + q0.word + '+' + q1.word
     }
-  }
-
-  /**
-    * Dependency label of the top element on the stack.
-    * @param config a parsing config
-    * @return a feature string
-    */
-  def dependencyStack0(config: Config): String = {
-    val s0 = config.sentence.token(config.stack.top)
-    "ds0:" + s0.dependencyLabel
   }
 
   /**
@@ -366,8 +376,9 @@ object Extractor {
         } else "None"
       } else "None"
     }
-    
-    "lcs0:" + leftmostChild(config.stack.top)
+    if (config.stack.nonEmpty)
+      "lcs0:" + leftmostChild(config.stack.top)
+    else "lcs0:None"
   }
   
   def rightmostChildStack0(config: Config): String = {
@@ -398,7 +409,9 @@ object Extractor {
       } else "None"      
     }
     
-    "rcs0:" + rightmostChild(config.stack.top)
+    if (config.stack.nonEmpty)
+      "rcs0:" + rightmostChild(config.stack.top)
+    else "rcs0:None"
   }
 
   /**
@@ -407,8 +420,10 @@ object Extractor {
     * @return a feature string
     */
   def superTagStack0(config: Config): String = {
-    val s0 = config.sentence.token(config.stack.top)
-    "sts0:" + s0.superTag
+    if (config.stack.nonEmpty) {
+      val s0 = config.sentence.token(config.stack.top)
+      "sts0:" + s0.superTag
+    } else "sts0:None"
   }
 
   /**
@@ -417,8 +432,10 @@ object Extractor {
     * @return a feature string
     */
   def superTagQueue0(config: Config): String = {
-    val q0 = config.sentence.token(config.queue.front)
-    "stq0:" + q0.superTag
+    if (config.queue.nonEmpty) {
+      val q0 = config.sentence.token(config.queue.front)
+      "stq0:" + q0.superTag
+    } else "stq0:None"
   }
   
 }

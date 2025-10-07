@@ -19,7 +19,7 @@ abstract class Config(val sentence: Sentence, val stack: mutable.Stack[String], 
     * @return a raw sentence.
     */
   def words: String = {
-    "\"" + sentence.tokens.map(t => t.id + "/" + t.word + "/" + t.partOfSpeech).mkString(" ") + "\""
+    "\"" + sentence.tokens.map(t => t.id + "/" + t.word + "/" + t.partOfSpeech + "/" + t.head).mkString(" ") + "\""
   }
 
   override def toString(): String = {
@@ -114,13 +114,12 @@ class ConfigAE(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.
     * Is this config final?
     * @return true or false
     */
-  def isFinal: Boolean = {
-    queue.isEmpty || stack.isEmpty
-  }
+  def isFinal: Boolean = queue.isEmpty || stack.isEmpty
 }
 
 /**
-  * Configuration of an arc-standard transition-based parser.
+  * Configuration of an arc-standard transition-based parser. Implement the algorithm in Figure 3 of 
+  * Joakim Nivre, "Algorithms for Deterministic Incremental Dependency Parsing", CL, 2008.
   *
   * @param sentence
   * @param stack
@@ -152,16 +151,16 @@ class ConfigAS(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.
       stack.push(queue.dequeue())
     } else {
       if (transition.startsWith("LA")) {
-        val v = stack.pop()
-        val u = stack.pop()
+        val i = stack.pop()
+        val j = queue.front
         val label = transition.substring(3)
-        arcs += Dependency(v, u, label)
-        stack.push(v)
+        arcs += Dependency(j, i, label)
       } else if (transition.startsWith("RA")) {
-        val v = stack.pop()
-        val u = stack.top
+        val i = stack.pop()
+        val j = queue.dequeue()
+        queue.+=:(i) // prepend the topmost element on the stack to the front of the queue
         val label = transition.substring(3)
-        arcs += Dependency(u, v, label)
+        arcs += Dependency(i, j, label)
       }
     }
     return new ConfigAS(sentence, stack, queue, arcs)
@@ -171,6 +170,6 @@ class ConfigAS(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.
 
   override def isReducible(graph: Graph): Boolean = false
 
-  override def isFinal(): Boolean = queue.isEmpty && (stack.size == 1)
+  override def isFinal(): Boolean = queue.isEmpty
 
 }
