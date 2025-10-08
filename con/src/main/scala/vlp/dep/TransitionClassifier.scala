@@ -33,13 +33,23 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * Creates a Spark data set of parsing contexts from a list of dependency graphs using an oracle.
     *
     * @param graphs a list of manually-annotated dependency graphs.
-    * @return a data set of parsing contexts.
+    * @return a data frame of parsing contexts.
     */
-  private def createDF(graphs: List[Graph]): Dataset[Context] = {
+  private def createDF(graphs: List[Graph]): DataFrame = {
     val contexts = oracle.decode(graphs)
     if (config.verbose) logger.info("#(contexts) = " + contexts.length)
-    import spark.implicits._
-    spark.createDataFrame(contexts).as[Context]
+    spark.createDataFrame(contexts)
+  }
+
+  /**
+   * The createDF(graphs) above creates a data frame of 3 columns (id, bof, transition).
+   * This method add a new column which specifies the weights for each label "transition". 
+   * The SH transition is usually the most frequent label, so it should have a small weight. 
+   * Empirically, we set the weight of SH to 0.1 (ten times smaller than the other transitions).
+   */
+  private def addWeightCol(df: DataFrame): DataFrame = {
+    val f = udf((transition: String) => if (transition == "SH") 0.1 else 1.0)
+    df.withColumn("weight", f(col("transition")))
   }
 
   /**
@@ -88,7 +98,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @return a pipeline model
     */
   def train(modelPath: String, graphs: List[Graph], classifierType: ClassifierType.Value, hiddenLayers: Array[Int]): PipelineModel = {
-    val input = createDF(graphs)
+    val input = addWeightCol(createDF(graphs))
     input.write.mode(SaveMode.Overwrite).save("/tmp/tdp")
     input.cache()
     val featureList = input.select("bof").collect().map(row => row.getString(0)).flatMap(s => s.split("\\s+"))
@@ -106,7 +116,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
 
     val model = classifierType match {
       case ClassifierType.MLR =>
-        val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5)
+        val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5).setWeightCol("weight")
         new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, mlr)).fit(input)
       case ClassifierType.MLP =>
         val pipeline = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer))
@@ -144,7 +154,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     */
   def train(modelPath: String, graphs: List[Graph], classifierType: ClassifierType.Value, hiddenLayers: Array[Int],
             wordVectors: Map[String, Vector[Double]], discrete: Boolean = true): PipelineModel = {
-    val input = createDF(graphs, wordVectors, discrete)
+    val input = addWeightCol(createDF(graphs, wordVectors, discrete))
     input.cache()
     val featureList = input.select("bof").collect().map(row => row.getString(0)).flatMap(s => s.split("\\s+"))
     val featureSet = featureList.toSet
@@ -161,7 +171,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
 
     val model = classifierType match {
       case ClassifierType.MLR => {
-        val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5)
+        val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5).setWeightCol("weight")
         new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, vectorAssembler, mlr)).fit(input)
       }
       case ClassifierType.MLP => {

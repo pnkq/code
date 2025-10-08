@@ -131,22 +131,27 @@ class ConfigAS(sentence: Sentence, stack: mutable.Stack[String], queue: mutable.
 
   def checkPrecondition(transition: String): Boolean = {
     if (transition == "SH") return queue.nonEmpty
+    // LA or RA
+    val (i, j) = (stack.top, queue.front)
     if (transition.startsWith("LA")) {
-      if (stack.size <= 2) return false
-      val secondTop = stack.toSeq(1)
-      if (secondTop == "0") return false
-      // secondTop does not already have a head (single-head constraint)
-      return true // TODO
-    }
-    if (transition.startsWith("RA")) {
-      if (stack.size <= 2) return false
-      val top = stack.top
-      // top does not already have a head (single-head constraint)
-      return true // TODO
+      // precondition for LA: i is not ROOT and i does not have a head
+      if ((i == "0") || arcs.exists(a => a.dependent == i))
+        return false
+    } else if (transition.startsWith("RA")) {
+      // precondition for RA: token j does not already have a head
+      if (arcs.exists(a => a.dependent == j))
+        return false
     }
     return true
   }
+
   override def next(transition: String): Config = {
+    if (!checkPrecondition(transition)) {
+      println(s"Invalid transition! [$transition]")
+      // SH
+      stack.push(queue.dequeue())
+      return new ConfigAS(sentence, stack, queue, arcs)
+    }
     if (transition == "SH") {
       stack.push(queue.dequeue())
     } else {
