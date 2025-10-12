@@ -99,7 +99,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     */
   def train(modelPath: String, graphs: List[Graph], classifierType: ClassifierType.Value, hiddenLayers: Array[Int]): PipelineModel = {
     val input = addWeightCol(createDF(graphs))
-    input.write.mode(SaveMode.Overwrite).save("/tmp/tdp")
+    // input.write.mode(SaveMode.Overwrite).save("/tmp/tdp")
     val featureList = input.select("bof").collect().map(row => row.getString(0)).flatMap(s => s.split("\\s+"))
     val featureSet = featureList.toSet
     val featureCounter = featureList.groupBy(identity).mapValues(_.size).filter(p => p._2 >= config.minFrequency)
@@ -382,5 +382,29 @@ object TransitionClassifier {
 // There are 49,898 samples.
 
 // On the train split of the EWT.
-// ???
+// +---+-----+
+// |  s|count|
+// +---+-----+
+// |  2|87476|
+// |  3|80081|
+// |  4|66079|
+// |  1|57164|
+// |  5|45949|
+// |  6|27676|
+// |  7|15053|
+// |  0|11666|
+// |  8| 7696|
+// |  9| 3762|
+// | 10| 1793|
+// | 11|  857|
+// | 12|  435|
+// | 13|  253|
+// | 14|  160|
+// | 15|   84|
+// | 16|   41|
+// | 17|   18|
+// | 18|    7|
+// | 19|    2|
+// +---+-----+
+
 // There are 406,252 samples. 
