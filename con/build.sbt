@@ -23,7 +23,8 @@ lazy val commonSettings = Seq(
     "org.projectlombok" % "lombok" % "1.18.2" % "provided",
     "org.apache.logging.log4j" % "log4j-api" % "2.17.1",
     "org.apache.logging.log4j" % "log4j-core" % "2.17.1",
-    "org.tensorflow" % "proto" % "1.15.0"
+    "org.tensorflow" % "proto" % "1.15.0",
+    "com.github.fommil.netlib" % "all" % "1.1.2" pomOnly()
   )
 )
 
