@@ -17,6 +17,8 @@ object ClassifierType extends Enumeration {
   val MLR, MLP = Value
 }
 
+case class Phrase(tokens: Seq[String])
+
 /**
   * Created by phuonglh on 6/24/17.
   *
@@ -51,7 +53,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val f = udf((transition: String) => if (transition == "SH") 0.1 else 1.0)
     df.withColumn("weight", f(col("transition")))
   }
-
+  
   /**
     * Creates an extended data frame with distributed word representations concatenated to feature vectors.
     * @param graphs
@@ -89,7 +91,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   }
 
   /**
-    * Trains a classifier to predict transition of a given parsing config.
+    * Trains a classifier to predict transition of a given parsing config. This method uses only discrete BoF. 
     *
     * @param modelPath
     * @param graphs
@@ -100,15 +102,6 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   def train(modelPath: String, graphs: List[Graph], classifierType: ClassifierType.Value, hiddenLayers: Array[Int]): PipelineModel = {
     val input = addWeightCol(createDF(graphs))
     // input.write.mode(SaveMode.Overwrite).save("/tmp/tdp")
-    val featureList = input.select("bof").collect().map(row => row.getString(0)).flatMap(s => s.split("\\s+"))
-    val featureSet = featureList.toSet
-    val featureCounter = featureList.groupBy(identity).mapValues(_.size).filter(p => p._2 >= config.minFrequency)
-    if (config.verbose) {
-      logger.info("#(distinctFeatures) = " + featureSet.size)
-      logger.info(s"#(features with count >= ${config.minFrequency}) = " + featureCounter.size)
-      input.show(10, false)
-    }
-
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
@@ -155,14 +148,6 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
             wordVectors: Map[String, Vector[Double]], discrete: Boolean = true): PipelineModel = {
     val input = addWeightCol(createDF(graphs, wordVectors, discrete))
     input.cache()
-    val featureList = input.select("bof").collect().map(row => row.getString(0)).flatMap(s => s.split("\\s+"))
-    val featureSet = featureList.toSet
-    val featureCounter = featureList.groupBy(identity).mapValues(_.size).filter(p => p._2 >= config.minFrequency)
-    if (config.verbose) {
-      logger.info("#(distinctFeatures) = " + featureSet.size)
-      logger.info(s"#(features with count >= ${config.numFeatures}) = " + featureCounter.size)
-    }
-
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("f").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
@@ -198,6 +183,42 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     model
   }
 
+  /**
+    * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
+    * from the stack and the top token on the queue. 
+    *
+    * @param modelPath
+    * @param graphs
+    * @return a pipeline model
+    */
+  def train(modelPath: String, graphs: List[Graph]): PipelineModel = {
+    val input = addWeightCol(createDF(graphs))
+    val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
+    val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
+    val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    logger.info("Fitting the preprocessor pipeline. Please wait...")
+    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(input.select("bof", "transition"))
+    // the sentence data frame
+    val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq.tail).map(s => Phrase(s))
+    val df = spark.createDataFrame(sentences)
+    df.show(false)
+    val vectorizer = new CountVectorizer().setInputCol("tokens").setMinDF(2)
+    logger.info("Fitting the word vectorizer. Please wait...")
+    val vectorizerModel = vectorizer.fit(df)
+
+    // get the vocabulary and convert it to a map (word -> id)
+    val vocab = vectorizerModel.vocabulary.zipWithIndex.toMap
+    logger.info(s"#(words) = ${vocab.size}")
+    if (config.verbose) logger.info(vocab.toString)
+    // overwrite the trained pipeline
+    preprocessor.write.overwrite().save(modelPath)
+    // print some strings to debug the model
+    if (config.verbose) {
+      logger.info("  #(labels) = " + preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length)
+      logger.info("#(features) = " + preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
+    }
+    preprocessor
+  }
   /**
     * Evaluates the accuracy of the transition classifier, including overall accuracy,
     * precision, recall and f-measure ratios for each transition label.
@@ -285,7 +306,7 @@ object TransitionClassifier {
         val extended = config.extended
         val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
         val (trainingGraphs, developmentGraphs) = (
-          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu").filter(g => g.sentence.length >= 3), 
+          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu").filter(g => g.sentence.length >= 3), 
           GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu").filter(g => g.sentence.length >= 3)
         )
         val classifierType = config.classifier match {
@@ -319,7 +340,8 @@ object TransitionClassifier {
             val hiddenLayersConfig = config.hiddenUnits
             val hiddenLayers = if (hiddenLayersConfig.isEmpty) Array[Int](); else hiddenLayersConfig.split("[,\\s]+").map(_.toInt)
             if (!extended)
-              classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers)
+              // classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers)
+              classifier.train(modelPath, trainingGraphs)
             else {
               // logger.info("ltagPath = " + ltagPath)
               // logger.info("#(wordVectors) = " + wordVectors.size)
