@@ -9,10 +9,12 @@ import scala.collection.mutable.ListBuffer
 /**
   * Created by phuonglh on 6/22/17.
   * 
-  * A parsing context contains space-separated feature strings and a transition label.
+  * A parsing context contains a stack, a queue, an arc set and bag-of-features 
+  *  (space-separated feature strings) and a transition label.
   * 
   */
-case class Context(id: Int, bof: String, transition: String) {
+case class Context(id: Int, bof: String, transition: String, 
+  stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency]) {
   override def toString: String = {
     val sb = new StringBuilder()
     sb.append('(')
@@ -21,6 +23,12 @@ case class Context(id: Int, bof: String, transition: String) {
     sb.append(bof)
     sb.append(',')
     sb.append(transition)
+    sb.append(',')
+    sb.append(stack)
+    sb.append(',')
+    sb.append(queue)
+    sb.append(',')
+    sb.append(arcs)
     sb.append(')')
     sb.toString()
   }
@@ -103,7 +111,7 @@ class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
           transition = "RE"
       }
       // add a parsing context
-      contexts += Context(counter.getAndIncrement(), features, transition)
+      contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), config.queue.clone(), config.arcs.clone())
       config = config.next(transition)
     }
     contexts.toList
@@ -146,10 +154,9 @@ class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
         }
       }
       // add a parsing context
-      contexts += Context(counter.getAndIncrement(), features, transition)
+      contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), config.queue.clone(), config.arcs.clone())
       config = config.next(transition)
     }
     contexts.toList
   }
-
 }

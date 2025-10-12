@@ -26,7 +26,7 @@ object ClassifierType extends Enumeration {
 class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   val logger = LoggerFactory.getLogger(getClass.getName)
   val featureExtractor = new FeatureExtractor(false, false)
-  val oracle = new OracleAS(featureExtractor)
+  val oracle = new OracleAS(featureExtractor) // arc-standard oracle
   val distributedDimension = 40
 
   /**
@@ -100,7 +100,6 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   def train(modelPath: String, graphs: List[Graph], classifierType: ClassifierType.Value, hiddenLayers: Array[Int]): PipelineModel = {
     val input = addWeightCol(createDF(graphs))
     input.write.mode(SaveMode.Overwrite).save("/tmp/tdp")
-    input.cache()
     val featureList = input.select("bof").collect().map(row => row.getString(0)).flatMap(s => s.split("\\s+"))
     val featureSet = featureList.toSet
     val featureCounter = featureList.groupBy(identity).mapValues(_.size).filter(p => p._2 >= config.minFrequency)
@@ -286,7 +285,7 @@ object TransitionClassifier {
         val extended = config.extended
         val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
         val (trainingGraphs, developmentGraphs) = (
-          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu").filter(g => g.sentence.length >= 3), 
+          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu").filter(g => g.sentence.length >= 3), 
           GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu").filter(g => g.sentence.length >= 3)
         )
         val classifierType = config.classifier match {
@@ -351,3 +350,37 @@ object TransitionClassifier {
     }
   }
 }
+
+// Y: total cores, X: executor cores (Y/X will be the number of executors)
+
+// bloop run -p con -m vlp.dep.TransitionClassifier -- -v -m train -Y 16 -X 8 (-Z 20gb)
+
+// stack length of the parsing context (AS) on the dev. split of EWT.
+// ---+-----+
+// |  s|count|
+// +---+-----+
+// |  2|11985|
+// |  3|10022|
+// |  1| 8397|
+// |  4| 7614|
+// |  5| 4772|
+// |  6| 2623|
+// |  0| 1860|
+// |  7| 1378|
+// |  8|  690|
+// |  9|  323|
+// | 10|  145|
+// | 11|   58|
+// | 12|   18|
+// | 13|    6|
+// | 14|    2|
+// | 15|    2|
+// | 16|    2|
+// | 17|    1|
+// +---+-----+
+
+// There are 49,898 samples.
+
+// On the train split of the EWT.
+// ???
+// There are 406,252 samples. 
