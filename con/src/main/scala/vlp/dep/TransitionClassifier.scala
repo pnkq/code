@@ -126,10 +126,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     if (config.verbose) {
       logger.info("#(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
       logger.info("#(vocabs) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
-      classifierType match {
-        case ClassifierType.MLR => logger.info(model.stages(3).asInstanceOf[LogisticRegressionModel].explainParams())
-        case ClassifierType.MLP => logger.info(model.stages(3).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams())
+      val modelSt = classifierType match {
+        case ClassifierType.MLR => model.stages(3).asInstanceOf[LogisticRegressionModel].explainParams()
+        case ClassifierType.MLP => model.stages(3).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams()
       }
+      logger.info(modelSt)
     }
     model
   }
@@ -175,10 +176,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     if (config.verbose) {
       logger.info("#(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
       logger.info("#(vocabs) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
-      classifierType match {
-        case ClassifierType.MLR => logger.info(model.stages(4).asInstanceOf[LogisticRegressionModel].explainParams())
-        case ClassifierType.MLP => logger.info(model.stages(4).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams())
+      val modelSt = classifierType match {
+        case ClassifierType.MLR => model.stages(4).asInstanceOf[LogisticRegressionModel].explainParams()
+        case ClassifierType.MLP => model.stages(4).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams()
       }
+      logger.info(modelSt)
     }
     model
   }
@@ -341,35 +343,32 @@ object TransitionClassifier {
           case "eval" => {
             classifier.evalManual(modelPath, developmentGraphs)
             classifier.evalManual(modelPath, trainingGraphs)
-            if (!extended) {
-              classifier.eval(modelPath, developmentGraphs)
-              classifier.eval(modelPath, trainingGraphs)
-            } 
-            // else {
-            //   // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
-            //   // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
-            // }
+            classifier.eval(modelPath, developmentGraphs)
+            classifier.eval(modelPath, trainingGraphs)
+            if (extended) {
+              // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
+              // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
+            }
           }
           case "train" => {
             val hiddenLayersConfig = config.hiddenUnits
             val hiddenLayers = if (hiddenLayersConfig.isEmpty) Array[Int](); else hiddenLayersConfig.split("[,\\s]+").map(_.toInt)
-            if (!extended)
-              // classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers)
-              classifier.train(modelPath, trainingGraphs)
-            else {
+            config.classifier match {
+              case "rnn" => classifier.train(modelPath, trainingGraphs)
+              case _ => classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers)
+            }
+            if (extended) {
               // logger.info("ltagPath = " + ltagPath)
               // logger.info("#(wordVectors) = " + wordVectors.size)
               // classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers, wordVectors, discrete)
+              // logger.info("ltagPath = " + ltagPath)
+              // logger.info("#(wordVectors) = " + wordVectors.size)
+              // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
+              // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
+            } else {
+              classifier.eval(modelPath, developmentGraphs)
+              classifier.eval(modelPath, trainingGraphs)
             }
-            // if (!extended) {
-            //   classifier.eval(modelPath, developmentGraphs)
-            //   classifier.eval(modelPath, trainingGraphs)
-            // } else {
-            //   logger.info("ltagPath = " + ltagPath)
-            //   logger.info("#(wordVectors) = " + wordVectors.size)
-            //   classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
-            //   classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
-            // }
           }
           case "test" => {
             if (!extended) {
@@ -387,60 +386,3 @@ object TransitionClassifier {
   }
 }
 
-// Y: total cores, X: executor cores (Y/X will be the number of executors)
-
-// bloop run -p con -m vlp.dep.TransitionClassifier -- -v -m train -Y 16 -X 8 (-Z 20gb)
-
-// stack length of the parsing context (AS) on the dev. split of EWT.
-// ---+-----+
-// |  s|count|
-// +---+-----+
-// |  2|11985|
-// |  3|10022|
-// |  1| 8397|
-// |  4| 7614|
-// |  5| 4772|
-// |  6| 2623|
-// |  0| 1860|
-// |  7| 1378|
-// |  8|  690|
-// |  9|  323|
-// | 10|  145|
-// | 11|   58|
-// | 12|   18|
-// | 13|    6|
-// | 14|    2|
-// | 15|    2|
-// | 16|    2|
-// | 17|    1|
-// +---+-----+
-
-// There are 49,898 samples.
-
-// On the train split of the EWT.
-// +---+-----+
-// |  s|count|
-// +---+-----+
-// |  2|87476|
-// |  3|80081|
-// |  4|66079|
-// |  1|57164|
-// |  5|45949|
-// |  6|27676|
-// |  7|15053|
-// |  0|11666|
-// |  8| 7696|
-// |  9| 3762|
-// | 10| 1793|
-// | 11|  857|
-// | 12|  435|
-// | 13|  253|
-// | 14|  160|
-// | 15|   84|
-// | 16|   41|
-// | 17|   18|
-// | 18|    7|
-// | 19|    2|
-// +---+-----+
-
-// There are 406,252 samples. 
