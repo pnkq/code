@@ -120,7 +120,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
         new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, mlp)).fit(input)
     }
 
-    // overwrite the trained pipeline
+    // overwrite the trained pipeline model
     model.write.overwrite().save(modelPath)
     // print some strings to debug the model
     if (config.verbose) {
@@ -169,7 +169,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       }
     }
 
-    // overwrite the trained pipeline
+    // overwrite the trained pipeline model
     model.write.overwrite().save(modelPath)
     // print some strings to debug the model
     if (config.verbose) {
@@ -251,9 +251,10 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       val labels = metrics.labels
       labels.foreach(label => {
         val sb = new StringBuilder()
-        sb.append(s"Precision($label) = " + metrics.precision(label) + ", ")
-        sb.append(s"Recall($label) = " + metrics.recall(label) + ", ")
-        sb.append(s"F($label) = " + metrics.fMeasure(label))
+        sb.append(s"$label: P = " + metrics.precision(label) + ", ")
+        sb.append(s"R = " + metrics.recall(label) + ", ")
+        sb.append(s"F = " + metrics.fMeasure(label) + ", ")
+        sb.append(s"A = " + metrics.accuracy)
         logger.info(sb.toString)
       })
     }
@@ -274,6 +275,9 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val corrects = output.filter(p => p._1 == p._2).size
     logger.info(classifier.info())
     logger.info("#(corrects) = " + corrects + ", accuracy = " + (corrects.toDouble / contexts.size))
+    val nonSH = output.filter(p => p._1 != "SH")
+    val correctsNonSH = nonSH.filter(p => p._1 == p._2).size
+    logger.info("#(correctsNonSH) = " + correctsNonSH + ", accuracy = " + (correctsNonSH.toDouble / nonSH.size))
   }
 }
 
@@ -337,10 +341,11 @@ object TransitionClassifier {
           case "eval" => {
             classifier.evalManual(modelPath, developmentGraphs)
             classifier.evalManual(modelPath, trainingGraphs)
-            // if (!extended) {
-            //   classifier.eval(modelPath, developmentGraphs)
-            //   classifier.eval(modelPath, trainingGraphs)
-            // } else {
+            if (!extended) {
+              classifier.eval(modelPath, developmentGraphs)
+              classifier.eval(modelPath, trainingGraphs)
+            } 
+            // else {
             //   // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
             //   // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
             // }

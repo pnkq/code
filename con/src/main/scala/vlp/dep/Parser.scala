@@ -131,6 +131,7 @@ class Parser(spark: SparkSession, configTDP: ConfigTDP, classifierType: Classifi
       }
       Token(word, annotation)
     }
+    // prepend the ROOT token before parsing
     val s = Sentence(GraphReader.root +: tokens.to[ListBuffer])
     logger.info(s.toString)
     parse(s)
