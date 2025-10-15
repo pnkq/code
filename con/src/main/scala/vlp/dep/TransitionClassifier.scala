@@ -246,15 +246,15 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val accuracy = metrics.accuracy
     logger.info(s"Accuracy = $accuracy")
     if (config.verbose) {
-      outputDF.select("transition", "label", "tokens", "features", "prediction").show(10, false)
-      logger.info(model.stages(2).asInstanceOf[CountVectorizerModel].explainParams())
+      outputDF.select("transition", "label", "tokens", "prediction").show(10, false)
+      // logger.info(model.stages(2).asInstanceOf[CountVectorizerModel].explainParams())
       val labels = metrics.labels
       labels.foreach(label => {
         val sb = new StringBuilder()
-        sb.append(s"$label: P = " + metrics.precision(label) + ", ")
-        sb.append(s"R = " + metrics.recall(label) + ", ")
-        sb.append(s"F = " + metrics.fMeasure(label) + ", ")
-        sb.append(s"A = " + metrics.accuracy)
+        sb.append(s"$label: P = " + "%.4f".format(metrics.precision(label)) + ", ")
+        sb.append(s"R = " + "%.4f".format(metrics.recall(label)) + ", ")
+        sb.append(s"F = " + "%.4f".format(metrics.fMeasure(label)) + ", ")
+        sb.append(s"A = " + "%.4f".format(metrics.accuracy))
         logger.info(sb.toString)
       })
     }
