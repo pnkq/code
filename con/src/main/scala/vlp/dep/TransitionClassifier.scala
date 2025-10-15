@@ -192,26 +192,35 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @return a pipeline model
     */
   def train(modelPath: String, graphs: List[Graph]): PipelineModel = {
-    val input = addWeightCol(createDF(graphs))
+    val input = addWeightCol(createDF(graphs)).sample(0.2)
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
     logger.info("Fitting the preprocessor pipeline. Please wait...")
     val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(input.select("bof", "transition"))
     // the sentence data frame
-    val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq.tail).map(s => Phrase(s))
+    val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
     val df = spark.createDataFrame(sentences)
     df.show(false)
-    val vectorizer = new CountVectorizer().setInputCol("tokens").setMinDF(2)
+    val vectorizer = new CountVectorizer().setInputCol("tokens")
     logger.info("Fitting the word vectorizer. Please wait...")
     val vectorizerModel = vectorizer.fit(df)
 
-    // get the vocabulary and convert it to a map (word -> id)
-    val vocab = vectorizerModel.vocabulary.zipWithIndex.toMap
+    // get the vocabulary and convert it to a map (word -> id), reserve 0 for UNK token
+    val vocab = vectorizerModel.vocabulary.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
     logger.info(s"#(words) = ${vocab.size}")
-    if (config.verbose) logger.info(vocab.toString)
+    
+    // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
+    val f = udf((stack: Seq[String], queue: Seq[String]) => {
+      val xs = stack :+ queue.head
+      val is = xs.map(x => vocab.getOrElse(x, 0))
+      if (is.length < 10) Seq.fill(10)(-1) ++ is else is.take(10)
+    })
+    val ef = input.withColumn("seq", f(col("stack"), col("queue")))
+    ef.show(false)
+
     // overwrite the trained pipeline
-    preprocessor.write.overwrite().save(modelPath)
+    // preprocessor.write.overwrite().save(modelPath)
     // print some strings to debug the model
     if (config.verbose) {
       logger.info("  #(labels) = " + preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length)
@@ -328,13 +337,13 @@ object TransitionClassifier {
           case "eval" => {
             classifier.evalManual(modelPath, developmentGraphs)
             classifier.evalManual(modelPath, trainingGraphs)
-            if (!extended) {
-              classifier.eval(modelPath, developmentGraphs)
-              classifier.eval(modelPath, trainingGraphs)
-            } else {
-              // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
-              // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
-            }
+            // if (!extended) {
+            //   classifier.eval(modelPath, developmentGraphs)
+            //   classifier.eval(modelPath, trainingGraphs)
+            // } else {
+            //   // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
+            //   // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
+            // }
           }
           case "train" => {
             val hiddenLayersConfig = config.hiddenUnits
@@ -347,15 +356,15 @@ object TransitionClassifier {
               // logger.info("#(wordVectors) = " + wordVectors.size)
               // classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers, wordVectors, discrete)
             }
-            if (!extended) {
-              classifier.eval(modelPath, developmentGraphs)
-              classifier.eval(modelPath, trainingGraphs)
-            } else {
-              // logger.info("ltagPath = " + ltagPath)
-              // logger.info("#(wordVectors) = " + wordVectors.size)
-              // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
-              // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
-            }
+            // if (!extended) {
+            //   classifier.eval(modelPath, developmentGraphs)
+            //   classifier.eval(modelPath, trainingGraphs)
+            // } else {
+            //   logger.info("ltagPath = " + ltagPath)
+            //   logger.info("#(wordVectors) = " + wordVectors.size)
+            //   classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
+            //   classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
+            // }
           }
           case "test" => {
             if (!extended) {
