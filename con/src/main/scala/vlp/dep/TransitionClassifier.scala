@@ -299,9 +299,6 @@ object TransitionClassifier {
     val parser = new OptionParser[ConfigTDP](getClass().getName()) {
       head(getClass().getName(), "1.0")
       opt[String]('M', "master").action((x, conf) => conf.copy(master = x)).text("Spark master, default is local[*]")
-      opt[Int]('X', "executorCores").action((x, conf) => conf.copy(executorCores = x)).text("executor cores, default is 8")
-      opt[Int]('Y', "totalCores").action((x, conf) => conf.copy(totalCores = x)).text("total number of cores, default is 8")
-      opt[String]('Z', "executorMemory").action((x, conf) => conf.copy(executorMemory = x)).text("executor memory, default is 8g")
       opt[String]('D', "driverMemory").action((x, conf) => conf.copy(driverMemory = x)).text("driver memory, default is 8g")
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either eval/train/test")
       opt[String]('p', "modelPath").action((x, conf) => conf.copy(modelPath = x)).text("model path, default is 'bin/tdp/'")
@@ -319,9 +316,10 @@ object TransitionClassifier {
       case Some(config) =>
         val spark = SparkSession.builder().appName(getClass.getName)
           .master(config.master)
-          .config("spark.executor.cores", config.executorCores.toString)
-          .config("spark.cores.max", config.totalCores.toString)
-          .config("spark.executor.memory", config.executorMemory)
+          // .config("spark.executor.cores", config.executorCores.toString)
+          // .config("spark.cores.max", config.totalCores.toString)
+          // .config("spark.executor.memory", config.executorMemory)
+          .config("spark.driver.host", "localhost")
           .config("spark.driver.memory", config.driverMemory)
           .config("spark.shuffle.blockTransferService", "nio")
           .getOrCreate()

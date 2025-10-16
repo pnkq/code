@@ -6,10 +6,7 @@ package vlp.dep
 case class ConfigTDP
 (
   master: String = "local[*]",
-  totalCores: Int = 8,
-  executorCores: Int = 8,
-  driverMemory: String = "8g",
-  executorMemory: String = "8g",
+  driverMemory: String = "16g",
   mode: String = "eval",
   verbose: Boolean = false,
   modelPath: String = "bin/tdp/",
