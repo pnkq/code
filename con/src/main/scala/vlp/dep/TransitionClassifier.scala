@@ -47,7 +47,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
    * The createDF(graphs) above creates a data frame of 3 columns (id, bof, transition).
    * This method add a new column which specifies the weights for each label "transition". 
    * The SH transition is usually the most frequent label, so it should have a small weight. 
-   * Empirically, we set the weight of SH to 0.1 (ten times smaller than the other transitions).
+   * 
    */
   private def addWeightCol(df: DataFrame): DataFrame = {
     import spark.implicits._
@@ -328,7 +328,7 @@ object TransitionClassifier {
         val extended = config.extended
         val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
         val (trainingGraphs, developmentGraphs) = (
-          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu").filter(g => g.sentence.length >= 3), 
+          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu").filter(g => g.sentence.length >= 3), 
           GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu").filter(g => g.sentence.length >= 3)
         )
         val classifierType = config.classifier match {

@@ -15,7 +15,7 @@ case class ConfigTDP
   modelPath: String = "bin/tdp/",
   language: String = "eng",
   classifier: String = "mlr",
-  minFrequency: Int = 3,
+  minFrequency: Int = 1,
   numFeatures: Int = 65536,
   iterations: Int = 400,
   batchSize: Int = 16,

@@ -57,7 +57,6 @@ class Parser(spark: SparkSession, configTDP: ConfigTDP, classifierType: Classifi
     var config: Config = new ConfigAS(s, stack, queue, arcs).next("SH")
 
     while (!config.isFinal) {
-      if (verbose) logger.info(config.toString())
       val best = model.predict(config)
       val transition = best.head
       transition match {
@@ -65,7 +64,7 @@ class Parser(spark: SparkSession, configTDP: ConfigTDP, classifierType: Classifi
         case "RE" => 
           if (!config.isReducible) 
             if (verbose) logger.warn("Wrong RE label for config: " + config)
-        case _ => if (verbose) logger.info(transition)
+        case _ => // if (verbose) logger.info(transition)
       }
       config = config.next(transition)
     }

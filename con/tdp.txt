@@ -1,6 +1,6 @@
 // Y: total cores, X: executor cores (Y/X will be the number of executors)
 
-// bloop run -p con -m vlp.dep.TransitionClassifier -- -v -m train -Y 16 -X 8 (-Z 20gb)
+// bloop run -p con -m vlp.dep.TransitionClassifier -- -v -m train -c mlp -J-Xmx8g
 
 // stack length of the parsing context (AS) on the dev. split of EWT.
 // ---+-----+
