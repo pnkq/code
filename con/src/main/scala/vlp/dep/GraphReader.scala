@@ -8,7 +8,7 @@ import scala.io.Source
   * Created by phuonglh on 6/24/17.
   */
 object GraphReader {
-  val root = Token("ROOT", mutable.Map[Label.Value, String](Label.Id -> "0"))
+  val ROOT = Token("ROOT", mutable.Map[Label.Value, String](Label.Id -> "0"))
   
   /**
     * Reads a dependency graph corpus using Universal Dependency format.
@@ -39,7 +39,7 @@ object GraphReader {
             Label.DependencyLabel -> label,
             Label.SuperTag -> parts(parts.length - 1)))
         })
-        val x = root +: tokens.filter(_.head != "_") // remove non-head tokens
+        val x = ROOT +: tokens.filter(_.head != "_") // remove non-head tokens
         graphs.append(Graph(Sentence(x.toList.to[ListBuffer])))
       }
       u = v + 1

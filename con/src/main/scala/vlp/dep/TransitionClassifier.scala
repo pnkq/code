@@ -50,7 +50,14 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
    * Empirically, we set the weight of SH to 0.1 (ten times smaller than the other transitions).
    */
   private def addWeightCol(df: DataFrame): DataFrame = {
-    val f = udf((transition: String) => if (transition == "SH") 0.1 else 1.0)
+    import spark.implicits._
+    val weightMap = df.groupBy("transition").count().map { row => 
+      val label = row.getString(0)
+      val weight = row.getLong(1).toDouble
+      (label, weight)
+    }.collect().toMap
+
+    val f = udf((transition: String) => weightMap(transition))
     df.withColumn("weight", f(col("transition")))
   }
   
