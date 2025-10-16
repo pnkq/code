@@ -13,9 +13,10 @@ import org.slf4j.LoggerFactory
 import scopt.OptionParser
 import java.nio.file.Paths
 
-object ClassifierType extends Enumeration {
-  val MLR, MLP = Value
-}
+import com.intel.analytics.bigdl.dllib.keras.layers._
+import com.intel.analytics.bigdl.dllib.tensor.Tensor
+import com.intel.analytics.bigdl.dllib.utils.Shape
+import com.intel.analytics.bigdl.dllib.keras.Sequential
 
 case class Phrase(tokens: Seq[String])
 
@@ -102,29 +103,27 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     *
     * @param modelPath
     * @param graphs
-    * @param classifierType type of classifier (MLR, MLP)
     * @param hiddenLayers applicable only for MLP classifier
     * @return a pipeline model
     */
-  def train(modelPath: String, graphs: List[Graph], classifierType: ClassifierType.Value, hiddenLayers: Array[Int]): PipelineModel = {
+  def train(modelPath: String, graphs: List[Graph], hiddenLayers: Array[Int]): PipelineModel = {
     val input = addWeightCol(createDF(graphs))
     // input.write.mode(SaveMode.Overwrite).save("/tmp/tdp")
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
 
-    val model = classifierType match {
-      case ClassifierType.MLR =>
-        val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5).setWeightCol("weight")
-        new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, mlr)).fit(input)
-      case ClassifierType.MLP =>
-        val pipeline = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer))
-        val pipelineModel = pipeline.fit(input)
-        val vocabSize = pipelineModel.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size
-        val numLabels = input.select("transition").distinct().count().toInt
-        val layers = Array[Int](vocabSize) ++ hiddenLayers ++ Array[Int](numLabels)
-        val mlp = new MultilayerPerceptronClassifier().setLayers(layers).setMaxIter(config.iterations).setTol(1E-5).setBlockSize(config.batchSize)
-        new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, mlp)).fit(input)
+    val model = if (hiddenLayers.isEmpty) {
+      val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5).setWeightCol("weight")
+      new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, mlr)).fit(input)
+    } else {
+      val pipeline = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer))
+      val pipelineModel = pipeline.fit(input)
+      val vocabSize = pipelineModel.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size
+      val numLabels = input.select("transition").distinct().count().toInt
+      val layers = Array[Int](vocabSize) ++ hiddenLayers ++ Array[Int](numLabels)
+      val mlp = new MultilayerPerceptronClassifier().setLayers(layers).setMaxIter(config.iterations).setTol(1E-5).setBlockSize(config.batchSize)
+      new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, mlp)).fit(input)
     }
 
     // overwrite the trained pipeline model
@@ -133,9 +132,10 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     if (config.verbose) {
       logger.info("#(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
       logger.info("#(vocabs) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
-      val modelSt = classifierType match {
-        case ClassifierType.MLR => model.stages(3).asInstanceOf[LogisticRegressionModel].explainParams()
-        case ClassifierType.MLP => model.stages(3).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams()
+      val modelSt = if (hiddenLayers.isEmpty) {
+        model.stages(3).asInstanceOf[LogisticRegressionModel].explainParams()
+      } else {
+        model.stages(3).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams()
       }
       logger.info(modelSt)
     }
@@ -146,14 +146,12 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * Extended version of [[train()]] method where super-tag vectors are concatenated.
     * @param modelPath
     * @param graphs
-    * @param classifierType
-    * @param hiddenLayers applicable only for MLP classifier
+    * @param hiddenLayers 
     * @param wordVectors
     * @param discrete                   
     * @return a model
     */
-  def train(modelPath: String, graphs: List[Graph], classifierType: ClassifierType.Value, hiddenLayers: Array[Int],
-            wordVectors: Map[String, Vector[Double]], discrete: Boolean = true): PipelineModel = {
+  def train(modelPath: String, graphs: List[Graph], hiddenLayers: Array[Int], wordVectors: Map[String, Vector[Double]], discrete: Boolean = true): PipelineModel = {
     val input = addWeightCol(createDF(graphs, wordVectors, discrete))
     input.cache()
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
@@ -161,20 +159,17 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("f").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
     val vectorAssembler = new VectorAssembler().setInputCols(Array("f", "s", "q")).setOutputCol("features")
 
-    val model = classifierType match {
-      case ClassifierType.MLR => {
-        val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5).setWeightCol("weight")
-        new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, vectorAssembler, mlr)).fit(input)
-      }
-      case ClassifierType.MLP => {
-        val pipeline = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer))
-        val pipelineModel = pipeline.fit(input)
-        val vocabSize = pipelineModel.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size
-        val numLabels = input.select("transition").distinct().count().toInt
-        val layers = Array[Int](vocabSize + distributedDimension * 2) ++ hiddenLayers ++ Array[Int](numLabels)
-        val mlp = new MultilayerPerceptronClassifier().setLayers(layers).setMaxIter(config.iterations).setTol(1E-5).setBlockSize(64)
-        new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, vectorAssembler, mlp)).fit(input)
-      }
+    val model = if (hiddenLayers.isEmpty) {
+      val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5).setWeightCol("weight")
+      new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, vectorAssembler, mlr)).fit(input)
+    } else {
+      val pipeline = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer))
+      val pipelineModel = pipeline.fit(input)
+      val vocabSize = pipelineModel.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size
+      val numLabels = input.select("transition").distinct().count().toInt
+      val layers = Array[Int](vocabSize + distributedDimension * 2) ++ hiddenLayers ++ Array[Int](numLabels)
+      val mlp = new MultilayerPerceptronClassifier().setLayers(layers).setMaxIter(config.iterations).setTol(1E-5).setBlockSize(64)
+      new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, vectorAssembler, mlp)).fit(input)
     }
 
     // overwrite the trained pipeline model
@@ -183,9 +178,10 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     if (config.verbose) {
       logger.info("#(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
       logger.info("#(vocabs) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
-      val modelSt = classifierType match {
-        case ClassifierType.MLR => model.stages(4).asInstanceOf[LogisticRegressionModel].explainParams()
-        case ClassifierType.MLP => model.stages(4).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams()
+      val modelSt = if (hiddenLayers.isEmpty) {
+        model.stages(4).asInstanceOf[LogisticRegressionModel].explainParams()
+      } else {
+        model.stages(4).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams()
       }
       logger.info(modelSt)
     }
@@ -196,18 +192,19 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
     * from the stack and the top token on the queue. 
     *
-    * @param modelPath
+    * @param config 
     * @param graphs
     * @return a pipeline model
     */
-  def train(modelPath: String, graphs: List[Graph]): PipelineModel = {
+  def train(config: ConfigTDP, graphs: List[Graph]): PipelineModel = {
     val input = addWeightCol(createDF(graphs)).sample(0.2)
+    // bof preprocessing pipeline
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
     logger.info("Fitting the preprocessor pipeline. Please wait...")
     val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(input.select("bof", "transition"))
-    // the sentence data frame
+    // the sentence data frame for LSTM sequence
     val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
     val df = spark.createDataFrame(sentences)
     df.show(false)
@@ -220,6 +217,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     logger.info(s"#(words) = ${vocab.size}")
     
     // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
+    // set the maximum sequence of 10 (empirically found!)
     val f = udf((stack: Seq[String], queue: Seq[String]) => {
       val xs = stack :+ queue.head
       val is = xs.map(x => vocab.getOrElse(x, 0))
@@ -228,7 +226,18 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val ef = input.withColumn("seq", f(col("stack"), col("queue")))
     ef.show(false)
 
+    val sequential = Sequential[Float]()
+    val masking = Masking[Float](-1, inputShape = Shape(10)).setName("masking")
+    sequential.add(masking)
+    val embedding = Embedding[Float](vocab.size, config.featureEmbeddingSize, paddingValue = -1).setName("embedding")
+    sequential.add(embedding)
+    val lstm = LSTM[Float](36).setName("lstm")
+    sequential.add(lstm)
+    // sequential.add(Dense(labelSize, activation = "softmax"))
+    sequential.summary()
+
     // overwrite the trained pipeline
+    // val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
     // preprocessor.write.overwrite().save(modelPath)
     // print some strings to debug the model
     if (config.verbose) {
@@ -309,81 +318,46 @@ object TransitionClassifier {
       opt[Int]('f', "minFrequency").action((x, conf) => conf.copy(minFrequency = x)).text("min feature frequency")
       opt[Int]('u', "numFeatures").action((x, conf) => conf.copy(numFeatures = x)).text("number of features")
       opt[Int]('b', "batchSize").action((x, conf) => conf.copy(batchSize = x)).text("batch size")
-      opt[Unit]('x', "extended").action((_, conf) => conf.copy(extended = true)).text("extended mode for English parsing")
-      opt[Int]('s', "tag embedding size").action((x, conf) => conf.copy(tagEmbeddingSize = x)).text("tag embedding size 10/20/40")
+      opt[Int]('e', "feature embedding size").action((x, conf) => conf.copy(featureEmbeddingSize = x)).text("feature embedding size 10/20/40")
     }
     parser.parse(args, ConfigTDP()) match {
       case Some(config) =>
         val spark = SparkSession.builder().appName(getClass.getName)
           .master(config.master)
-          // .config("spark.executor.cores", config.executorCores.toString)
-          // .config("spark.cores.max", config.totalCores.toString)
-          // .config("spark.executor.memory", config.executorMemory)
           .config("spark.driver.host", "localhost")
           .config("spark.driver.memory", config.driverMemory)
           .config("spark.shuffle.blockTransferService", "nio")
           .getOrCreate()
-        val extended = config.extended
         val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
         val (trainingGraphs, developmentGraphs) = (
-          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu").filter(g => g.sentence.length >= 3), 
+          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu").filter(g => g.sentence.length >= 3), 
           GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu").filter(g => g.sentence.length >= 3)
         )
-        val classifierType = config.classifier match {
-          case "mlr" => ClassifierType.MLR
-          case "mlp" => ClassifierType.MLP
-        }
-        // val ltagPath = "dat/dep/eng/tag/templates." + config.tagEmbeddingSize + ".txt"
-        // val wordVectors = WordVectors.read(ltagPath)
 
         logger.info("#(trainingGraphs) = " + trainingGraphs.size)
         logger.info("#(developmentGraphs) = " + developmentGraphs.size)
         logger.info("modelPath = " + modelPath)
-        logger.info("classifierName = " + config.classifier)
+        logger.info("classifier = " + config.classifier)
 
         val classifier = new TransitionClassifier(spark, config)
-        val discrete = config.discrete
 
         config.mode match {
           case "eval" => {
-            classifier.evalManual(modelPath, developmentGraphs)
-            classifier.evalManual(modelPath, trainingGraphs)
             classifier.eval(modelPath, developmentGraphs)
+            classifier.evalManual(modelPath, developmentGraphs)
             classifier.eval(modelPath, trainingGraphs)
-            if (extended) {
-              // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
-              // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
-            }
+            classifier.evalManual(modelPath, trainingGraphs)
           }
           case "train" => {
-            val hiddenLayersConfig = config.hiddenUnits
-            val hiddenLayers = if (hiddenLayersConfig.isEmpty) Array[Int](); else hiddenLayersConfig.split("[,\\s]+").map(_.toInt)
             config.classifier match {
-              case "rnn" => classifier.train(modelPath, trainingGraphs)
-              case _ => classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers)
-            }
-            if (extended) {
-              // logger.info("ltagPath = " + ltagPath)
-              // logger.info("#(wordVectors) = " + wordVectors.size)
-              // classifier.train(modelPath, trainingGraphs, classifierType, hiddenLayers, wordVectors, discrete)
-              // logger.info("ltagPath = " + ltagPath)
-              // logger.info("#(wordVectors) = " + wordVectors.size)
-              // classifier.eval(modelPath, developmentGraphs, wordVectors, discrete)
-              // classifier.eval(modelPath, trainingGraphs, wordVectors, discrete)
-            } else {
-              classifier.eval(modelPath, developmentGraphs)
-              classifier.eval(modelPath, trainingGraphs)
+              case "rnn" => classifier.train(config, trainingGraphs)
+              case _ =>
+                val hiddenLayersConfig = config.hiddenUnits
+                val hiddenLayers = if (hiddenLayersConfig.isEmpty) Array[Int](); else hiddenLayersConfig.split("[,\\s]+").map(_.toInt)
+                classifier.train(modelPath, trainingGraphs, hiddenLayers)
             }
           }
-          case "test" => {
-            if (!extended) {
-              val ds = classifier.createDF(developmentGraphs)
-              ds.show(10, false)
-            } else {
-              // val ds = classifier.createDF(developmentGraphs, wordVectors, discrete)
-              // ds.show(10, false)
-            }
-          }
+          case "test" => 
         }
         spark.stop()
       case None =>

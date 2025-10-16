@@ -15,19 +15,19 @@ import scopt.OptionParser
   * A transition-based dependency parser.
   * 
   */
-class Parser(spark: SparkSession, configTDP: ConfigTDP, classifierType: ClassifierType.Value, useSuperTag: Boolean = false) extends Serializable {
+class Parser(spark: SparkSession, configTDP: ConfigTDP, classifierType: String, useSuperTag: Boolean = false) extends Serializable {
   var verbose: Boolean = false
   val logger = LoggerFactory.getLogger(getClass)
   val pipeline = classifierType match {
-    case ClassifierType.MLR => PipelineModel.load(configTDP.modelPath + configTDP.language + "/mlr")
-    case ClassifierType.MLP => PipelineModel.load(configTDP.modelPath + configTDP.language + "/mlp")
+    case "mlr" => PipelineModel.load(configTDP.modelPath + configTDP.language + "/mlr")
+    case "mlp" => PipelineModel.load(configTDP.modelPath + configTDP.language + "/mlp")
   }
 
-  val featureExtractor = if (classifierType == ClassifierType.MLR) new FeatureExtractor(false, useSuperTag) ; else new FeatureExtractor(false, useSuperTag)
+  val featureExtractor = if (classifierType == "mlr") new FeatureExtractor(false, useSuperTag) ; else new FeatureExtractor(false, useSuperTag)
   
   val model = classifierType match {
-    case ClassifierType.MLR => new MLR(spark, pipeline, featureExtractor)
-    case ClassifierType.MLP => new MLP(spark, pipeline, featureExtractor)
+    case "mlr" => new MLR(spark, pipeline, featureExtractor)
+    case "mlp" => new MLP(spark, pipeline, featureExtractor)
   } 
 
   def setVerbose(verbose: Boolean): Unit = this.verbose = verbose
@@ -155,7 +155,6 @@ object Parser {
       opt[Unit]('v', "verbose").action((_, conf) => conf.copy(verbose = true)).text("verbose mode")
       opt[String]('c', "classifier").action((x, conf) => conf.copy(classifier = x)).text("classifier, either mlr or mlp")
       opt[String]('l', "language").action((x, conf) => conf.copy(language = x)).text("language, either vie or eng, default is vie")
-      opt[Unit]('x', "extended").action((_, conf) => conf.copy(extended = true)).text("extended mode for English parsing")
     }
 
     optionParser.parse(args, ConfigTDP()) match {
@@ -170,11 +169,7 @@ object Parser {
         GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu").filter(g => g.sentence.length >= 3)
       )
 
-      val classifierType = config.classifier match {
-        case "mlr" => ClassifierType.MLR
-        case "mlp" => ClassifierType.MLP
-      }
-      val parser = new Parser(spark, config, classifierType, config.extended)
+      val parser = new Parser(spark, config, config.classifier, false)
       parser.setVerbose(config.verbose)
       parser.info()
       config.mode match {
