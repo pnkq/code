@@ -206,8 +206,8 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @return a pipeline model
     */
   def train(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
-    val af = addWeightCol(createDF(graphs)).sample(0.2)
-    val bf = addWeightCol(createDF(devGraphs)).sample(0.2)
+    val af = addWeightCol(createDF(graphs))
+    val bf = addWeightCol(createDF(devGraphs))
     // bof preprocessing pipeline
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
@@ -217,7 +217,8 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val ef = preprocessor.transform(af)
     val ff = preprocessor.transform(bf)
 
-    val labelSize = preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length
+    val labels = preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels
+    val labelSize = labels.length
     logger.info("  #(labels) = " + labelSize)    
     // the sentence data frame for LSTM sequence
     val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
@@ -239,9 +240,12 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       val is = xs.map(x => vocab.getOrElse(x, 0))
       if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
     })
-    val uf = ef.withColumn("seq", f(col("stack"), col("queue")))
-    val vf = ff.withColumn("seq", f(col("stack"), col("queue")))
-    uf.select("transition", "label", "weight", "seq").show(false)
+    // create a udf to increase label index from 0-based to 1-based
+    val g = udf((k: Double) => k + 1)
+
+    val uf = ef.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+    val vf = ff.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+    uf.select("transition", "y", "weight", "seq").show(false)
 
     val sequential = Sequential[Float]()
     val masking = Masking[Float](-1, inputShape = Shape(maxSeqLen)).setName("masking")
@@ -262,13 +266,21 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       logger.info("  #(labels) = " + preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length)
       logger.info("#(features) = " + preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
     }
-    val criterion = ClassNLLCriterion[Float](sizeAverage = false, logProbAsInput = false)
+    // prepare a label weight tensor
+    val weights = Tensor[Float](labelSize)
+    val labelMap = uf.select("y", "weight").distinct.collect()
+      .map(row => (row.getDouble(0).toInt, row.getDouble(1).toFloat)).toMap
+    for (j <- labelMap.keys)
+      weights(j) = labelMap(j)
+    logger.info(labelMap.toString)
+
+    val criterion = ClassNLLCriterion[Float](weights = weights, sizeAverage = false, logProbAsInput = false)
     val estimator = NNEstimator(sequential, criterion, Array(maxSeqLen), Array(1))
     val trainingSummary = TrainSummary(appName = "rnn", logDir = "sum/tdp/")
     val validationSummary = ValidationSummary(appName = "rnn", logDir = "sum/tdp/")
     val numCores = Runtime.getRuntime.availableProcessors()
     val batchSize = numCores * 4
-    estimator.setLabelCol("label").setFeaturesCol("seq")
+    estimator.setLabelCol("y").setFeaturesCol("seq")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-3))
       .setMaxEpoch(40)
