@@ -17,6 +17,13 @@ import com.intel.analytics.bigdl.dllib.keras.layers._
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.keras.Sequential
+import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
+import com.intel.analytics.bigdl.dllib.nn.ClassNLLCriterion
+import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
+import com.intel.analytics.bigdl.dllib.optim.{Top1Accuracy, Trigger}
+import com.intel.analytics.bigdl.dllib.utils.Engine
+import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
+
 
 case class Phrase(tokens: Seq[String])
 
@@ -52,9 +59,10 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
    */
   private def addWeightCol(df: DataFrame): DataFrame = {
     import spark.implicits._
+    val size = df.count
     val weightMap = df.groupBy("transition").count().map { row => 
       val label = row.getString(0)
-      val weight = row.getLong(1).toDouble
+      val weight = row.getLong(1).toDouble/size
       (label, weight)
     }.collect().toMap
 
@@ -130,8 +138,8 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     model.write.overwrite().save(modelPath)
     // print some strings to debug the model
     if (config.verbose) {
-      logger.info("#(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
-      logger.info("#(vocabs) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
+      logger.info("  #(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
+      logger.info("#(features) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
       val modelSt = if (hiddenLayers.isEmpty) {
         model.stages(3).asInstanceOf[LogisticRegressionModel].explainParams()
       } else {
@@ -176,8 +184,8 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     model.write.overwrite().save(modelPath)
     // print some strings to debug the model
     if (config.verbose) {
-      logger.info("#(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
-      logger.info("#(vocabs) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
+      logger.info("  #(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
+      logger.info("#(features) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
       val modelSt = if (hiddenLayers.isEmpty) {
         model.stages(4).asInstanceOf[LogisticRegressionModel].explainParams()
       } else {
@@ -196,7 +204,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @param graphs
     * @return a pipeline model
     */
-  def train(config: ConfigTDP, graphs: List[Graph]): PipelineModel = {
+  def train(config: ConfigTDP, graphs: List[Graph]) = {
     val input = addWeightCol(createDF(graphs)).sample(0.2)
     // bof preprocessing pipeline
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
@@ -204,6 +212,8 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
     logger.info("Fitting the preprocessor pipeline. Please wait...")
     val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(input.select("bof", "transition"))
+    val labelSize = preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length
+    logger.info("  #(labels) = " + labelSize)
     // the sentence data frame for LSTM sequence
     val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
     val df = spark.createDataFrame(sentences)
@@ -218,33 +228,49 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     
     // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
     // set the maximum sequence of 10 (empirically found!)
+    val maxSeqLen = 10
     val f = udf((stack: Seq[String], queue: Seq[String]) => {
       val xs = stack :+ queue.head
       val is = xs.map(x => vocab.getOrElse(x, 0))
-      if (is.length < 10) Seq.fill(10)(-1) ++ is else is.take(10)
+      if (is.length < maxSeqLen) Seq.fill(maxSeqLen)(-1) ++ is else is.take(maxSeqLen)
     })
     val ef = input.withColumn("seq", f(col("stack"), col("queue")))
-    ef.show(false)
+    ef.select("transition", "label", "seq").show(false)
 
     val sequential = Sequential[Float]()
-    val masking = Masking[Float](-1, inputShape = Shape(10)).setName("masking")
+    val masking = Masking[Float](-1, inputShape = Shape(maxSeqLen)).setName("masking")
     sequential.add(masking)
     val embedding = Embedding[Float](vocab.size, config.featureEmbeddingSize, paddingValue = -1).setName("embedding")
     sequential.add(embedding)
     val lstm = LSTM[Float](36).setName("lstm")
     sequential.add(lstm)
-    // sequential.add(Dense(labelSize, activation = "softmax"))
+    val dense = Dense[Float](labelSize, activation = "softmax")
+    sequential.add(dense)
     sequential.summary()
 
-    // overwrite the trained pipeline
-    // val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
-    // preprocessor.write.overwrite().save(modelPath)
+    // overwrite the trained preprocessor
+    val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
+    preprocessor.write.overwrite().save(modelPath)
     // print some strings to debug the model
     if (config.verbose) {
       logger.info("  #(labels) = " + preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length)
       logger.info("#(features) = " + preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
     }
-    preprocessor
+    val criterion = ClassNLLCriterion[Float](sizeAverage = false, logProbAsInput = false)
+    val estimator = NNEstimator(sequential, criterion, Array(maxSeqLen), Array(1))
+    val trainingSummary = TrainSummary(appName = "rnn", logDir = "sum/tdp/")
+    val validationSummary = ValidationSummary(appName = "rnn", logDir = "sum/tdp/")
+    val numCores = Runtime.getRuntime.availableProcessors()
+    val batchSize = numCores * 4
+    estimator.setLabelCol("label").setFeaturesCol("seq")
+      .setBatchSize(batchSize)
+      .setOptimMethod(new Adam(1E-3))
+      .setMaxEpoch(40)
+      .setTrainSummary(trainingSummary)
+      .setValidationSummary(validationSummary)
+      .setValidation(Trigger.everyEpoch, ef, Array(new Top1Accuracy[Float]()), batchSize)
+    estimator.fit(ef)
+    sequential.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnn.bigdl", overWrite = true)
   }
   /**
     * Evaluates the accuracy of the transition classifier, including overall accuracy,
@@ -350,7 +376,10 @@ object TransitionClassifier {
           }
           case "train" => {
             config.classifier match {
-              case "rnn" => classifier.train(config, trainingGraphs)
+              case "rnn" => {
+                Engine.init
+                classifier.train(config, trainingGraphs)                
+              }
               case _ =>
                 val hiddenLayersConfig = config.hiddenUnits
                 val hiddenLayers = if (hiddenLayersConfig.isEmpty) Array[Int](); else hiddenLayersConfig.split("[,\\s]+").map(_.toInt)
