@@ -202,18 +202,23 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     *
     * @param config 
     * @param graphs
+    * @param devGraphs
     * @return a pipeline model
     */
-  def train(config: ConfigTDP, graphs: List[Graph]) = {
-    val input = addWeightCol(createDF(graphs)).sample(0.2)
+  def train(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
+    val af = addWeightCol(createDF(graphs)).sample(0.2)
+    val bf = addWeightCol(createDF(devGraphs)).sample(0.2)
     // bof preprocessing pipeline
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
     val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
     logger.info("Fitting the preprocessor pipeline. Please wait...")
-    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(input.select("bof", "transition"))
+    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(af.select("bof", "transition"))
+    val ef = preprocessor.transform(af)
+    val ff = preprocessor.transform(bf)
+
     val labelSize = preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length
-    logger.info("  #(labels) = " + labelSize)
+    logger.info("  #(labels) = " + labelSize)    
     // the sentence data frame for LSTM sequence
     val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
     val df = spark.createDataFrame(sentences)
@@ -232,10 +237,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val f = udf((stack: Seq[String], queue: Seq[String]) => {
       val xs = stack :+ queue.head
       val is = xs.map(x => vocab.getOrElse(x, 0))
-      if (is.length < maxSeqLen) Seq.fill(maxSeqLen)(-1) ++ is else is.take(maxSeqLen)
+      if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
     })
-    val ef = input.withColumn("seq", f(col("stack"), col("queue")))
-    ef.select("transition", "label", "seq").show(false)
+    val uf = ef.withColumn("seq", f(col("stack"), col("queue")))
+    val vf = ff.withColumn("seq", f(col("stack"), col("queue")))
+    uf.select("transition", "label", "weight", "seq").show(false)
 
     val sequential = Sequential[Float]()
     val masking = Masking[Float](-1, inputShape = Shape(maxSeqLen)).setName("masking")
@@ -244,7 +250,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     sequential.add(embedding)
     val lstm = LSTM[Float](36).setName("lstm")
     sequential.add(lstm)
-    val dense = Dense[Float](labelSize, activation = "softmax")
+    val dense = Dense[Float](labelSize, activation = "softmax").setName("dense")
     sequential.add(dense)
     sequential.summary()
 
@@ -268,8 +274,8 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       .setMaxEpoch(40)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
-      .setValidation(Trigger.everyEpoch, ef, Array(new Top1Accuracy[Float]()), batchSize)
-    estimator.fit(ef)
+      .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)
+    estimator.fit(uf)
     sequential.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnn.bigdl", overWrite = true)
   }
   /**
@@ -370,19 +376,18 @@ object TransitionClassifier {
         config.mode match {
           case "eval" => {
             classifier.eval(modelPath, developmentGraphs)
-            classifier.evalManual(modelPath, developmentGraphs)
             classifier.eval(modelPath, trainingGraphs)
-            classifier.evalManual(modelPath, trainingGraphs)
+            // classifier.evalManual(modelPath, developmentGraphs)
+            // classifier.evalManual(modelPath, trainingGraphs)
           }
           case "train" => {
             config.classifier match {
               case "rnn" => {
                 Engine.init
-                classifier.train(config, trainingGraphs)                
+                classifier.train(config, trainingGraphs, developmentGraphs)
               }
               case _ =>
-                val hiddenLayersConfig = config.hiddenUnits
-                val hiddenLayers = if (hiddenLayersConfig.isEmpty) Array[Int](); else hiddenLayersConfig.split("[,\\s]+").map(_.toInt)
+                val hiddenLayers = if (config.hiddenUnits.isEmpty) Array[Int](); else config.hiddenUnits.split("[,\\s]+").map(_.toInt)
                 classifier.train(modelPath, trainingGraphs, hiddenLayers)
             }
           }
