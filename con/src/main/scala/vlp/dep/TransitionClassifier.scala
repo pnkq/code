@@ -59,10 +59,9 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
    */
   private def addWeightCol(df: DataFrame): DataFrame = {
     import spark.implicits._
-    val size = df.count
     val weightMap = df.groupBy("transition").count().map { row => 
       val label = row.getString(0)
-      val weight = row.getLong(1).toDouble/size
+      val weight = 100/row.getLong(1).toDouble
       (label, weight)
     }.collect().toMap
 
