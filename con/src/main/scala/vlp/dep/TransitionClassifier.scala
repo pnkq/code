@@ -3,7 +3,7 @@ package vlp.dep
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.ml.classification._
 import org.apache.spark.ml.feature._
-import org.apache.spark.ml.linalg.Vectors
+import org.apache.spark.ml.linalg.{Vectors, Vector}
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.sql.functions.{col, udf}
@@ -14,9 +14,10 @@ import scopt.OptionParser
 import java.nio.file.Paths
 
 import com.intel.analytics.bigdl.dllib.keras.layers._
-import com.intel.analytics.bigdl.dllib.tensor.Tensor
+import com.intel.analytics.bigdl.dllib.tensor.{Tensor, DenseTensor, SparseTensor}
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.keras.Sequential
+import com.intel.analytics.bigdl.dllib.keras.models.{Model, Models}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.ClassNLLCriterion
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
@@ -25,7 +26,7 @@ import com.intel.analytics.bigdl.dllib.utils.Engine
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 
 
-case class Phrase(tokens: Seq[String])
+case class Phrase(words: Seq[String])
 
 /**
   * Created by phuonglh on 6/24/17.
@@ -61,7 +62,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     import spark.implicits._
     val weightMap = df.groupBy("transition").count().map { row => 
       val label = row.getString(0)
-      val weight = 100/row.getLong(1).toDouble
+      val weight = 10/row.getLong(1).toDouble
       (label, weight)
     }.collect().toMap
 
@@ -76,7 +77,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @param withDiscrete use continuous features together with their discrete features                    
     * @return a DataFrame
     */
-  private def createDF(graphs: List[Graph], wordVectors: Map[String, Vector[Double]], withDiscrete: Boolean = true): DataFrame = {
+  private def createDF(graphs: List[Graph], wordVectors: Map[String, Vector], withDiscrete: Boolean = true): DataFrame = {
     def suffix(f: String): String = {
       val idx = f.indexOf(':')
       if (idx >= 0) f.substring(idx + 1); else ""
@@ -85,7 +86,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
 
     val oracle = new OracleAS(featureExtractor)
     val contexts = oracle.decode(graphs)
-    val zero = Vector.fill(distributedDimension)(0d)
+    val zero = Vectors.dense(Array.fill[Double](distributedDimension)(0d))
     val extendedContexts = contexts.map(c => {
       val fs = c.bof.split("\\s+")
       val s = fs.filter(f => f.startsWith("sts0:"))
@@ -158,7 +159,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @param discrete                   
     * @return a model
     */
-  def train(modelPath: String, graphs: List[Graph], hiddenLayers: Array[Int], wordVectors: Map[String, Vector[Double]], discrete: Boolean = true): PipelineModel = {
+  def train(modelPath: String, graphs: List[Graph], hiddenLayers: Array[Int], wordVectors: Map[String, Vector], discrete: Boolean = true): PipelineModel = {
     val input = addWeightCol(createDF(graphs, wordVectors, discrete))
     input.cache()
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
@@ -195,40 +196,46 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     model
   }
 
+  // create a udf to increase label index from 0-based to 1-based
+  val g = udf((k: Double) => k + 1)
+
   /**
     * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
-    * from the stack and the top token on the queue. 
+    * from the stack and the top token on the queue. It also uses the bof features for prediction as in the MLR or MLP model. 
     *
     * @param config 
     * @param graphs
     * @param devGraphs
     * @return a pipeline model
     */
-  def train(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
+  def trainB(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
     val af = addWeightCol(createDF(graphs))
-    val bf = addWeightCol(createDF(devGraphs))
+    val bf = createDF(devGraphs) // no need to add weights for test df
     // bof preprocessing pipeline
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
-    val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vec").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
     logger.info("Fitting the preprocessor pipeline. Please wait...")
-    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(af.select("bof", "transition"))
+    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(af.select("transition", "bof"))
     val ef = preprocessor.transform(af)
     val ff = preprocessor.transform(bf)
 
     val labels = preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels
     val labelSize = labels.length
-    logger.info("  #(labels) = " + labelSize)    
+    logger.info("#(labels) = " + labelSize)
+    val bof = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info("   #(bof) = " + bof.size)
+
     // the sentence data frame for LSTM sequence
     val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
     val df = spark.createDataFrame(sentences)
     df.show(false)
-    val vectorizer = new CountVectorizer().setInputCol("tokens")
+    val vectorizer = new CountVectorizer().setInputCol("words")
     logger.info("Fitting the word vectorizer. Please wait...")
     val vectorizerModel = vectorizer.fit(df)
 
     // get the vocabulary and convert it to a map (word -> id), reserve 0 for UNK token
-    val vocab = vectorizerModel.vocabulary.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+    val vocab = vectorizerModel.vocabulary.zipWithIndex.map(p => (p._1, p._2)).toMap
     logger.info(s"#(words) = ${vocab.size}")
     
     // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
@@ -239,8 +246,113 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       val is = xs.map(x => vocab.getOrElse(x, 0))
       if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
     })
-    // create a udf to increase label index from 0-based to 1-based
-    val g = udf((k: Double) => k + 1)
+
+    // create seq features for LSTM
+    val uf = ef.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+    val vf = ff.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+
+    uf.select("vec", "transition", "y", "weight", "seq").show(false)
+    // prepare input data frame for multi-input BigDL model: featuresCol = Seq(vec, seq), labelCol=y
+    import spark.implicits._
+    import org.apache.spark.sql.types._
+    
+    val ufB = uf.select("vec", "seq", "y").map { row => 
+      val x1 = row.getAs[Vector](0).toArray.map(_.toFloat)
+      val x2 = row.getAs[Seq[Int]](1).toArray.map(_.toFloat)
+      val y = row.getAs[Double](2).toFloat
+      (x1 ++ x2, y)
+    }.toDF("features", "y")
+    val vfB = vf.select("vec", "seq", "y").map { row => 
+      val x1 = row.getAs[Vector](0).toArray.map(_.toFloat)
+      val x2 = row.getAs[Seq[Int]](1).toArray.map(_.toFloat)
+      val y = row.getAs[Double](2).toFloat
+      (x1 ++ x2, y)
+    }.toDF("features", "y")
+
+    ufB.show(5)
+    ufB.printSchema
+    
+    val input1 = Input[Float](inputShape = Shape(bof.size))
+    val input2 = Input[Float](inputShape = Shape(maxSeqLen))
+    val dense1 = Dense[Float](config.featureEmbeddingSize).setName("dense1").inputs(input1)
+    val masking = Masking[Float](-1).setName("masking").inputs(input2)
+    val embedding = Embedding[Float](vocab.size, config.featureEmbeddingSize, paddingValue = -1).setName("embedding").inputs(masking)
+    val lstm = LSTM[Float](36).setName("lstm").inputs(embedding)
+    // merge two branches
+    val merge = Merge.merge(inputs = List(dense1, lstm), mode = "concat")
+    val output = Dense[Float](labelSize, activation = "softmax").setName("output").inputs(merge)
+    val model = Model[Float](Array(input1, input2), output)
+    model.summary()
+
+    // overwrite the trained preprocessor
+    val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
+    // preprocessor.write.overwrite().save(modelPath)
+    // prepare a label weight tensor
+    val weights = Tensor[Float](labelSize)
+    val labelMap = uf.select("y", "weight").distinct.collect()
+      .map(row => (row.getDouble(0).toInt, row.getDouble(1).toFloat)).toMap
+    for (j <- labelMap.keys)
+      weights(j) = labelMap(j)
+    logger.info(labelMap.toString)
+
+    val criterion = ClassNLLCriterion[Float](weights = weights, sizeAverage = false, logProbAsInput = false)
+    val estimator = NNEstimator(model, criterion, Array(Array(bof.size), Array(maxSeqLen)), Array(1))
+    val trainingSummary = TrainSummary(appName = "rnnB", logDir = "sum/tdp/")
+    val validationSummary = ValidationSummary(appName = "rnnB", logDir = "sum/tdp/")
+    val numCores = Runtime.getRuntime.availableProcessors()
+    val batchSize = numCores * 4
+    estimator.setLabelCol("y").setFeaturesCol("features")
+      .setBatchSize(batchSize)
+      .setOptimMethod(new Adam(1E-3))
+      .setMaxEpoch(40)
+      .setTrainSummary(trainingSummary)
+      .setValidationSummary(validationSummary)
+      .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
+    estimator.fit(ufB)
+    // model.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnB.bigdl", overWrite = true)
+  }
+
+  /**
+    * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
+    * from the stack and the top token on the queue. 
+    *
+    * @param config 
+    * @param graphs
+    * @param devGraphs
+    * @return a pipeline model
+    */
+  def trainA(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
+    val af = addWeightCol(createDF(graphs))
+    val bf = createDF(devGraphs)
+    // bof preprocessing pipeline
+    val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
+    val preprocessor = labelIndexer.fit(af)
+    val ef = preprocessor.transform(af)
+    val ff = preprocessor.transform(bf)
+
+    val labels = preprocessor.labels
+    val labelSize = labels.length
+    logger.info("  #(labels) = " + labelSize)    
+    // the sentence data frame for LSTM sequence
+    val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
+    val df = spark.createDataFrame(sentences)
+    df.show(false)
+    val vectorizer = new CountVectorizer().setInputCol("words")
+    logger.info("Fitting the word vectorizer. Please wait...")
+    val vectorizerModel = vectorizer.fit(df)
+
+    // get the vocabulary and convert it to a map (word -> id), reserve 0 for UNK token
+    val vocab = vectorizerModel.vocabulary.zipWithIndex.map(p => (p._1, p._2)).toMap
+    logger.info(s"#(words) = ${vocab.size}")
+    
+    // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
+    // set the maximum sequence of 10 (empirically found!)
+    val maxSeqLen = 10
+    val f = udf((stack: Seq[String], queue: Seq[String]) => {
+      val xs = stack :+ queue.head
+      val is = xs.map(x => vocab.getOrElse(x, 0))
+      if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
+    })
 
     val uf = ef.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
     val vf = ff.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
@@ -253,18 +365,13 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     sequential.add(embedding)
     val lstm = LSTM[Float](36).setName("lstm")
     sequential.add(lstm)
-    val dense = Dense[Float](labelSize, activation = "softmax").setName("dense")
-    sequential.add(dense)
+    val output = Dense[Float](labelSize, activation = "softmax").setName("output")
+    sequential.add(output)
     sequential.summary()
 
     // overwrite the trained preprocessor
     val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
     preprocessor.write.overwrite().save(modelPath)
-    // print some strings to debug the model
-    if (config.verbose) {
-      logger.info("  #(labels) = " + preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels.length)
-      logger.info("#(features) = " + preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
-    }
     // prepare a label weight tensor
     val weights = Tensor[Float](labelSize)
     val labelMap = uf.select("y", "weight").distinct.collect()
@@ -275,10 +382,10 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
 
     val criterion = ClassNLLCriterion[Float](weights = weights, sizeAverage = false, logProbAsInput = false)
     val estimator = NNEstimator(sequential, criterion, Array(maxSeqLen), Array(1))
-    val trainingSummary = TrainSummary(appName = "rnn", logDir = "sum/tdp/")
-    val validationSummary = ValidationSummary(appName = "rnn", logDir = "sum/tdp/")
+    val trainingSummary = TrainSummary(appName = "rnnA", logDir = "sum/tdp/")
+    val validationSummary = ValidationSummary(appName = "rnnA", logDir = "sum/tdp/")
     val numCores = Runtime.getRuntime.availableProcessors()
-    val batchSize = numCores * 4
+    val batchSize = numCores * 16
     estimator.setLabelCol("y").setFeaturesCol("seq")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-3))
@@ -287,8 +394,9 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)
     estimator.fit(uf)
-    sequential.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnn.bigdl", overWrite = true)
+    sequential.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnA.bigdl", overWrite = true)
   }
+
   /**
     * Evaluates the accuracy of the transition classifier, including overall accuracy,
     * precision, recall and f-measure ratios for each transition label.
@@ -297,7 +405,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @param graphs    a list of dependency graphs
     * @param discrete                 
     */
-  def eval(modelPath: String, graphs: List[Graph], wordVectors: Map[String, Vector[Double]] = null, discrete: Boolean = true): Unit = {
+  def eval(modelPath: String, graphs: List[Graph], wordVectors: Map[String, Vector] = null, discrete: Boolean = true): Unit = {
     val model = PipelineModel.load(modelPath)
     val inputDF = if (wordVectors == null) createDF(graphs) ; else createDF(graphs, wordVectors, discrete)
     import spark.implicits._
@@ -393,9 +501,13 @@ object TransitionClassifier {
           }
           case "train" => {
             config.classifier match {
-              case "rnn" => {
+              case "rnnB" => {
                 Engine.init
-                classifier.train(config, trainingGraphs, developmentGraphs)
+                classifier.trainB(config, trainingGraphs, developmentGraphs)
+              }
+              case "rnnA" => {
+                Engine.init
+                classifier.trainA(config, trainingGraphs, developmentGraphs)
               }
               case _ =>
                 val hiddenLayers = if (config.hiddenUnits.isEmpty) Array[Int](); else config.hiddenUnits.split("[,\\s]+").map(_.toInt)

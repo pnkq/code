@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import org.apache.spark.ml.linalg.Vector
 
 
 /**
@@ -42,7 +43,7 @@ case class Context(id: Int, bof: String, transition: String,
   * @param s word vector of the topmost element on the parsing stack
   * @param q word vector of the front element of the parsing queue for AE (or the second-topmost element on the stack for AS)
   */
-case class ExtendedContext(id: Int, bof: String, transition: String, s: Vector[Double], q: Vector[Double])
+case class ExtendedContext(id: Int, bof: String, transition: String, s: Vector, q: Vector)
 
 /**
   * Oracle is a key component in training transition-based parsers. It is used to derive 
