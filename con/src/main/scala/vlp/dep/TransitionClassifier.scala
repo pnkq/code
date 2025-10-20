@@ -27,6 +27,7 @@ import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSu
 
 
 case class Phrase(words: Seq[String])
+case class TagSeq(tags: Seq[String])
 
 /**
   * Created by phuonglh on 6/24/17.
@@ -198,6 +199,130 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
 
   // create a udf to increase label index from 0-based to 1-based
   val g = udf((k: Double) => k + 1)
+
+  /**
+    * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
+    * from the stack and the top token on the queue. It also uses the bof features for prediction as in the MLR or MLP model. 
+    * It use sequence of PoS tags as additional features, in addition to similar features trainB() method. 
+    *
+    * @param config 
+    * @param graphs
+    * @param devGraphs
+    * @return a pipeline model
+    */
+  def trainC(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
+    val af = addWeightCol(createDF(graphs))
+    val bf = createDF(devGraphs) // no need to add weights for test df
+    // bof preprocessing pipeline
+    val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
+    val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
+    val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vec").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    logger.info("Fitting the preprocessor pipeline. Please wait...")
+    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(af.select("transition", "bof"))
+    val ef = preprocessor.transform(af)
+    val ff = preprocessor.transform(bf)
+
+    val labels = preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels
+    val labelSize = labels.length
+    logger.info("#(labels) = " + labelSize)
+    val bof = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info("   #(bof) = " + bof.size)
+
+    // the sentence data frame for LSTM sequence
+    val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
+    val df = spark.createDataFrame(sentences)
+    df.show(false)
+    val vectorizer = new CountVectorizer().setInputCol("words")
+    logger.info("Fitting the word vectorizer. Please wait...")
+    val vectorizerModel = vectorizer.fit(df)
+    // the part-of-speech data frame for LSTM sequence
+    val partsOfSpeech = graphs.map(graph => graph.sentence.tokens.map(token => token.universalPartOfSpeech).toSeq).map(s => TagSeq(s))
+    val dfT = spark.createDataFrame(partsOfSpeech)
+    dfT.show(false)
+    val vectorizerTag = new CountVectorizer().setInputCol("tags")
+    logger.info("Fitting the tag vectorizer. Please wait...")
+    val vectorizerTagModel = vectorizerTag.fit(dfT)
+
+    // get the word vocabulary and convert it to a map (word -> id), reserve 0 for UNK token
+    val vocab = vectorizerModel.vocabulary.zipWithIndex.map(p => (p._1, p._2)).toMap
+    logger.info(s"#(words) = ${vocab.size}")
+    // get the tag vocabulary and convert it to a map (tag -> id), reserve 0 for UNK token
+    val vocabT = vectorizerTagModel.vocabulary.zipWithIndex.map(p => (p._1, p._2)).toMap
+    logger.info(s" #(tags) = ${vocabT.size}")
+    
+    // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
+    // set the maximum sequence of 10 (empirically found!)
+    val maxSeqLen = 10
+    val f = udf((stack: Seq[String], queue: Seq[String]) => {
+      val xs = stack :+ queue.head
+      val is = xs.map(x => vocab.getOrElse(x, 0))
+      if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
+    })
+
+    // create seq features for LSTM
+    val uf = ef.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+    val vf = ff.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+
+    uf.select("vec", "transition", "y", "weight", "seq").show(false)
+    // prepare input data frame for multi-input BigDL model: featuresCol = Seq(vec, seq), labelCol=y
+    import spark.implicits._
+    import org.apache.spark.sql.types._
+    
+    val ufB = uf.select("vec", "seq", "y").map { row => 
+      val x1 = row.getAs[Vector](0).toArray.map(_.toFloat)
+      val x2 = row.getAs[Seq[Int]](1).toArray.map(_.toFloat)
+      val y = row.getAs[Double](2).toFloat
+      (x1 ++ x2, y)
+    }.toDF("features", "y")
+    val vfB = vf.select("vec", "seq", "y").map { row => 
+      val x1 = row.getAs[Vector](0).toArray.map(_.toFloat)
+      val x2 = row.getAs[Seq[Int]](1).toArray.map(_.toFloat)
+      val y = row.getAs[Double](2).toFloat
+      (x1 ++ x2, y)
+    }.toDF("features", "y")
+
+    ufB.show(5)
+    ufB.printSchema
+    
+    val input1 = Input[Float](inputShape = Shape(bof.size))
+    val input2 = Input[Float](inputShape = Shape(maxSeqLen))
+    val dense1 = Dense[Float](config.featureEmbeddingSize).setName("dense1").inputs(input1)
+    val masking = Masking[Float](-1).setName("masking").inputs(input2)
+    val embedding = Embedding[Float](vocab.size, config.featureEmbeddingSize, paddingValue = -1).setName("embedding").inputs(masking)
+    val lstm = LSTM[Float](36).setName("lstm").inputs(embedding)
+    // merge two branches
+    val merge = Merge.merge(inputs = List(dense1, lstm), mode = "concat")
+    val output = Dense[Float](labelSize, activation = "softmax").setName("output").inputs(merge)
+    val model = Model[Float](Array(input1, input2), output)
+    model.summary()
+
+    // overwrite the trained preprocessor
+    val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
+    // preprocessor.write.overwrite().save(modelPath)
+    // prepare a label weight tensor
+    val weights = Tensor[Float](labelSize)
+    val labelMap = uf.select("y", "weight").distinct.collect()
+      .map(row => (row.getDouble(0).toInt, row.getDouble(1).toFloat)).toMap
+    for (j <- labelMap.keys)
+      weights(j) = labelMap(j)
+    logger.info(labelMap.toString)
+
+    val criterion = ClassNLLCriterion[Float](weights = weights, sizeAverage = false, logProbAsInput = false)
+    val estimator = NNEstimator(model, criterion, Array(Array(bof.size), Array(maxSeqLen)), Array(1))
+    val trainingSummary = TrainSummary(appName = "rnnB", logDir = "sum/tdp/")
+    val validationSummary = ValidationSummary(appName = "rnnB", logDir = "sum/tdp/")
+    val numCores = Runtime.getRuntime.availableProcessors()
+    val batchSize = numCores * 4
+    estimator.setLabelCol("y").setFeaturesCol("features")
+      .setBatchSize(batchSize)
+      .setOptimMethod(new Adam(1E-3))
+      .setMaxEpoch(40)
+      .setTrainSummary(trainingSummary)
+      .setValidationSummary(validationSummary)
+      .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
+    estimator.fit(ufB)
+    // model.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnB.bigdl", overWrite = true)
+  }
 
   /**
     * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
