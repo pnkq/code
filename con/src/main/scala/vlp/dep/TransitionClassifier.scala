@@ -304,7 +304,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     logger.info(labelMap.toString)
 
     val criterion = ClassNLLCriterion[Float](weights = weights, sizeAverage = false, logProbAsInput = false)
-    val estimator = NNEstimator(model, criterion, Array(Array(bof.size), Array(maxSeqLen*2)), Array(1))
+    val estimator = NNEstimator(model, criterion, Array(Array(bof.size), Array(maxSeqLen), Array(maxSeqLen)), Array(1))
     val trainingSummary = TrainSummary(appName = "rnnC", logDir = "sum/tdp/")
     val validationSummary = ValidationSummary(appName = "rnnC", logDir = "sum/tdp/")
     val numCores = Runtime.getRuntime.availableProcessors()
