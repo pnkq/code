@@ -610,6 +610,10 @@ object TransitionClassifier {
           }
           case "train" => {
             config.classifier match {
+              case "rnnC" => {
+                Engine.init
+                classifier.trainC(config, trainingGraphs, developmentGraphs)
+              }
               case "rnnB" => {
                 Engine.init
                 classifier.trainB(config, trainingGraphs, developmentGraphs)
