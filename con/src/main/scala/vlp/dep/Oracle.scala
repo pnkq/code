@@ -15,7 +15,7 @@ import org.apache.spark.ml.linalg.Vector
   * 
   */
 case class Context(id: Int, bof: String, transition: String, 
-  stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency]) {
+  stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency], words: Seq[String], tags: Seq[String]) {
   override def toString: String = {
     val sb = new StringBuilder()
     sb.append('(')
@@ -111,8 +111,11 @@ class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
         if (config.isReducible(graph))
           transition = "RE"
       }
-      // add a parsing context
-      contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), config.queue.clone(), config.arcs.clone())
+      val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
+      val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
+      // add a parsing context      
+      contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), 
+        config.queue.clone(), config.arcs.clone(), words, tags)
       config = config.next(transition)
     }
     contexts.toList
@@ -154,8 +157,11 @@ class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
             transition = "RA-" + graph.sentence.token(j).dependencyLabel
         }
       }
+      val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
+      val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
       // add a parsing context
-      contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), config.queue.clone(), config.arcs.clone())
+      contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), 
+        config.queue.clone(), config.arcs.clone(), words, tags)
       config = config.next(transition)
     }
     contexts.toList

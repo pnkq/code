@@ -216,9 +216,12 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // bof preprocessing pipeline
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
-    val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vec").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    val bofVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vec").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    val wordVectorizer = new CountVectorizer().setInputCol("words")
+    val tagVectorizer = new CountVectorizer().setInputCol("tags")
     logger.info("Fitting the preprocessor pipeline. Please wait...")
-    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(af.select("transition", "bof"))
+    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, bofVectorizer, wordVectorizer, tagVectorizer))
+      .fit(af.select("transition", "bof", "words", "tags"))
     val ef = preprocessor.transform(af)
     val ff = preprocessor.transform(bf)
 
@@ -227,41 +230,30 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     logger.info("#(labels) = " + labelSize)
     val bof = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
     logger.info("   #(bof) = " + bof.size)
+    val vocabulary = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info(" #(words) = " + vocabulary.size)
+    val vocabularyT = preprocessor.stages(4).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info("  #(tags) = " + vocabularyT.size)
 
-    // the sentence data frame for LSTM sequence
-    val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
-    val df = spark.createDataFrame(sentences)
-    df.show(false)
-    val vectorizer = new CountVectorizer().setInputCol("words")
-    logger.info("Fitting the word vectorizer. Please wait...")
-    val vectorizerModel = vectorizer.fit(df)
-    // the part-of-speech data frame for LSTM sequence
-    val partsOfSpeech = graphs.map(graph => graph.sentence.tokens.map(token => token.universalPartOfSpeech).toSeq).map(s => TagSeq(s))
-    val dfT = spark.createDataFrame(partsOfSpeech)
-    dfT.show(false)
-    val vectorizerTag = new CountVectorizer().setInputCol("tags")
-    logger.info("Fitting the tag vectorizer. Please wait...")
-    val vectorizerTagModel = vectorizerTag.fit(dfT)
-
-    // get the word vocabulary and convert it to a map (word -> id), reserve 0 for UNK token
-    val vocab = vectorizerModel.vocabulary.zipWithIndex.map(p => (p._1, p._2)).toMap
-    logger.info(s"#(words) = ${vocab.size}")
-    // get the tag vocabulary and convert it to a map (tag -> id), reserve 0 for UNK token
-    val vocabT = vectorizerTagModel.vocabulary.zipWithIndex.map(p => (p._1, p._2)).toMap
-    logger.info(s" #(tags) = ${vocabT.size}")
+    // get the vocabulary and convert it to a map (word -> id), reserve an additional 0 for UNK word
+    val vocab = vocabulary.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+    // get the vocabularyT and convert it to a map (tag -> id), reserve an additional 0 for UNK tag
+    val vocabT = vocabularyT.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
     
-    // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
+    // create a udf to extract a seq of words from the stack and the queue, left-pad the seq with -1. 
     // set the maximum sequence of 10 (empirically found!)
     val maxSeqLen = 10
-    val f = udf((stack: Seq[String], queue: Seq[String]) => {
+    val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String], tags: Seq[String]) => {
       val xs = stack :+ queue.head
-      val is = xs.map(x => vocab.getOrElse(x, 0))
-      if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
+      val is = xs.map(x => vocab.getOrElse(words(x.toInt), 0))
+      val js = xs.map(x => vocabT.getOrElse(tags(x.toInt), 0))
+      val seq = if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
+      val seqT = if (js.length < maxSeqLen) Seq.fill(maxSeqLen-js.length)(-1) ++ js else js.take(maxSeqLen)
+      seq ++ seqT
     })
 
-    // create seq features for LSTM
-    val uf = ef.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
-    val vf = ff.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+    val uf = ef.withColumn("seq", f(col("stack"), col("queue"), col("words"), col("tags"))).withColumn("y", g(col("label")))
+    val vf = ff.withColumn("seq", f(col("stack"), col("queue"), col("words"), col("tags"))).withColumn("y", g(col("label")))
 
     uf.select("vec", "transition", "y", "weight", "seq").show(false)
     // prepare input data frame for multi-input BigDL model: featuresCol = Seq(vec, seq), labelCol=y
@@ -288,7 +280,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val input2 = Input[Float](inputShape = Shape(maxSeqLen))
     val dense1 = Dense[Float](config.featureEmbeddingSize).setName("dense1").inputs(input1)
     val masking = Masking[Float](-1).setName("masking").inputs(input2)
-    val embedding = Embedding[Float](vocab.size, config.featureEmbeddingSize, paddingValue = -1).setName("embedding").inputs(masking)
+    val embedding = Embedding[Float](vocab.size + 1, config.featureEmbeddingSize, paddingValue = -1).setName("embedding").inputs(masking)
     val lstm = LSTM[Float](36).setName("lstm").inputs(embedding)
     // merge two branches
     val merge = Merge.merge(inputs = List(dense1, lstm), mode = "concat")
@@ -309,8 +301,8 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
 
     val criterion = ClassNLLCriterion[Float](weights = weights, sizeAverage = false, logProbAsInput = false)
     val estimator = NNEstimator(model, criterion, Array(Array(bof.size), Array(maxSeqLen)), Array(1))
-    val trainingSummary = TrainSummary(appName = "rnnB", logDir = "sum/tdp/")
-    val validationSummary = ValidationSummary(appName = "rnnB", logDir = "sum/tdp/")
+    val trainingSummary = TrainSummary(appName = "rnnC", logDir = "sum/tdp/")
+    val validationSummary = ValidationSummary(appName = "rnnC", logDir = "sum/tdp/")
     val numCores = Runtime.getRuntime.availableProcessors()
     val batchSize = numCores * 4
     estimator.setLabelCol("y").setFeaturesCol("features")
@@ -321,7 +313,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
     estimator.fit(ufB)
-    // model.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnB.bigdl", overWrite = true)
+    model.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnC.bigdl", overWrite = true)
   }
 
   /**
@@ -339,9 +331,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // bof preprocessing pipeline
     val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
     val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
-    val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vec").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    val bofVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vec").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    val wordVectorizer = new CountVectorizer().setInputCol("words")
     logger.info("Fitting the preprocessor pipeline. Please wait...")
-    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer)).fit(af.select("transition", "bof"))
+    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, bofVectorizer, wordVectorizer))
+      .fit(af.select("transition", "bof", "words"))
     val ef = preprocessor.transform(af)
     val ff = preprocessor.transform(bf)
 
@@ -350,33 +344,26 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     logger.info("#(labels) = " + labelSize)
     val bof = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
     logger.info("   #(bof) = " + bof.size)
+    val vocabulary = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info(" #(words) = " + vocabulary.size)
 
-    // the sentence data frame for LSTM sequence
-    val sentences = graphs.map(graph => graph.sentence.tokens.map(token => token.word.toLowerCase).toSeq).map(s => Phrase(s))
-    val df = spark.createDataFrame(sentences)
-    df.show(false)
-    val vectorizer = new CountVectorizer().setInputCol("words")
-    logger.info("Fitting the word vectorizer. Please wait...")
-    val vectorizerModel = vectorizer.fit(df)
-
-    // get the vocabulary and convert it to a map (word -> id), reserve 0 for UNK token
-    val vocab = vectorizerModel.vocabulary.zipWithIndex.map(p => (p._1, p._2)).toMap
-    logger.info(s"#(words) = ${vocab.size}")
+    // get the vocabulary and convert it to a map (word -> id), reserve an additional 0 for UNK word
+    val vocab = vocabulary.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
     
-    // create a udf to extract a seq of tokens from the stack and the queue, left-pad the seq with -1. 
+    // create a udf to extract a seq of words from the stack and the queue, left-pad the seq with -1. 
     // set the maximum sequence of 10 (empirically found!)
     val maxSeqLen = 10
-    val f = udf((stack: Seq[String], queue: Seq[String]) => {
+    val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String]) => {
       val xs = stack :+ queue.head
-      val is = xs.map(x => vocab.getOrElse(x, 0))
+      val is = xs.map(x => vocab.getOrElse(words(x.toInt), 0))
       if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
     })
 
     // create seq features for LSTM
-    val uf = ef.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
-    val vf = ff.withColumn("seq", f(col("stack"), col("queue"))).withColumn("y", g(col("label")))
+    val uf = ef.withColumn("seq", f(col("stack"), col("queue"), col("words"))).withColumn("y", g(col("label")))
+    val vf = ff.withColumn("seq", f(col("stack"), col("queue"), col("words"))).withColumn("y", g(col("label")))
 
-    uf.select("vec", "transition", "y", "weight", "seq").show(false)
+    uf.select("stack", "vec", "transition", "y", "weight", "seq").show(false)
     // prepare input data frame for multi-input BigDL model: featuresCol = Seq(vec, seq), labelCol=y
     import spark.implicits._
     import org.apache.spark.sql.types._
@@ -401,7 +388,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val input2 = Input[Float](inputShape = Shape(maxSeqLen))
     val dense1 = Dense[Float](config.featureEmbeddingSize).setName("dense1").inputs(input1)
     val masking = Masking[Float](-1).setName("masking").inputs(input2)
-    val embedding = Embedding[Float](vocab.size, config.featureEmbeddingSize, paddingValue = -1).setName("embedding").inputs(masking)
+    val embedding = Embedding[Float](vocab.size + 1, config.featureEmbeddingSize, paddingValue = -1).setName("embedding").inputs(masking)
     val lstm = LSTM[Float](36).setName("lstm").inputs(embedding)
     // merge two branches
     val merge = Merge.merge(inputs = List(dense1, lstm), mode = "concat")
@@ -411,7 +398,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
 
     // overwrite the trained preprocessor
     val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
-    // preprocessor.write.overwrite().save(modelPath)
+    preprocessor.write.overwrite().save(modelPath)
     // prepare a label weight tensor
     val weights = Tensor[Float](labelSize)
     val labelMap = uf.select("y", "weight").distinct.collect()
@@ -434,7 +421,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
     estimator.fit(ufB)
-    // model.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnB.bigdl", overWrite = true)
+    model.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnB.bigdl", overWrite = true)
   }
 
   /**
