@@ -17,5 +17,7 @@ case class ConfigTDP
   iterations: Int = 400,
   batchSize: Int = 16,
   hiddenUnits: String = "",
-  featureEmbeddingSize: Int = 20
+  featureEmbeddingSize: Int = 20,
+  wordEmbeddingSize: Int = 100,
+  tagEmbeddingSize: Int = 20
 )
