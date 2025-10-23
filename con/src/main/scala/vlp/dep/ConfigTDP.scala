@@ -16,8 +16,9 @@ case class ConfigTDP
   numFeatures: Int = 65536,
   iterations: Int = 400,
   batchSize: Int = 16,
-  hiddenUnits: String = "",
-  featureEmbeddingSize: Int = 20,
+  hiddenUnits: String = "", // for MLP only
+  featureEmbeddingSize: Int = 100,
   wordEmbeddingSize: Int = 100,
-  tagEmbeddingSize: Int = 20
+  tagEmbeddingSize: Int = 20,
+  recurrentSize: Int = 36
 )

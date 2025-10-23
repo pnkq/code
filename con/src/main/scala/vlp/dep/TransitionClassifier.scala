@@ -26,9 +26,6 @@ import com.intel.analytics.bigdl.dllib.utils.Engine
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 
 
-case class Phrase(words: Seq[String])
-case class TagSeq(tags: Seq[String])
-
 /**
   * Created by phuonglh on 6/24/17.
   *
@@ -240,7 +237,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // get the vocabularyT and convert it to a map (tag -> id), reserve an additional 0 for UNK tag
     val vocabT = vocabularyT.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
     
-    // create a udf to extract a seq of words from the stack and the queue, left-pad the seq with -1. 
+    // create a udf to extract a seq of word ids and a sequence of tag ids from the stack and the queue, left-pad the seq with -1. 
     // set the maximum sequence of 10 (empirically found!)
     val maxSeqLen = 10
     val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String], tags: Seq[String]) => {
@@ -276,6 +273,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     ufB.show(5)
     ufB.printSchema
     
+    // create a BigDL model
     val input1 = Input[Float](inputShape = Shape(bof.size))  // bof
     val input2 = Input[Float](inputShape = Shape(maxSeqLen)) // seqW
     val input3 = Input[Float](inputShape = Shape(maxSeqLen)) // seqT
@@ -284,10 +282,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val embeddingW = Embedding[Float](vocab.size + 1, config.wordEmbeddingSize, paddingValue = -1).setName("embeddingW").inputs(maskingW)
     val maskingT = Masking[Float](-1).setName("maskingT").inputs(input3)
     val embeddingT = Embedding[Float](vocabT.size + 1, config.tagEmbeddingSize, paddingValue = -1).setName("embeddingT").inputs(maskingT)
-    val lstmW = LSTM[Float](36).setName("lstmW").inputs(embeddingW)
-    val lstmT = LSTM[Float](10).setName("lstmT").inputs(embeddingT)
-    // merge three branches
-    val merge = Merge.merge(inputs = List(dense1, lstmW, lstmT), mode = "concat")
+    // concat word and tag embeddings before passing to an LSTM
+    val mergeWT = Merge.merge(inputs = List(embeddingW, embeddingT), mode = "concat")
+    val lstm = LSTM[Float](config.recurrentSize).setName("lstm").inputs(mergeWT)
+    // merge two branches
+    val merge = Merge.merge(inputs = List(dense1, lstm), mode = "concat")
     val output = Dense[Float](labelSize, activation = "softmax").setName("output").inputs(merge)
     val model = Model[Float](Array(input1, input2, input3), output)
     model.summary()
@@ -312,7 +311,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     estimator.setLabelCol("y").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
-      .setMaxEpoch(20)
+      .setMaxEpoch(40)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
@@ -393,7 +392,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val dense1 = Dense[Float](config.featureEmbeddingSize).setName("dense1").inputs(input1)
     val masking = Masking[Float](-1).setName("masking").inputs(input2)
     val embedding = Embedding[Float](vocab.size + 1, config.wordEmbeddingSize, paddingValue = -1).setName("embedding").inputs(masking)
-    val lstm = LSTM[Float](36).setName("lstm").inputs(embedding)
+    val lstm = LSTM[Float](config.recurrentSize).setName("lstm").inputs(embedding)
     // merge two branches
     val merge = Merge.merge(inputs = List(dense1, lstm), mode = "concat")
     val output = Dense[Float](labelSize, activation = "softmax").setName("output").inputs(merge)
@@ -420,7 +419,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     estimator.setLabelCol("y").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
-      .setMaxEpoch(20)
+      .setMaxEpoch(40)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
@@ -472,7 +471,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     sequential.add(masking)
     val embedding = Embedding[Float](vocab.size + 1, config.wordEmbeddingSize, paddingValue = -1).setName("embedding")
     sequential.add(embedding)
-    val lstm = LSTM[Float](36).setName("lstm")
+    val lstm = LSTM[Float](config.recurrentSize).setName("lstm")
     sequential.add(lstm)
     val output = Dense[Float](labelSize, activation = "softmax").setName("output")
     sequential.add(output)
@@ -498,7 +497,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     estimator.setLabelCol("y").setFeaturesCol("seq")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
-      .setMaxEpoch(20)
+      .setMaxEpoch(40)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)
