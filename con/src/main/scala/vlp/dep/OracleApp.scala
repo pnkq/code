@@ -2,6 +2,15 @@ package vlp.dep
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.charset.Charset
+import java.nio.file.OpenOption
+import java.nio.file.StandardOpenOption
+import org.json4s.jackson.Serialization
+
+
+case class T(words: Seq[String], transitions: Seq[String])
 
 /**
   * Created by phuonglh on 6/22/17.
@@ -43,20 +52,38 @@ object OracleApp {
     println(features)
   }
   
+  def run(pathCoNLLU: String, oracle: Oracle, pathOutput: String) = {
+    val graphs = GraphReader.read(pathCoNLLU)
+    import org.json4s._
+    import org.json4s.jackson.Serialization    
+    val lines = graphs.map { graph =>
+      val configs = oracle.decode(graph)
+      val words = graph.sentence.tokens.map(_.word)
+      val transitions = configs.map(context => context.transition)
+      Serialization.write(T(words, transitions))(org.json4s.DefaultFormats)
+    }
+    import scala.collection.JavaConverters._
+    Files.write(Paths.get(pathOutput), lines.asJava, Charset.defaultCharset(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+  }
+
   def main(args: Array[String]): Unit = {
     // test 0
     // featurize
 
     // test 1
     val oracle = new OracleAS(new FeatureExtractor(false, false))
-    val graph = Graph(createSentence)
-    oracle.decode(graph).foreach(println)
-    println
+    // val graph = Graph(createSentence)
+    // oracle.decode(graph).foreach(println)
+    // println
 
     // // test 2
     // val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
     // // decode the last graph (as shown in the end of this file)
     // oracle.decode(graphs.last).foreach(println)
+
+    run("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu", oracle, "dat/dep/en-as-train.jsonl")
+    run("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu", oracle, "dat/dep/en-as-dev.jsonl")
+    run("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu", oracle, "dat/dep/en-as-test.jsonl")
   }
 }
 
