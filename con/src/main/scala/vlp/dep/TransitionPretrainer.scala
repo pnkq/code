@@ -18,16 +18,46 @@ import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.optim.Trigger
-import vlp.ner.TimeDistributedTop1Accuracy
+import com.intel.analytics.bigdl.dllib.nn.abstractnn.Activity
+import com.intel.analytics.bigdl.dllib.optim.{AccuracyResult, ValidationMethod, ValidationResult}
+import com.intel.analytics.bigdl.dllib.tensor.Tensor
+import com.intel.analytics.bigdl.dllib.tensor.TensorNumericMath.TensorNumeric
 
 case class PretrainerConfig(
   language: String = "eng",
-  maxSeqLen: Int = 80,
+  maxSeqLen: Int = 50,
   embeddingSize: Int = 20,
   layers: Int = 2,
   heads: Int = 4,
   hiddenSize: Int = 100,
+  maskedRatio: Double = 0.3,
+  maxIters: Int = 20
 )
+
+class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNumeric[Float]) extends ValidationMethod[Float] {
+  override def apply(output: Activity, target: Activity): ValidationResult = {
+    var correct = 0
+    var count = 0
+    val _output = output.asInstanceOf[Tensor[Float]] // nDim = 3
+    val _target = target.asInstanceOf[Tensor[Float]] // nDim = 2
+    // split by batch size (dim = 1 of output and target)
+    _output.split(1).zip(_target.split(1))
+      .foreach { case (tensor, ys) =>
+      // split by time slice (dim = 1 of tensor)
+      val zs = tensor.split(1).map { t =>
+        val (_, k) = t.max(1) // the label with max score
+        k(Array(1)).toInt // k is a tensor => extract its value
+      }
+      // filter the padded value (-1) in the target before matching with the output
+      val c = ys.toArray().map(_.toInt).zip(zs).filter(p => p._1 != paddingValue)
+        .map(p => if (p._1 == p._2) 1 else 0)
+      correct += c.sum
+      count += c.size
+    }
+    new AccuracyResult(correct, count)
+  }
+  override def format(): String = "Time Distributed Top1Accuracy"
+}
 
 /**
  * (C) phuonglh@gmail.com, October 26, 2025
@@ -63,22 +93,22 @@ object TransitionPretrainer {
   def train(model: KerasNet[Float], config: PretrainerConfig, train: DataFrame, valid: DataFrame) = {
     val (featureSize, labelSize) = (Array(Array(4*config.maxSeqLen)), Array(config.maxSeqLen))
     val estimator = NNEstimator(model, TimeDistributedMaskCriterion(ClassNLLCriterion(sizeAverage = false, paddingValue = -1), paddingValue = -1), featureSize, labelSize)
-    val trainingSummary = TrainSummary(appName = "trp", logDir = s"sum/dep/${config.language}")
-    val validationSummary = ValidationSummary(appName = "trp", logDir = s"sum/dep/${config.language}")
+    val trainingSummary = TrainSummary(appName = s"${config.language}", logDir = s"sum/asp/")
+    val validationSummary = ValidationSummary(appName = s"${config.language}", logDir = s"sum/asp/")
     val batchSize = Runtime.getRuntime.availableProcessors() * 16
-    estimator.setLabelCol("y").setFeaturesCol("features")
+    estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, valid, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
-      .setEndWhen(Trigger.or(Trigger.maxEpoch(40), Trigger.minLoss(0.1f)))
+      .setEndWhen(Trigger.maxEpoch(config.maxIters))
     estimator.fit(train)
-    model.saveModel(s"bin/dep/trp/${config.language}.bigdl", overWrite = true)
+    model.saveModel(s"bin/asp/${config.language}.bigdl", overWrite = true)
   }
 
-  def createPreprocessor(df: DataFrame, config: PretrainerConfig) = {
-    val vectorizer = new CountVectorizer().setInputCol("transitions").setOutputCol("vector")
+  def preprocess(df: DataFrame, dfV: DataFrame, config: PretrainerConfig) = {
+    val vectorizer = new CountVectorizer().setInputCol("transitions")
     val vectorizerModel = vectorizer.fit(df)
     // index the transitions, reserve 0 for padding value
     val vocabMap = vectorizerModel.vocabulary.zipWithIndex.map{ case (w, i) => (w, i+1) }.toMap
@@ -86,8 +116,11 @@ object TransitionPretrainer {
 
     // create a udf to transform a sparse (count) vector into a sequence of transition indices
     // right pad with 0 values. Add segment ids, position ids and mask ids for BERT
+    // in the Arc-Standard system, if the sentence has more than 2 tokens, the first transition is always SH,
+    // therefore, we don't include the first transition into our features.
+    // Also, the last transition is also always a SH (to make the parsing config. final.)
     val f = udf((xs: Seq[String]) => {
-      val seq = xs.map(x => vocabMap.getOrElse(x, 0))
+      val seq = xs.slice(1, xs.length-1).map(x => vocabMap.getOrElse(x, 0))
       val ids = if (seq.length >= config.maxSeqLen) 
         seq.take(config.maxSeqLen)
       else
@@ -103,12 +136,31 @@ object TransitionPretrainer {
         Seq.fill[Int](seq.length)(1) ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
       ids ++ segments ++ positions ++ masks
     })
-    // transform the input data frame
+    // transform the input data frame to have the "features" column
     val ef = df.withColumn("features", f(col("transitions")))
+    val efV = dfV.withColumn("features", f(col("transitions")))
     ef.show(10)
     logger.info(ef.select("features").head.toString)
 
-    vocabMap.size
+    // prepare the label sequence using a padding value of -1
+    // we use the masked language modeling (MLM) objective
+    val random = new scala.util.Random(220712)
+    val g = udf((xs: Seq[String]) => {
+      val seq = xs.slice(1, xs.length-1).map(x => vocabMap.getOrElse(x, 0)) // 0 label will results in an error in BigDL
+      val ys = seq.map { s => 
+        val keepProb = random.nextDouble()
+        if (keepProb <= config.maskedRatio) s else -1
+      }
+      if (ys.length >= config.maxSeqLen)
+        ys.take(config.maxSeqLen)
+      else
+        ys ++ Seq.fill[Int](config.maxSeqLen - seq.length)(-1)
+    })
+    // transform to have the "label" column
+    val gf = ef.withColumn("label", g(col("transitions")))    
+    gf.select("label").show(10, false)
+    val gfV = efV.withColumn("label", g(col("transitions")))
+    (vocabMap.size, gf, gfV)
   }
 
 
@@ -122,11 +174,14 @@ object TransitionPretrainer {
       .getOrCreate()
     Engine.init
     val config = PretrainerConfig()
-    val df = spark.read.json("dat/dep/en-as-dev.jsonl")
+    val df = spark.read.json("dat/dep/en-as-train.jsonl").filter(size(col("transitions")) >= 3)
+    val dfV = spark.read.json("dat/dep/en-as-dev.jsonl").filter(size(col("transitions")) >= 3)
     df.show(10)
-    val vocabSize = createPreprocessor(df, config)
+    val (vocabSize, trainDF, validDF) = preprocess(df, dfV, config)
     val model = createModel(config, vocabSize)
     model.summary()
+    
+    train(model, config, trainDF, validDF)
 
     spark.stop()
   }

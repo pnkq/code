@@ -11,7 +11,9 @@ import com.intel.analytics.bigdl.dllib.tensor.TensorNumericMath.TensorNumeric
   * @param paddingValue
   * @param ev
  *
- * Note: 1-based label index for token classification
+ * Note: 1-based label index for token classification.
+ * 
+ * NOTE: this only works when all padded values are at the right end or the target.
   */
 class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNumeric[Float]) extends ValidationMethod[Float] {
   override def apply(output: Activity, target: Activity): ValidationResult = {
@@ -28,8 +30,9 @@ class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNum
         k(Array(1)).toInt // k is a tensor => extract its value
       }
 //      println(zs.mkString(", ") + " :=: " + ys.toArray().mkString(", ")) // DEBUG
-      // filter the padded value (-1) in the target before perform matching with the output
-      val c = ys.toArray().map(_.toInt).filter(e => e != paddingValue).zip(zs)
+      // filter the padded value (-1) in the target before matching with the output
+      // val c = ys.toArray().map(_.toInt).filter(e => e != paddingValue).zip(zs)
+      val c = ys.toArray().map(_.toInt).zip(zs).filter(p => p._1 != paddingValue)
         .map(p => if (p._1 == p._2) 1 else 0)
       correct += c.sum
       count += c.size
