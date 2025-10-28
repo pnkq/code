@@ -589,7 +589,7 @@ object TransitionClassifier {
           .getOrCreate()
         val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
         val (trainingGraphs, developmentGraphs) = (
-          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu").filter(g => g.sentence.length >= 3), 
+          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu").filter(g => g.sentence.length >= 3), 
           GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu").filter(g => g.sentence.length >= 3)
         )
 

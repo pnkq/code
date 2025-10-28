@@ -81,9 +81,16 @@ object OracleApp {
     // // decode the last graph (as shown in the end of this file)
     // oracle.decode(graphs.last).foreach(println)
 
-    run("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu", oracle, "dat/dep/en-as-train.jsonl")
-    run("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu", oracle, "dat/dep/en-as-dev.jsonl")
-    run("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu", oracle, "dat/dep/en-as-test.jsonl")
+    // run("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu", oracle, "dat/dep/en-as-train.jsonl")
+    // run("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu", oracle, "dat/dep/en-as-dev.jsonl")
+    // run("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu", oracle, "dat/dep/en-as-test.jsonl")
+
+    val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
+    val dfs = treebanks.map { name =>
+      val path = s"dat/dep/UD_English/$name"
+      run(s"$path.conllu", oracle, s"$path.jsonl")
+    }
+
   }
 }
 

@@ -31,7 +31,7 @@ case class PretrainerConfig(
   heads: Int = 4,
   hiddenSize: Int = 100,
   maskedRatio: Double = 0.3,
-  maxIters: Int = 20
+  maxIters: Int = 15
 )
 
 class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNumeric[Float]) extends ValidationMethod[Float] {
@@ -174,9 +174,16 @@ object TransitionPretrainer {
       .getOrCreate()
     Engine.init
     val config = PretrainerConfig()
-    val df = spark.read.json("dat/dep/en-as-train.jsonl").filter(size(col("transitions")) >= 3)
-    val dfV = spark.read.json("dat/dep/en-as-dev.jsonl").filter(size(col("transitions")) >= 3)
-    df.show(10)
+    val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
+    val dfs = treebanks.map { name =>
+      val path = s"dat/dep/UD_English/$name.jsonl"
+      spark.read.json(path).filter(size(col("transitions")) >= 3)
+    }
+    val all = dfs.reduce((u, v) => u.union(v))
+    logger.info("Number of samples = " + all.count)
+    val Array(df, dfV) = all.randomSplit(Array(0.8, 0.2), seed = 150909)
+    dfV.show(10)
+
     val (vocabSize, trainDF, validDF) = preprocess(df, dfV, config)
     val model = createModel(config, vocabSize)
     model.summary()
