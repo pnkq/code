@@ -69,42 +69,6 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   }
   
   /**
-    * Creates an extended data frame with distributed word representations concatenated to feature vectors.
-    * @param graphs
-    * @param wordVectors
-    * @param withDiscrete use continuous features together with their discrete features                    
-    * @return a DataFrame
-    */
-  private def createDF(graphs: List[Graph], wordVectors: Map[String, Vector], withDiscrete: Boolean = true): DataFrame = {
-    def suffix(f: String): String = {
-      val idx = f.indexOf(':')
-      if (idx >= 0) f.substring(idx + 1); else ""
-    }
-    val seqAsVector = udf((xs: Seq[Double]) => Vectors.dense(xs.toArray))
-
-    val oracle = new OracleAS(featureExtractor)
-    val contexts = oracle.decode(graphs)
-    val zero = Vectors.dense(Array.fill[Double](distributedDimension)(0d))
-    val extendedContexts = contexts.map(c => {
-      val fs = c.bof.split("\\s+")
-      val s = fs.filter(f => f.startsWith("sts0:"))
-      val ws0 = suffix(if (s.nonEmpty) s.head else "UNK")
-      val q = fs.filter(f => f.startsWith("stq0:"))
-      val wq0 = suffix(if (q.nonEmpty) q.head else "UNK")
-      if (withDiscrete)
-        ExtendedContext(c.id, c.bof, c.transition, wordVectors.getOrElse(ws0, zero), wordVectors.getOrElse(wq0, zero))
-      else {
-        val ff = c.bof.split("\\s+").filterNot(f => f.startsWith("sts0:") || f.startsWith("stq0:"))
-        ExtendedContext(c.id, ff.mkString(" "), c.transition, wordVectors.getOrElse(ws0, zero), wordVectors.getOrElse(wq0, zero))
-      }
-    })
-    if (config.verbose) logger.info("#(contexts) = " + contexts.length)
-    import spark.implicits._
-    val ds = spark.createDataFrame(extendedContexts).as[ExtendedContext]
-    ds.withColumn("s", seqAsVector(col("s"))).withColumn("q", seqAsVector(col("q"))).toDF()
-  }
-
-  /**
     * Trains a classifier to predict transition of a given parsing config. This method uses only discrete BoF. 
     *
     * @param modelPath
@@ -148,57 +112,128 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     model
   }
 
-  /**
-    * Extended version of [[train()]] method where super-tag vectors are concatenated.
-    * @param modelPath
-    * @param graphs
-    * @param hiddenLayers 
-    * @param wordVectors
-    * @param discrete                   
-    * @return a model
-    */
-  def train(modelPath: String, graphs: List[Graph], hiddenLayers: Array[Int], wordVectors: Map[String, Vector], discrete: Boolean = true): PipelineModel = {
-    val input = addWeightCol(createDF(graphs, wordVectors, discrete))
-    input.cache()
-    val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
-    val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
-    val countVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("f").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
-    val vectorAssembler = new VectorAssembler().setInputCols(Array("f", "s", "q")).setOutputCol("features")
-
-    val model = if (hiddenLayers.isEmpty) {
-      val mlr = new LogisticRegression().setMaxIter(config.iterations).setStandardization(false).setTol(1E-5).setWeightCol("weight")
-      new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, vectorAssembler, mlr)).fit(input)
-    } else {
-      val pipeline = new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer))
-      val pipelineModel = pipeline.fit(input)
-      val vocabSize = pipelineModel.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size
-      val numLabels = input.select("transition").distinct().count().toInt
-      val layers = Array[Int](vocabSize + distributedDimension * 2) ++ hiddenLayers ++ Array[Int](numLabels)
-      val mlp = new MultilayerPerceptronClassifier().setLayers(layers).setMaxIter(config.iterations).setTol(1E-5).setBlockSize(64)
-      new Pipeline().setStages(Array(labelIndexer, tokenizer, countVectorizer, vectorAssembler, mlp)).fit(input)
-    }
-
-    // overwrite the trained pipeline model
-    model.write.overwrite().save(modelPath)
-    // print some strings to debug the model
-    if (config.verbose) {
-      logger.info("  #(labels) = " + model.stages(0).asInstanceOf[StringIndexerModel].labels.length)
-      logger.info("#(features) = " + model.stages(2).asInstanceOf[CountVectorizerModel].vocabulary.size)
-      val modelSt = if (hiddenLayers.isEmpty) {
-        model.stages(4).asInstanceOf[LogisticRegressionModel].explainParams()
-      } else {
-        model.stages(4).asInstanceOf[MultilayerPerceptronClassificationModel].explainParams()
-      }
-      logger.info(modelSt)
-    }
-    model
-  }
-
   // create a udf to increase label index from 0-based to 1-based
   val g = udf((k: Double) => k + 1)
 
   /**
-    * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
+  * Trains a classifier to predict transition given a parsing config. This is the enhanced version of [[trainC]] method. 
+  * A transition context vector is appended as an additional input feature vector. 
+  */
+  def trainD(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
+    val af = addWeightCol(createDF(graphs))
+    val bf = createDF(devGraphs) // no need to add weights for test df
+    // bof preprocessing pipeline
+    val labelIndexer = new StringIndexer().setInputCol("transition").setOutputCol("label").setHandleInvalid("skip")
+    val tokenizer = new Tokenizer().setInputCol("bof").setOutputCol("tokens")
+    val bofVectorizer = new CountVectorizer().setInputCol("tokens").setOutputCol("vec").setMinDF(config.minFrequency).setVocabSize(config.numFeatures)
+    val wordVectorizer = new CountVectorizer().setInputCol("words")
+    val tagVectorizer = new CountVectorizer().setInputCol("tags")
+    logger.info("Fitting the preprocessor pipeline. Please wait...")
+    val preprocessor = new Pipeline().setStages(Array(labelIndexer, tokenizer, bofVectorizer, wordVectorizer, tagVectorizer))
+      .fit(af.select("transition", "bof", "words", "tags"))
+    val ef = preprocessor.transform(af)
+    val ff = preprocessor.transform(bf)
+
+    val labels = preprocessor.stages(0).asInstanceOf[StringIndexerModel].labels
+    val labelSize = labels.length
+    logger.info("#(labels) = " + labelSize)
+    val bof = preprocessor.stages(2).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info("   #(bof) = " + bof.size)
+    val vocabulary = preprocessor.stages(3).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info(" #(words) = " + vocabulary.size)
+    val vocabularyT = preprocessor.stages(4).asInstanceOf[CountVectorizerModel].vocabulary
+    logger.info("  #(tags) = " + vocabularyT.size)
+
+    // get the vocabulary and convert it to a map (word -> id), reserve an additional 0 for UNK word
+    val vocab = vocabulary.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+    // get the vocabularyT and convert it to a map (tag -> id), reserve an additional 0 for UNK tag
+    val vocabT = vocabularyT.zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+    
+    // create a udf to extract a seq of word ids and a sequence of tag ids from the stack and the queue, left-pad the seq with -1. 
+    // set the maximum sequence of 10 (empirically found!)
+    val maxSeqLen = 10
+    val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String], tags: Seq[String]) => {
+      val xs = stack :+ queue.head
+      val is = xs.map(x => vocab.getOrElse(words(x.toInt), 0))
+      val js = xs.map(x => vocabT.getOrElse(tags(x.toInt), 0))
+      val seqW = if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
+      val seqT = if (js.length < maxSeqLen) Seq.fill(maxSeqLen-js.length)(-1) ++ js else js.take(maxSeqLen)
+      seqW ++ seqT
+    })
+
+    val uf = ef.withColumn("seq", f(col("stack"), col("queue"), col("words"), col("tags"))).withColumn("y", g(col("label")))
+    val vf = ff.withColumn("seq", f(col("stack"), col("queue"), col("words"), col("tags"))).withColumn("y", g(col("label")))
+
+    uf.select("vec", "transition", "y", "weight", "seq").show(false)
+    // prepare input data frame for multi-input BigDL model: featuresCol = Seq(vec, seq), labelCol=y
+    import spark.implicits._
+    import org.apache.spark.sql.types._
+    
+    val ufB = uf.select("vec", "seq", "y").map { row => 
+      val x1 = row.getAs[Vector](0).toArray.map(_.toFloat)
+      val x2 = row.getAs[Seq[Int]](1).toArray.map(_.toFloat)
+      val y = row.getAs[Double](2).toFloat
+      (x1 ++ x2, y)
+    }.toDF("features", "y")
+    val vfB = vf.select("vec", "seq", "y").map { row => 
+      val x1 = row.getAs[Vector](0).toArray.map(_.toFloat)
+      val x2 = row.getAs[Seq[Int]](1).toArray.map(_.toFloat)
+      val y = row.getAs[Double](2).toFloat
+      (x1 ++ x2, y)
+    }.toDF("features", "y")
+
+    ufB.show(5)
+    ufB.printSchema
+    
+    // create a BigDL model
+    val input1 = Input[Float](inputShape = Shape(bof.size))  // bof
+    val input2 = Input[Float](inputShape = Shape(maxSeqLen)) // seqW
+    val input3 = Input[Float](inputShape = Shape(maxSeqLen)) // seqT
+    val input4 = Input[Float](inputShape = Shape(config.transitionEmbeddingSize)) // contextualized, pretrained transition vector 
+    val dense1 = Dense[Float](config.featureEmbeddingSize).setName("dense1").inputs(input1)
+    val maskingW = Masking[Float](-1).setName("maskingW").inputs(input2)
+    val embeddingW = Embedding[Float](vocab.size + 1, config.wordEmbeddingSize, paddingValue = -1).setName("embeddingW").inputs(maskingW)
+    val maskingT = Masking[Float](-1).setName("maskingT").inputs(input3)
+    val embeddingT = Embedding[Float](vocabT.size + 1, config.tagEmbeddingSize, paddingValue = -1).setName("embeddingT").inputs(maskingT)
+    // concat word embeddings before passing to an LSTM
+    val mergeWT = Merge.merge(inputs = List(embeddingW, embeddingT), mode = "concat")
+    val lstm = LSTM[Float](config.recurrentSize).setName("lstm").inputs(mergeWT)
+    // merge three branches
+    val merge = Merge.merge(inputs = List(dense1, lstm, input4), mode = "concat")
+    val output = Dense[Float](labelSize, activation = "softmax").setName("output").inputs(merge)
+    val model = Model[Float](Array(input1, input2, input3, input4), output)
+    model.summary()
+
+    // overwrite the trained preprocessor
+    val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
+    preprocessor.write.overwrite().save(modelPath)
+    // prepare a label weight tensor
+    val weights = Tensor[Float](labelSize)
+    val labelMap = uf.select("y", "weight").distinct.collect()
+      .map(row => (row.getDouble(0).toInt, row.getDouble(1).toFloat)).toMap
+    for (j <- labelMap.keys)
+      weights(j) = labelMap(j)
+    logger.info(labelMap.toString)
+
+    val criterion = ClassNLLCriterion[Float](weights = weights, sizeAverage = false, logProbAsInput = false)
+    val estimator = NNEstimator(model, criterion, Array(Array(bof.size), Array(maxSeqLen), Array(maxSeqLen), Array(config.transitionEmbeddingSize)), Array(1))
+    val trainingSummary = TrainSummary(appName = "rnnD", logDir = "sum/tdp/")
+    val validationSummary = ValidationSummary(appName = "rnnD", logDir = "sum/tdp/")
+    val numCores = Runtime.getRuntime.availableProcessors()
+    val batchSize = numCores * 8
+    estimator.setLabelCol("y").setFeaturesCol("features")
+      .setBatchSize(batchSize)
+      .setOptimMethod(new Adam(1E-4))
+      .setMaxEpoch(40)
+      .setTrainSummary(trainingSummary)
+      .setValidationSummary(validationSummary)
+      .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
+    estimator.fit(ufB)
+    model.saveModel(Paths.get(config.modelPath, config.language).toString() + "/rnnD.bigdl", overWrite = true)
+  }
+
+  /**
+    * Trains a classifier to predict transition given a parsing config. This method uses an LSTM to extract features 
     * from the stack and the top token on the queue. It also uses the bof features for prediction as in the MLR or MLP model. 
     * It use sequence of PoS tags as additional features, in addition to similar features trainB() method. 
     *
@@ -320,7 +355,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   }
 
   /**
-    * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
+    * Trains a classifier to predict transition given a parsing config. This method uses an LSTM to extract features 
     * from the stack and the top token on the queue. It also uses the bof features for prediction as in the MLR or MLP model. 
     *
     * @param config 
@@ -428,7 +463,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   }
 
   /**
-    * Trains a classifier to predict transition of a given parsing config. This method uses an LSTM to extract features 
+    * Trains a classifier to predict transition given a parsing config. This method uses an LSTM to extract features 
     * from the stack and the top token on the queue. 
     *
     * @param config 
@@ -513,9 +548,9 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     * @param graphs    a list of dependency graphs
     * @param discrete                 
     */
-  def eval(modelPath: String, graphs: List[Graph], wordVectors: Map[String, Vector] = null, discrete: Boolean = true): Unit = {
+  def eval(modelPath: String, graphs: List[Graph], discrete: Boolean = true): Unit = {
     val model = PipelineModel.load(modelPath)
-    val inputDF = if (wordVectors == null) createDF(graphs) ; else createDF(graphs, wordVectors, discrete)
+    val inputDF = createDF(graphs)
     import spark.implicits._
     val outputDF = model.transform(inputDF)
     val predictionAndLabels = outputDF.select("label", "prediction").map(row => (row.getDouble(0), row.getDouble(1))).rdd

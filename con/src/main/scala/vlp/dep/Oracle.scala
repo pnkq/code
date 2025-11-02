@@ -15,7 +15,8 @@ import org.apache.spark.ml.linalg.Vector
   * 
   */
 case class Context(id: Int, bof: String, transition: String, 
-  stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency], words: Seq[String], tags: Seq[String]) {
+  stack: mutable.Stack[String], queue: mutable.Queue[String], arcs: ListBuffer[Dependency], 
+    words: Seq[String], tags: Seq[String], pastTransitions: Seq[String]) {
   override def toString: String = {
     val sb = new StringBuilder()
     sb.append('(')
@@ -30,20 +31,16 @@ case class Context(id: Int, bof: String, transition: String,
     sb.append(queue)
     sb.append(',')
     sb.append(arcs)
+    sb.append(',')
+    sb.append(words)
+    sb.append(',')
+    sb.append(tags)
+    sb.append(',')
+    sb.append(pastTransitions)
     sb.append(')')
     sb.toString()
   }
 }
-
-/**
-  * Extended parsing context for the AE (arc-eager) or AS (arc-standard) system.
-  * @param id
-  * @param bof
-  * @param transition
-  * @param s word vector of the topmost element on the parsing stack
-  * @param q word vector of the front element of the parsing queue for AE (or the second-topmost element on the stack for AS)
-  */
-case class ExtendedContext(id: Int, bof: String, transition: String, s: Vector, q: Vector)
 
 /**
   * Oracle is a key component in training transition-based parsers. It is used to derive 
@@ -113,9 +110,10 @@ class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
       }
       val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
       val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
+      val pastTransitions = contexts.map(_.transition).toSeq
       // add a parsing context      
       contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), 
-        config.queue.clone(), config.arcs.clone(), words, tags)
+        config.queue.clone(), config.arcs.clone(), words, tags, pastTransitions)
       config = config.next(transition)
     }
     contexts.toList
@@ -159,9 +157,10 @@ class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
       }
       val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
       val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
+      val pastTransitions = contexts.map(_.transition).toSeq
       // add a parsing context
       contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), 
-        config.queue.clone(), config.arcs.clone(), words, tags)
+        config.queue.clone(), config.arcs.clone(), words, tags, pastTransitions)
       config = config.next(transition)
     }
     contexts.toList

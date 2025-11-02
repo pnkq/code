@@ -20,7 +20,7 @@ import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 
-import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
+import vlp.ner.{ArgMaxLayer, Sequencer}
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption

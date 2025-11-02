@@ -20,7 +20,7 @@ import org.apache.spark.ml.linalg.Vectors
 import org.apache.spark.sql.types.{ArrayType, StringType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import scopt.OptionParser
-import vlp.ner.{ArgMaxLayer, Sequencer, TimeDistributedTop1Accuracy}
+import vlp.ner.{ArgMaxLayer, Sequencer}
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
 import org.apache.spark.ml.linalg.Vector

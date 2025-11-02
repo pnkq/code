@@ -7,12 +7,17 @@ Model B:
                                       Merge(concat) ==> Dense(softmax) ==> best transition
       [bag of features] ==> Dense      ==/
 
-
 Model C: 
   [stack :+ queue.head] ==> LSTM word  ==\
   [stack :+ queue.head] ==> LSTM upos  === Merge(concat) ==> Dense(softmax) ==> best transition                                      
       [bag of features] ==> Dense      ==/
 
+
+Model D: 
+  [stack :+ queue.head] ==> LSTM word  ==\
+  [stack :+ queue.head] ==> LSTM upos  === Merge(concat) ==> Dense(softmax) ==> best transition                                      
+      [bag of features] ==> Dense      ==/
+    [BERT vec. of trs.] ==> Dense      ==/
 
 
 // bloop run -p con -m vlp.dep.TransitionClassifier -- -v -m train -c mlp -J-Xmx8g

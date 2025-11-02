@@ -20,5 +20,6 @@ case class ConfigTDP
   featureEmbeddingSize: Int = 100,
   wordEmbeddingSize: Int = 100,
   tagEmbeddingSize: Int = 20,
-  recurrentSize: Int = 36
+  recurrentSize: Int = 36,
+  transitionEmbeddingSize: Int = 25
 )
