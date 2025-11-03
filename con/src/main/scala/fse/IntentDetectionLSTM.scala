@@ -8,7 +8,7 @@ import org.apache.spark.unsafe.hash.Murmur3_x86_32.hashUnsafeBytes2
 import org.apache.spark.unsafe.types.UTF8String
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.Sequential
-import com.intel.analytics.bigdl.dllib.keras.layers.{Dense, Embedding, LSTM}
+import com.intel.analytics.bigdl.dllib.keras.layers.{Masking, Dense, Embedding, LSTM}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.nn.ClassNLLCriterion
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
@@ -16,6 +16,7 @@ import com.intel.analytics.bigdl.dllib.optim.{Top1Accuracy, Trigger}
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
 import org.apache.spark.SparkContext
+import com.intel.analytics.bigdl.dllib.utils.Shape
 
 /**
  * (C) phuonglh@gmail.com
@@ -33,9 +34,10 @@ object IntentDetectionLSTM {
 
   private def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int, labelSize: Int) = {
     val sequential = Sequential()
+    val masking = Masking(0, inputShape = Shape(maxSeqLen)).setName("masking")
     sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen))
 //    sequential.add(LSTM(64, returnSequences = true))
-    sequential.add(LSTM(100))
+    sequential.add(LSTM(64))
     sequential.add(Dense(labelSize, activation = "softmax"))
   }
 
@@ -83,13 +85,13 @@ object IntentDetectionLSTM {
 
     val criterion = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false)
     val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(1))
-    val trainingSummary = TrainSummary(appName = "lstm", logDir = "sum/hwu/")
-    val validationSummary = ValidationSummary(appName = "lstm", logDir = "sum/hwu/")
+    val trainingSummary = TrainSummary(appName = "lstmMasking", logDir = "sum/hwu/")
+    val validationSummary = ValidationSummary(appName = "lstmMasking", logDir = "sum/hwu/")
     val batchSize = numCores * 4
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
-      .setOptimMethod(new Adam(2E-3))
-      .setMaxEpoch(80)
+      .setOptimMethod(new Adam(2E-4))
+      .setMaxEpoch(20)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)
