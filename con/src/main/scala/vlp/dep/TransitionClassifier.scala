@@ -116,8 +116,9 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
   val g = udf((k: Double) => k + 1)
 
   /**
-  * Trains a classifier to predict transition given a parsing config. This is the enhanced version of [[trainC]] method. 
-  * A transition context vector is appended as an additional input feature vector. 
+  * Trains a classifier to predict transition given a parsing config. This is an enhanced version of [[trainC]] method. 
+  * A pretrained transition context vector is appended as an additional input feature vector to predict the next sentence.
+  * 
   */
   def trainD(config: ConfigTDP, graphs: List[Graph], devGraphs: List[Graph]) = {
     val af = addWeightCol(createDF(graphs))
@@ -198,7 +199,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // concat word embeddings before passing to an LSTM
     val mergeWT = Merge.merge(inputs = List(embeddingW, embeddingT), mode = "concat")
     val lstm = LSTM[Float](config.recurrentSize).setName("lstm").inputs(mergeWT)
-    // merge three branches
+    // merge three branches, including the pretrained contextualized transition vector 
     val merge = Merge.merge(inputs = List(dense1, lstm, input4), mode = "concat")
     val output = Dense[Float](labelSize, activation = "softmax").setName("output").inputs(merge)
     val model = Model[Float](Array(input1, input2, input3, input4), output)
@@ -606,7 +607,7 @@ object TransitionClassifier {
       opt[String]('m', "mode").action((x, conf) => conf.copy(mode = x)).text("running mode, either eval/train/test")
       opt[String]('p', "modelPath").action((x, conf) => conf.copy(modelPath = x)).text("model path, default is 'bin/tdp/'")
       opt[Unit]('v', "verbose").action((_, conf) => conf.copy(verbose = true)).text("verbose mode")
-      opt[String]('c', "classifier").action((x, conf) => conf.copy(classifier = x)).text("classifier, either mlr or mlp")
+      opt[String]('c', "classifier").action((x, conf) => conf.copy(classifier = x)).text("classifier")
       opt[String]('l', "language").action((x, conf) => conf.copy(language = x)).text("language, either vie or eng")
       opt[String]('h', "hiddenUnits").action((x, conf) => conf.copy(hiddenUnits = x)).text("hidden units of MLP")
       opt[Int]('f', "minFrequency").action((x, conf) => conf.copy(minFrequency = x)).text("min feature frequency")
@@ -624,7 +625,7 @@ object TransitionClassifier {
           .getOrCreate()
         val modelPath = Paths.get(config.modelPath, config.language, config.classifier).toString()
         val (trainingGraphs, developmentGraphs) = (
-          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu").filter(g => g.sentence.length >= 3), 
+          GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu").filter(g => g.sentence.length >= 3), 
           GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu").filter(g => g.sentence.length >= 3)
         )
 

@@ -80,7 +80,7 @@ object Extractor {
   def partOfSpeechStack0(config: Config): String = {
     if (config.stack.nonEmpty) {
       val s0 = config.sentence.token(config.stack.top)
-      "ts0:" + s0.partOfSpeech
+      "ts0:" + s0.universalPartOfSpeech
     } else "ts0:None"
   }
 
@@ -92,7 +92,7 @@ object Extractor {
   def partOfSpeechQueue0(config: Config): String = {
     if (config.queue.nonEmpty) {
       val q0 = config.sentence.token(config.queue.front)
-      "tq0:" + q0.partOfSpeech
+      "tq0:" + q0.universalPartOfSpeech
     } else "tq0:None"
     
   }
@@ -180,7 +180,7 @@ object Extractor {
   def partOfSpeechStack1(config: Config): String = {
     if (config.stack.size < 2) "ts1:None"; else {
       val s1 = config.sentence.token(config.stack(1))
-      "ts1:" + s1.partOfSpeech
+      "ts1:" + s1.universalPartOfSpeech
     }
   }
 
@@ -192,7 +192,7 @@ object Extractor {
   def partOfSpeechQueue1(config: Config): String = {
     if (config.queue.size < 2) "tq1:None"; else {
       val q1 = config.sentence.token(config.queue(1))
-      "tq1:" + q1.partOfSpeech
+      "tq1:" + q1.universalPartOfSpeech
     }
   }
 
@@ -219,7 +219,7 @@ object Extractor {
   def partOfSpeechStack0Queue0(config: Config): String = {
     val s0 = config.sentence.token(config.stack.top)
     val q0 = config.sentence.token(config.queue.front)
-    "ts0+tq0:" + s0.partOfSpeech + '+' + q0.partOfSpeech
+    "ts0+tq0:" + s0.universalPartOfSpeech + '+' + q0.universalPartOfSpeech
   }
 
   /**
@@ -240,9 +240,9 @@ object Extractor {
     */
   def partOfSpeechStack0Stack1(config: Config): String = {
     val s0 = config.sentence.token(config.stack.top)
-    if (config.stack.size < 2) "ts0+ts1:" + s0.partOfSpeech + "+None"; else {
+    if (config.stack.size < 2) "ts0+ts1:" + s0.universalPartOfSpeech + "+None"; else {
       val s1 = config.sentence.token(config.stack(1))
-      "ts0+ts1:" + s0.partOfSpeech + '+' + s1.partOfSpeech 
+      "ts0+ts1:" + s0.universalPartOfSpeech + '+' + s1.universalPartOfSpeech 
     }
   }
 
@@ -253,9 +253,9 @@ object Extractor {
     */
   def partOfSpeechQueue0Queue1(config: Config): String = {
     val q0 = config.sentence.token(config.queue.front)
-    if (config.queue.size < 2) "tq0+tq1:" + q0.partOfSpeech + "+None"; else {
+    if (config.queue.size < 2) "tq0+tq1:" + q0.universalPartOfSpeech + "+None"; else {
       val q1 = config.sentence.token(config.queue(1))
-      "tq0+tq1:" + q0.partOfSpeech + '+' + q1.partOfSpeech
+      "tq0+tq1:" + q0.universalPartOfSpeech + '+' + q1.universalPartOfSpeech
     }
   }
 
@@ -292,7 +292,7 @@ object Extractor {
     */
   def partOfSpeechStack0WordStack0(config: Config): String = {
     val s0 = config.sentence.token(config.stack.top)
-    "ts0+ws0:" + s0.partOfSpeech + '+' + s0.word
+    "ts0+ws0:" + s0.universalPartOfSpeech + '+' + s0.word
   }
 
   /**
@@ -302,7 +302,7 @@ object Extractor {
     */
   def partOfSpeechQueue0WordQueue0(config: Config): String = {
     val q0 = config.sentence.token(config.queue.front)
-    "tq0+wq0:" + q0.partOfSpeech + '+' + q0.word
+    "tq0+wq0:" + q0.universalPartOfSpeech + '+' + q0.word
   }
 
   /**
@@ -314,9 +314,9 @@ object Extractor {
   def partOfSpeechStack0Stack1Queue0(config: Config): String = {
     val s0 = config.sentence.token(config.stack.top)
     val q0 = config.sentence.token(config.queue.front)
-    if (config.stack.size < 2) "ts0+ts1+tq0:" + s0.partOfSpeech + "+None" + '+' + q0.partOfSpeech; else {
+    if (config.stack.size < 2) "ts0+ts1+tq0:" + s0.universalPartOfSpeech + "+None" + '+' + q0.universalPartOfSpeech; else {
       val s1 = config.sentence.token(config.stack(1))
-      "ts0+ts1+tq0:" + s0.partOfSpeech + '+' + s1.partOfSpeech + '+' + q0.partOfSpeech
+      "ts0+ts1+tq0:" + s0.universalPartOfSpeech + '+' + s1.universalPartOfSpeech + '+' + q0.universalPartOfSpeech
     }
   }
 
@@ -329,7 +329,7 @@ object Extractor {
   def partOfSpeechStack0WordQueue0(config: Config): String = {
     val s0 = config.sentence.token(config.stack.top)
     val q0 = config.sentence.token(config.queue.front)
-    "ts0+wq0:" + s0.partOfSpeech + '+' + q0.word
+    "ts0+wq0:" + s0.universalPartOfSpeech + '+' + q0.word
   }
 
   /**
@@ -341,7 +341,7 @@ object Extractor {
   def partOfSpeechQueue0WordStack0(config: Config): String = {
     val s0 = config.sentence.token(config.stack.top)
     val q0 = config.sentence.token(config.queue.front)
-    "tq0+ws0:" + q0.partOfSpeech + '+' + s0.word
+    "tq0+ws0:" + q0.universalPartOfSpeech + '+' + s0.word
   }
 
   /**
