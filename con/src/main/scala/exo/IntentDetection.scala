@@ -27,6 +27,18 @@ import com.intel.analytics.bigdl.dllib.utils.Shape
 object IntentDetection {
   private val numCores = Runtime.getRuntime.availableProcessors()
 
+  val hash = udf((tokens: Array[String], vocabSize: Int, maxSeqLen: Int) => {
+    val hs = tokens.map { token =>
+      val utf8 = UTF8String.fromString(token)
+      val rawIdx = hashUnsafeBytes2(utf8.getBaseObject, utf8.getBaseOffset, utf8.numBytes(), 43)
+      val rawMod = rawIdx % vocabSize
+      rawMod + (if (rawMod < 0) vocabSize else 0)
+    }
+    if (hs.length < maxSeqLen) hs ++ Array.fill[Int](maxSeqLen - hs.length)(0) else hs.take(maxSeqLen)
+  })
+
+  val inc = udf((v: Double) => v + 1)
+
   private def createPreprocessor(df: DataFrame) = {
     val indexer = new StringIndexer().setInputCol("category").setOutputCol("index")
     val tokenizer = new RegexTokenizer().setInputCol("text").setOutputCol("tokens").setPattern("""[\s,.:!']+""")
@@ -36,7 +48,7 @@ object IntentDetection {
 
   private def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int, labelSize: Int) = {
     val sequential = Sequential()
-    val masking = Masking(0, inputShape = Shape(maxSeqLen)).setName("masking")
+    sequential.add(Masking(0, inputShape = Shape(maxSeqLen)))
     sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen))
     sequential.add(LSTM(64))
     sequential.add(Dense(labelSize, activation = "softmax"))
@@ -53,7 +65,7 @@ object IntentDetection {
 
     val basePath = "dat/hwu/"
     val paths = Array("train", "val", "test").map(p => s"$basePath/$p.csv")
-    val train = spark.read.option("header", value = true).csv(paths.head)
+    val train = spark.read.option("header", value = true).csv(paths(0))
     val valid = spark.read.option("header", value = true).csv(paths(1))
     val preprocessor = createPreprocessor(train)
     val df = preprocessor.transform(train)
@@ -63,21 +75,9 @@ object IntentDetection {
     val maxSeqLen = 25
     val vocabSize = 8192
 
-    val hash = udf((tokens: Array[String]) => {
-      val hs = tokens.map { token =>
-        val utf8 = UTF8String.fromString(token)
-        val rawIdx = hashUnsafeBytes2(utf8.getBaseObject, utf8.getBaseOffset, utf8.numBytes(), 42)
-        val rawMod = rawIdx % vocabSize
-        rawMod + (if (rawMod < 0) vocabSize else 0)
-      }
-      if (hs.length < maxSeqLen) hs ++ Array.fill[Int](maxSeqLen - hs.length)(0) else hs.take(maxSeqLen)
-    })
-
-    val inc = udf((v: Double) => v + 1)
-
-    val ef = df.withColumn("features", hash(col("tokens"))).withColumn("label", inc(col("index")))
+    val ef = df.withColumn("features", hash(col("tokens"), lit(vocabSize), lit(maxSeqLen))).withColumn("label", inc(col("index")))
     ef.select("label", "features").show(false)
-    val efV = dfV.withColumn("features", hash(col("tokens"))).withColumn("label", inc(col("index")))
+    val efV = dfV.withColumn("features", hash(col("tokens"), lit(vocabSize), lit(maxSeqLen))).withColumn("label", inc(col("index")))
 
     val (uf, vf) = (ef, efV)
 
@@ -86,9 +86,9 @@ object IntentDetection {
 
     val criterion = ClassNLLCriterion(sizeAverage = false, logProbAsInput = false)
     val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(1))
-    val trainingSummary = TrainSummary(appName = "lstmMasking", logDir = "sum/hwu/")
-    val validationSummary = ValidationSummary(appName = "lstmMasking", logDir = "sum/hwu/")
-    val batchSize = numCores * 4
+    val trainingSummary = TrainSummary(appName = "lstm2", logDir = "sum/hwu/")
+    val validationSummary = ValidationSummary(appName = "lstm2", logDir = "sum/hwu/")
+    val batchSize = numCores * 8
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-4))

@@ -14,12 +14,12 @@ case class ConfigTDP
   classifier: String = "mlr",
   minFrequency: Int = 1,
   numFeatures: Int = 65536,
-  iterations: Int = 400,
+  iterations: Int = 20,
   batchSize: Int = 16,
   hiddenUnits: String = "", // for MLP only
   featureEmbeddingSize: Int = 100,
   wordEmbeddingSize: Int = 100,
   tagEmbeddingSize: Int = 20,
-  recurrentSize: Int = 36,
+  recurrentSize: Int = 100,
   transitionEmbeddingSize: Int = 25
 )

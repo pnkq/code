@@ -19,11 +19,12 @@ import org.apache.spark.SparkContext
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.nn.TimeDistributedMaskCriterion
 import vlp.dep.TimeDistributedTop1Accuracy
+import com.intel.analytics.bigdl.dllib.keras.layers.Bidirectional
 
 /**
  * (C) phuonglh@gmail.com
  * 
- * An LSTM-based implementation of intent classifier on the HWU dataset.
+ * An LSTM-based implementation of a part-of-speech tagger on a UD English treebank.
  *
  */
 object Tagger {
@@ -49,10 +50,10 @@ object Tagger {
 
   private def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int, labelSize: Int) = {
     val sequential = Sequential()
-    // val masking = Masking(0, inputShape = Shape(maxSeqLen)).setName("masking")
-    sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen))
-    sequential.add(LSTM(64, returnSequences = true))
-    sequential.add(Dense(labelSize, activation = "softmax"))
+    sequential.add(Masking(0, inputShape = Shape(maxSeqLen)).setName("masking"))
+    sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen).setName("embedding"))
+    sequential.add(Bidirectional(LSTM(64, returnSequences = true).setName("lstm")).setName("biLSTM"))
+    sequential.add(Dense(labelSize, activation = "softmax").setName("softmax"))
   }
 
   def main(args: Array[String]): Unit = {
@@ -65,19 +66,19 @@ object Tagger {
     spark.sparkContext.setLogLevel("WARN")
 
     val basePath = "dat/dep/UD_English-EWT/en_ewt-ud-"
-    val paths = Array("dev", "dev", "test").map(p => s"$basePath$p.jsonl")
+    val paths = Array("train", "dev", "test").map(p => s"$basePath$p.jsonl")
     val train = spark.read.json(paths(0))
     val valid = spark.read.json(paths(1))
-    valid.show(5, false)
+    valid.select("words", "tags").show(5, false)
 
-    val vocabSize = 8192
+    val vocabSize = 8192*2
     val maxSeqLen = 30
 
     val uf = train.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen))).withColumn("label", index(col("tags"), lit(30)))
     val vf = valid.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen))).withColumn("label", index(col("tags"), lit(30)))
-    vf.show(false)
+    vf.select("features", "label").show(5, false)
 
-    val model = createModel(maxSeqLen, vocabSize, 100, 64)
+    val model = createModel(maxSeqLen, vocabSize, 100, tags.size)
     model.summary()
 
     val criterion = TimeDistributedMaskCriterion(
@@ -85,9 +86,9 @@ object Tagger {
       paddingValue = -1
     )
     val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(maxSeqLen))
-    val trainingSummary = TrainSummary(appName = "lstm", logDir = "sum/tag/")
-    val validationSummary = ValidationSummary(appName = "lstm", logDir = "sum/tag/")
-    val batchSize = numCores * 4
+    val trainingSummary = TrainSummary(appName = "lstm2", logDir = "sum/tag/")
+    val validationSummary = ValidationSummary(appName = "lstm2", logDir = "sum/tag/")
+    val batchSize = numCores * 8
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-4))

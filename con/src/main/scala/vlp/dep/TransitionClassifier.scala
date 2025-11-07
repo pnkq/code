@@ -154,7 +154,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // set the maximum sequence of 10 (empirically found!)
     val maxSeqLen = 10
     val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String], tags: Seq[String]) => {
-      val xs = stack :+ queue.head
+      val xs = queue.head +: stack
       val is = xs.map(x => vocab.getOrElse(words(x.toInt), 0))
       val js = xs.map(x => vocabT.getOrElse(tags(x.toInt), 0))
       val seqW = if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
@@ -221,11 +221,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val trainingSummary = TrainSummary(appName = "rnnD", logDir = "sum/tdp/")
     val validationSummary = ValidationSummary(appName = "rnnD", logDir = "sum/tdp/")
     val numCores = Runtime.getRuntime.availableProcessors()
-    val batchSize = numCores * 8
+    val batchSize = numCores * 16
     estimator.setLabelCol("y").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
-      .setMaxEpoch(40)
+      .setMaxEpoch(config.iterations)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
@@ -277,7 +277,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // set the maximum sequence of 10 (empirically found!)
     val maxSeqLen = 10
     val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String], tags: Seq[String]) => {
-      val xs = stack :+ queue.head
+      val xs = queue.head +: stack
       val is = xs.map(x => vocab.getOrElse(words(x.toInt), 0))
       val js = xs.map(x => vocabT.getOrElse(tags(x.toInt), 0))
       val seqW = if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
@@ -343,11 +343,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val trainingSummary = TrainSummary(appName = "rnnC", logDir = "sum/tdp/")
     val validationSummary = ValidationSummary(appName = "rnnC", logDir = "sum/tdp/")
     val numCores = Runtime.getRuntime.availableProcessors()
-    val batchSize = numCores * 8
+    val batchSize = numCores * 16
     estimator.setLabelCol("y").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
-      .setMaxEpoch(40)
+      .setMaxEpoch(config.iterations)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
@@ -393,7 +393,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // set the maximum sequence of 10 (empirically found!)
     val maxSeqLen = 10
     val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String]) => {
-      val xs = stack :+ queue.head
+      val xs = queue.head +: stack
       val is = xs.map(x => vocab.getOrElse(words(x.toInt), 0))
       if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
     })
@@ -451,11 +451,11 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     val trainingSummary = TrainSummary(appName = "rnnB", logDir = "sum/tdp/")
     val validationSummary = ValidationSummary(appName = "rnnB", logDir = "sum/tdp/")
     val numCores = Runtime.getRuntime.availableProcessors()
-    val batchSize = numCores * 8
+    val batchSize = numCores * 16
     estimator.setLabelCol("y").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
-      .setMaxEpoch(40)
+      .setMaxEpoch(config.iterations)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vfB, Array(new Top1Accuracy[Float]()), batchSize)
@@ -493,7 +493,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     // set the maximum sequence of 10 (empirically found!)
     val maxSeqLen = 10
     val f = udf((stack: Seq[String], queue: Seq[String], words: Seq[String]) => {
-      val xs = stack :+ queue.head
+      val xs = queue.head +: stack
       val is = xs.map(x => vocab.getOrElse(words(x.toInt), 0))
       if (is.length < maxSeqLen) Seq.fill(maxSeqLen-is.length)(-1) ++ is else is.take(maxSeqLen)
     })
@@ -533,7 +533,7 @@ class TransitionClassifier(spark: SparkSession, config: ConfigTDP) {
     estimator.setLabelCol("y").setFeaturesCol("seq")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(1E-4))
-      .setMaxEpoch(40)
+      .setMaxEpoch(config.iterations)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)

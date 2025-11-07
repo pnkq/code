@@ -20,7 +20,7 @@ case class T(words: Seq[String], transitions: Seq[String])
   */
 object OracleApp {
   
-  def createSentence: Sentence = {
+  def createSentence1: Sentence = {
     Sentence(ListBuffer(
       Token("ROOT", mutable.Map(Label.Id -> "0", Label.Head -> "-1", Label.DependencyLabel -> "NA", Label.UniversalPartOfSpeech -> "ROOT")),
       Token("Economic", mutable.Map(Label.Id -> "1", Label.Head -> "2", Label.DependencyLabel -> "nmod", Label.UniversalPartOfSpeech -> "ADJ")),
@@ -35,8 +35,24 @@ object OracleApp {
     ))
   }
 
+  def createSentence2: Sentence = {
+    Sentence(ListBuffer(
+      Token("ROOT", mutable.Map(Label.Id -> "0", Label.Head -> "-1", Label.DependencyLabel -> "NA", Label.UniversalPartOfSpeech -> "ROOT")),
+      Token("The", mutable.Map(Label.Id -> "1", Label.Head -> "2", Label.DependencyLabel -> "det", Label.UniversalPartOfSpeech -> "DET")),
+      Token("case", mutable.Map(Label.Id -> "2", Label.Head -> "5", Label.DependencyLabel -> "subj", Label.UniversalPartOfSpeech -> "NOUN")),
+      Token("against", mutable.Map(Label.Id -> "3", Label.Head -> "4", Label.DependencyLabel -> "case", Label.UniversalPartOfSpeech -> "ADP")),
+      Token("Iran", mutable.Map(Label.Id -> "4", Label.Head -> "2", Label.DependencyLabel -> "nmod", Label.UniversalPartOfSpeech -> "PROPN")),
+      Token("has", mutable.Map(Label.Id -> "5", Label.Head -> "0", Label.DependencyLabel -> "root", Label.UniversalPartOfSpeech -> "VERB")),
+      Token("a", mutable.Map(Label.Id -> "6", Label.Head -> "7", Label.DependencyLabel -> "det", Label.UniversalPartOfSpeech -> "DET")),
+      Token("feeling", mutable.Map(Label.Id -> "7", Label.Head -> "5", Label.DependencyLabel -> "obj", Label.UniversalPartOfSpeech -> "NOUN")),
+      Token("of", mutable.Map(Label.Id -> "8", Label.Head -> "10", Label.DependencyLabel -> "case", Label.UniversalPartOfSpeech -> "ADP")),
+      Token("Deja", mutable.Map(Label.Id -> "9", Label.Head -> "10", Label.DependencyLabel -> "compound", Label.UniversalPartOfSpeech -> "X")),
+      Token("vu", mutable.Map(Label.Id -> "10", Label.Head -> "7", Label.DependencyLabel -> "nmod:of", Label.UniversalPartOfSpeech -> "X"))
+    ))
+  }
+
   def featurize: Unit = {
-    val sentence = createSentence
+    val sentence = createSentence1
     println(sentence)
 
     val stack = new mutable.Stack[String]()
@@ -73,17 +89,17 @@ object OracleApp {
     val oracle = new OracleAS(new FeatureExtractor(false, false))
 
     // test 1
-    // val graph = Graph(createSentence)
-    // println(graph)
-    // oracle.decode(graph).foreach(println)
-    // println
+    val graph = Graph(createSentence2)
+    println(graph)
+    oracle.decode(graph).foreach(println)
+    println
 
     // // test 2
-    val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
-    println(graphs.last)
-    // decode the last graph (as shown in the end of this file)
-    oracle.decode(graphs.last).foreach(println)
-    println
+    // val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
+    // println(graphs.last)
+    // // decode the last graph (as shown in the end of this file)
+    // oracle.decode(graphs.last).foreach(println)
+    // println
 
     // run("dat/dep/UD_English-EWT/en_ewt-ud-train.conllu", oracle, "dat/dep/en-as-train.jsonl")
     // run("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu", oracle, "dat/dep/en-as-dev.jsonl")
