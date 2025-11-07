@@ -1,4 +1,4 @@
-package fse
+package exo
 
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.classification.{LogisticRegression, MultilayerPerceptronClassifier}

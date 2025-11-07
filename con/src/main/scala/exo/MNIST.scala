@@ -1,4 +1,4 @@
-package fse
+package exo
 
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.classification.MultilayerPerceptronClassifier

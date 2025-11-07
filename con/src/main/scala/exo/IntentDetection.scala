@@ -1,4 +1,4 @@
-package fse
+package exo
 
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.feature.{RegexTokenizer, StringIndexer}
@@ -20,9 +20,11 @@ import com.intel.analytics.bigdl.dllib.utils.Shape
 
 /**
  * (C) phuonglh@gmail.com
+ * 
+ * An LSTM-based implementation of intent classifier on the HWU dataset.
  *
  */
-object IntentDetectionLSTM {
+object IntentDetection {
   private val numCores = Runtime.getRuntime.availableProcessors()
 
   private def createPreprocessor(df: DataFrame) = {
@@ -36,7 +38,6 @@ object IntentDetectionLSTM {
     val sequential = Sequential()
     val masking = Masking(0, inputShape = Shape(maxSeqLen)).setName("masking")
     sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen))
-//    sequential.add(LSTM(64, returnSequences = true))
     sequential.add(LSTM(64))
     sequential.add(Dense(labelSize, activation = "softmax"))
   }
@@ -60,7 +61,7 @@ object IntentDetectionLSTM {
     df.show(false)
 
     val maxSeqLen = 25
-    val vocabSize = 4096
+    val vocabSize = 8192
 
     val hash = udf((tokens: Array[String]) => {
       val hs = tokens.map { token =>
@@ -91,7 +92,7 @@ object IntentDetectionLSTM {
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-4))
-      .setMaxEpoch(20)
+      .setMaxEpoch(40)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Top1Accuracy[Float]()), batchSize)

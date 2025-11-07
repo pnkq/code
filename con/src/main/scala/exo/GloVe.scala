@@ -1,4 +1,4 @@
-package fse
+package exo
 
 object GloVe {
   def main(args: Array[String]): Unit = {

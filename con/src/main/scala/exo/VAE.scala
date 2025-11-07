@@ -1,4 +1,4 @@
-package fse
+package exo
 
 import com.intel.analytics.bigdl.dllib.feature.dataset.Sample
 import com.intel.analytics.bigdl.dllib.keras.Model
@@ -109,7 +109,7 @@ object VAE {
     spark.sparkContext.setLogLevel("WARN")
 
     val train = spark.read.parquet("dat/mnist/train-00000-of-00001.parquet")
-      .withColumn("features", fse.MNIST.decode(col("image.bytes")))
+      .withColumn("features", exo.MNIST.decode(col("image.bytes")))
     train.printSchema()
     train.select("label", "features").show(5, truncate = false)
     // export the first image
