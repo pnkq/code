@@ -79,7 +79,7 @@ object Tagger {
       .withColumn("label", index(col("tags"), lit(30)))
     vf.select("features", "label").show(5, false)
 
-    val model = createModel(maxSeqLen, vocabSize, 100, map.size)
+    val model = createModel(maxSeqLen, vocabSize, 50, map.size)
     model.summary()
 
     val criterion = TimeDistributedMaskCriterion(

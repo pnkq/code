@@ -16,12 +16,16 @@ import com.intel.analytics.bigdl.dllib.visualization.ValidationSummary
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
 import com.intel.analytics.bigdl.dllib.optim.Trigger
 import vlp.dep.TimeDistributedTop1Accuracy
-
+import com.intel.analytics.bigdl.dllib.nnframes.NNModel
+import com.intel.analytics.bigdl.dllib.keras.models.KerasNet
+import vlp.ner.ArgMaxLayer
 
 
 /**
   * (C) phuonglh@gmail.com
   * 
+  * Starter code for NER, using words as features for a bidirectional LSTM model with BigDL.
+  * Course: NLP & DL at VNU-HUS.
 */
 
 object Label extends Enumeration {
@@ -93,7 +97,7 @@ object NER {
     sentences.toList
   }
 
-  def fit(model: Sequential[Float], maxSeqLen: Int, uf: DataFrame, vf: DataFrame) = {
+  def fit(model: Sequential[Float], maxSeqLen: Int, uf: DataFrame, vf: DataFrame): NNModel[Float] = {
     val criterion = TimeDistributedMaskCriterion(
       ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), 
       paddingValue = -1
@@ -105,12 +109,25 @@ object NER {
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-4))
-      .setMaxEpoch(20)
+      .setMaxEpoch(25)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
-    estimator.fit(uf)
-    model.saveModel("bin/ner.bigdl", overWrite = true)
+    val nn = estimator.fit(uf)
+    // model.saveModel("bin/ner.bigdl", overWrite = true)
+    nn.save("bin/ner")
+    return nn
+  }
+
+  def transform(nn: NNModel[_], df: DataFrame) = {
+    val sequential = nn.getModel().asInstanceOf[Sequential[Float]]
+    // bigdl produces 3-d output results (including batch dimension), we need to convert it to 2-d results.
+    sequential.add(ArgMaxLayer())
+    sequential.summary()
+    // wrap to a Spark model and run prediction
+    val model = NNModel(sequential)
+    val output = model.transform(df)
+    output.select("words", "entities", "prediction").show(10, false)
   }
 
 
@@ -144,10 +161,12 @@ object NER {
       .withColumn("label", index(col("entities"), lit(30)))
     vf.select("features", "label").show(5, false)
 
-    val model = Tagger.createModel(maxSeqLen, vocabSize, 100, map.size)
+    val model = Tagger.createModel(maxSeqLen, vocabSize, 50, map.size)
     model.summary()
 
-    fit(model, maxSeqLen, uf, vf)
+    val nn = fit(model, maxSeqLen, uf, vf)
+    // val nn: NNModel[_] = NNModel.load("bin/ner")
+    // transform(nn, vf)
 
     spark.stop()
   }
