@@ -4,7 +4,20 @@ import scala.collection.mutable.{ListBuffer, Map}
 import scala.io.Source
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{SparkSession, DataFrame}
+import org.apache.spark.sql.functions._
+import com.intel.analytics.bigdl.dllib.nn.TimeDistributedMaskCriterion
+import com.intel.analytics.bigdl.dllib.nn.ClassNLLCriterion
+import com.intel.analytics.bigdl.numeric.NumericFloat
+import com.intel.analytics.bigdl.dllib.keras.Sequential
+import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
+import com.intel.analytics.bigdl.dllib.visualization.TrainSummary
+import com.intel.analytics.bigdl.dllib.visualization.ValidationSummary
+import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
+import com.intel.analytics.bigdl.dllib.optim.Trigger
+import vlp.dep.TimeDistributedTop1Accuracy
+
+
 
 /**
   * (C) phuonglh@gmail.com
@@ -47,6 +60,12 @@ case class Sentence(tokens: Seq[Token])
 case class Row(words: Seq[String], tags: Seq[String], chunks: Seq[String], entities: Seq[String])
 
 object NER {
+  val map = Seq("O", "B-PER", "I-PER", "B-LOC", "I-LOC", "B-ORG", "I-ORG", "B-MISC", "I-MISC").zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+  
+  val index = udf((labels: Array[String], maxSeqLen: Int) => {
+    val ys = labels.map(token => map(token))
+    if (ys.length < maxSeqLen) ys ++ Array.fill[Int](maxSeqLen - ys.length)(-1) else ys.take(maxSeqLen)
+  })
 
   /**
     * Reads a NER corpus in CoNLL-2003 format.
@@ -74,7 +93,26 @@ object NER {
     sentences.toList
   }
 
-  val labelMap = Seq("O", "B-PER", "I-PER", "B-LOC", "I-LOC", "B-ORG", "I-ORG", "B-MISC", "I-MISC").zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+  def fit(model: Sequential[Float], maxSeqLen: Int, uf: DataFrame, vf: DataFrame) = {
+    val criterion = TimeDistributedMaskCriterion(
+      ClassNLLCriterion(sizeAverage = false, logProbAsInput = false, paddingValue = -1), 
+      paddingValue = -1
+    )
+    val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(maxSeqLen))
+    val trainingSummary = TrainSummary(appName = "lstm", logDir = "sum/ner/")
+    val validationSummary = ValidationSummary(appName = "lstm", logDir = "sum/ner/")
+    val batchSize = Runtime.getRuntime.availableProcessors() * 8
+    estimator.setLabelCol("label").setFeaturesCol("features")
+      .setBatchSize(batchSize)
+      .setOptimMethod(new Adam(2E-4))
+      .setMaxEpoch(20)
+      .setTrainSummary(trainingSummary)
+      .setValidationSummary(validationSummary)
+      .setValidation(Trigger.everyEpoch, vf, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
+    estimator.fit(uf)
+    model.saveModel("bin/ner.bigdl", overWrite = true)
+  }
+
 
   def main(args: Array[String]): Unit = {
     val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[*]")
@@ -86,16 +124,30 @@ object NER {
     spark.sparkContext.setLogLevel("WARN")
     import spark.implicits._
 
-    val splits = Seq("testa", "testa", "testb").map(s => readCoNLL(s"dat/ner/eng.$s"))
-    val Seq(train, dev, test) = splits.map { split =>
+    val splits = Seq("train", "testa", "testb").map(s => readCoNLL(s"dat/ner/eng.$s"))
+    val Seq(train, valid, test) = splits.map { split =>
       val rows = split.map { sentence =>
         Row(sentence.tokens.map(_.word), sentence.tokens.map(_.partOfSpeech), sentence.tokens.map(_.chunk), sentence.tokens.map(_.entity))
       }
       spark.createDataFrame(rows.filter(_.words.size >= 3))
     }
-    dev.show(5)
-    dev.printSchema()
-    println(s"#(train) = ${train.count()}, #(dev) = ${dev.count()}, #(test) = ${test.count()}.")
+    valid.show(5)
+    valid.printSchema()
+    println(s"#(train) = ${train.count()}, #(valid) = ${valid.count()}, #(test) = ${test.count()}.")
+
+    val vocabSize = 8192*2
+    val maxSeqLen = 30
+
+    val uf = train.withColumn("features", Tagger.hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
+      .withColumn("label", index(col("entities"), lit(30)))
+    val vf = valid.withColumn("features", Tagger.hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
+      .withColumn("label", index(col("entities"), lit(30)))
+    vf.select("features", "label").show(5, false)
+
+    val model = Tagger.createModel(maxSeqLen, vocabSize, 100, map.size)
+    model.summary()
+
+    fit(model, maxSeqLen, uf, vf)
 
     spark.stop()
   }

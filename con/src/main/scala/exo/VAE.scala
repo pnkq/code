@@ -142,9 +142,9 @@ object VAE {
       model.compile(optimizer = new Adam(1E-3), loss = criterion)
       model.setTensorBoard("./sum", "vae")
       model.fit(x = vf, batchSize = batchSize, nbEpoch = 5)
-      model.saveModel("bin/vae.bigl", overWrite = true)
-      encoder.saveModel("bin/vae-enc.bigl", overWrite = true)
-      decoder.saveModel("bin/vae-dec.bigl", overWrite = true)
+      model.saveModel("bin/vae.bigdl", overWrite = true)
+      encoder.saveModel("bin/vae-enc.bigdl", overWrite = true)
+      decoder.saveModel("bin/vae-dec.bigdl", overWrite = true)
       (encoder, decoder)
     }
 
