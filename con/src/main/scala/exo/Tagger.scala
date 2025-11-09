@@ -30,6 +30,9 @@ import com.intel.analytics.bigdl.dllib.keras.layers.Bidirectional
 object Tagger {
   private val numCores = Runtime.getRuntime.availableProcessors()
 
+  val tags = Seq("ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM", "PART", 
+    "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X").zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
+
   val hash = udf((tokens: Array[String], vocabSize: Int, maxSeqLen: Int) => {
     val hs = tokens.map { token =>
       val utf8 = UTF8String.fromString(token)
@@ -39,9 +42,6 @@ object Tagger {
     }
     if (hs.length < maxSeqLen) hs ++ Array.fill[Int](maxSeqLen - hs.length)(0) else hs.take(maxSeqLen)
   })
-
-  val tags = Seq("ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM", "PART", 
-    "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X").zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
 
   val index = udf((labels: Array[String], maxSeqLen: Int) => {
     val ys = labels.map(token => tags(token))
@@ -57,7 +57,7 @@ object Tagger {
   }
 
   def main(args: Array[String]): Unit = {
-    val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[4]")
+    val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[*]")
       .set("spark.executor.memory", "4g").set("spark.driver.memory", "8g")
     val sc = new SparkContext(conf)
     Engine.init
