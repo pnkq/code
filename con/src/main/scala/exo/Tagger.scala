@@ -28,7 +28,9 @@ import com.intel.analytics.bigdl.dllib.keras.layers.Bidirectional
  *
  */
 object Tagger {
-  private val numCores = Runtime.getRuntime.availableProcessors()
+
+  val map = Seq("ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM", "PART", 
+    "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X").zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
 
   val hash = udf((tokens: Array[String], vocabSize: Int, maxSeqLen: Int) => {
     val hs = tokens.map { token =>
@@ -40,15 +42,12 @@ object Tagger {
     if (hs.length < maxSeqLen) hs ++ Array.fill[Int](maxSeqLen - hs.length)(0) else hs.take(maxSeqLen)
   })
 
-  val tags = Seq("ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM", "PART", 
-    "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X").zipWithIndex.map(p => (p._1, p._2 + 1)).toMap
-
   val index = udf((labels: Array[String], maxSeqLen: Int) => {
-    val ys = labels.map(token => tags(token))
+    val ys = labels.map(token => map(token))
     if (ys.length < maxSeqLen) ys ++ Array.fill[Int](maxSeqLen - ys.length)(-1) else ys.take(maxSeqLen)
   })
 
-  private def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int, labelSize: Int) = {
+  def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int, labelSize: Int) = {
     val sequential = Sequential()
     sequential.add(Masking(0, inputShape = Shape(maxSeqLen)).setName("masking"))
     sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen).setName("embedding"))
@@ -57,7 +56,7 @@ object Tagger {
   }
 
   def main(args: Array[String]): Unit = {
-    val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[4]")
+    val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[*]")
       .set("spark.executor.memory", "4g").set("spark.driver.memory", "8g")
     val sc = new SparkContext(conf)
     Engine.init
@@ -74,11 +73,13 @@ object Tagger {
     val vocabSize = 8192*2
     val maxSeqLen = 30
 
-    val uf = train.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen))).withColumn("label", index(col("tags"), lit(30)))
-    val vf = valid.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen))).withColumn("label", index(col("tags"), lit(30)))
+    val uf = train.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
+      .withColumn("label", index(col("tags"), lit(30)))
+    val vf = valid.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
+      .withColumn("label", index(col("tags"), lit(30)))
     vf.select("features", "label").show(5, false)
 
-    val model = createModel(maxSeqLen, vocabSize, 100, tags.size)
+    val model = createModel(maxSeqLen, vocabSize, 50, map.size)
     model.summary()
 
     val criterion = TimeDistributedMaskCriterion(
@@ -88,7 +89,7 @@ object Tagger {
     val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(maxSeqLen))
     val trainingSummary = TrainSummary(appName = "lstm2", logDir = "sum/tag/")
     val validationSummary = ValidationSummary(appName = "lstm2", logDir = "sum/tag/")
-    val batchSize = numCores * 8
+    val batchSize = Runtime.getRuntime.availableProcessors() * 8
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-4))
