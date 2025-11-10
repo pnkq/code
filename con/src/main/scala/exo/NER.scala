@@ -156,9 +156,9 @@ object NER {
     val maxSeqLen = 30
 
     val uf = train.withColumn("features", Tagger.hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
-      .withColumn("label", index(col("entities"), lit(30)))
+      .withColumn("label", index(col("entities"), lit(maxSeqLen)))
     val vf = valid.withColumn("features", Tagger.hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
-      .withColumn("label", index(col("entities"), lit(30)))
+      .withColumn("label", index(col("entities"), lit(maxSeqLen)))
     vf.select("features", "label").show(5, false)
 
     val model = Tagger.createModel(maxSeqLen, vocabSize, 50, map.size)

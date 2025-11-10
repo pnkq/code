@@ -50,7 +50,7 @@ object Tagger {
   def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int, labelSize: Int) = {
     val sequential = Sequential()
     sequential.add(Masking(0, inputShape = Shape(maxSeqLen)).setName("masking"))
-    sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen).setName("embedding"))
+    sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize).setName("embedding"))
     sequential.add(Bidirectional(LSTM(64, returnSequences = true).setName("lstm")).setName("biLSTM"))
     sequential.add(Dense(labelSize, activation = "softmax").setName("softmax"))
   }
@@ -74,9 +74,9 @@ object Tagger {
     val maxSeqLen = 30
 
     val uf = train.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
-      .withColumn("label", index(col("tags"), lit(30)))
+      .withColumn("label", index(col("tags"), lit(maxSeqLen)))
     val vf = valid.withColumn("features", hash(col("words"), lit(vocabSize), lit(maxSeqLen)))
-      .withColumn("label", index(col("tags"), lit(30)))
+      .withColumn("label", index(col("tags"), lit(maxSeqLen)))
     vf.select("features", "label").show(5, false)
 
     val model = createModel(maxSeqLen, vocabSize, 50, map.size)
@@ -87,8 +87,8 @@ object Tagger {
       paddingValue = -1
     )
     val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(maxSeqLen))
-    val trainingSummary = TrainSummary(appName = "lstm2", logDir = "sum/tag/")
-    val validationSummary = ValidationSummary(appName = "lstm2", logDir = "sum/tag/")
+    val trainingSummary = TrainSummary(appName = "lstm", logDir = "sum/tag/")
+    val validationSummary = ValidationSummary(appName = "lstm", logDir = "sum/tag/")
     val batchSize = Runtime.getRuntime.availableProcessors() * 8
     estimator.setLabelCol("label").setFeaturesCol("features")
       .setBatchSize(batchSize)
