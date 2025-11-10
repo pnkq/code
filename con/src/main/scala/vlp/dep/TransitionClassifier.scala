@@ -663,6 +663,10 @@ object TransitionClassifier {
             }
           }
           case "test" => 
+          case "precompute" => 
+            // precompute transition embeddings using a pretrained BERT model 
+            val bert = Models.loadModel[Float]("bin/asp/eng.bigdl")
+            bert.summary()          
         }
         spark.stop()
       case None =>

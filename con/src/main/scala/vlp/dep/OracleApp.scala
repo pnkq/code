@@ -86,8 +86,8 @@ object OracleApp {
     // test 0
     // featurize
 
-    val oracle = new OracleAS(new FeatureExtractor(false, false))
-    // val oracle = new OracleAE(new FeatureExtractor(false, false))
+    // val oracle = new OracleAS(new FeatureExtractor(false, false))
+    val oracle = new OracleAE(new FeatureExtractor(false, false))
 
     // test 1
     val graph = Graph(createSentence2)
@@ -106,10 +106,12 @@ object OracleApp {
     // run("dat/dep/UD_English-EWT/en_ewt-ud-dev.conllu", oracle, "dat/dep/en-as-dev.jsonl")
     // run("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu", oracle, "dat/dep/en-as-test.jsonl")
 
+    // create data for transition pretrainer
     // val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
     // val dfs = treebanks.map { name =>
     //   val path = s"dat/dep/UD_English/$name"
-    //   run(s"$path.conllu", oracle, s"$path.jsonl")
+    //   println(name)
+    //   run(s"$path.conllu", oracle, s"$path-${oracle.name}.jsonl")
     // }
 
   }

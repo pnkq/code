@@ -25,6 +25,7 @@ import com.intel.analytics.bigdl.dllib.tensor.TensorNumericMath.TensorNumeric
 
 case class PretrainerConfig(
   language: String = "eng",
+  system: String = "as", // ae
   maxSeqLen: Int = 50,
   embeddingSize: Int = 20,
   layers: Int = 2,
@@ -104,7 +105,7 @@ object TransitionPretrainer {
       .setValidation(Trigger.everyEpoch, valid, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
       .setEndWhen(Trigger.maxEpoch(config.maxIters))
     estimator.fit(train)
-    model.saveModel(s"bin/asp/${config.language}.bigdl", overWrite = true)
+    model.saveModel(s"bin/asp/${config.language}.bigdl.osx", overWrite = true)
   }
 
   def preprocess(df: DataFrame, dfV: DataFrame, config: PretrainerConfig) = {
@@ -176,7 +177,7 @@ object TransitionPretrainer {
     val config = PretrainerConfig()
     val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
     val dfs = treebanks.map { name =>
-      val path = s"dat/dep/UD_English/$name.jsonl"
+      val path = s"dat/dep/UD_English/$name-${config.system}.jsonl"
       spark.read.json(path).filter(size(col("transitions")) >= 3)
     }
     val all = dfs.reduce((u, v) => u.union(v))

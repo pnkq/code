@@ -58,6 +58,7 @@ abstract class Oracle(val featureExtractor: FeatureExtractor) {
     graphs.par.flatMap(graph => decode(graph)).toList
   }
 
+  def name: String
 }
 
 /**
@@ -72,6 +73,7 @@ abstract class Oracle(val featureExtractor: FeatureExtractor) {
   */
 class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtractor) {
   
+  def name: String = "ae"
   /**
     * Derives a transition sequence from this dependency graph. This 
     * is used to reconstruct the parsing process of a sentence.
@@ -127,7 +129,7 @@ class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
   * @param featureExtractor
   */
 class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtractor) {
-
+  def name: String = "as"
   override def decode(graph: Graph): List[Context] = {
     // create the initial config
     val stack = mutable.Stack[String]()
