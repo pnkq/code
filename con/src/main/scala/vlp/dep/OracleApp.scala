@@ -24,7 +24,7 @@ object OracleApp {
     Sentence(ListBuffer(
       Token("ROOT", mutable.Map(Label.Id -> "0", Label.Head -> "-1", Label.DependencyLabel -> "NA", Label.UniversalPartOfSpeech -> "ROOT")),
       Token("Economic", mutable.Map(Label.Id -> "1", Label.Head -> "2", Label.DependencyLabel -> "nmod", Label.UniversalPartOfSpeech -> "ADJ")),
-      Token("news", mutable.Map(Label.Id -> "2", Label.Head -> "3", Label.DependencyLabel -> "subj", Label.UniversalPartOfSpeech -> "NN")),
+      Token("news", mutable.Map(Label.Id -> "2", Label.Head -> "3", Label.DependencyLabel -> "nsubj", Label.UniversalPartOfSpeech -> "NN")),
       Token("had", mutable.Map(Label.Id -> "3", Label.Head -> "0", Label.DependencyLabel -> "root", Label.UniversalPartOfSpeech -> "VERB")),
       Token("little", mutable.Map(Label.Id -> "4", Label.Head -> "5", Label.DependencyLabel -> "nmod", Label.UniversalPartOfSpeech -> "ADJ")),
       Token("effect", mutable.Map(Label.Id -> "5", Label.Head -> "3", Label.DependencyLabel -> "nobj", Label.UniversalPartOfSpeech -> "NN")),
@@ -39,7 +39,7 @@ object OracleApp {
     Sentence(ListBuffer(
       Token("ROOT", mutable.Map(Label.Id -> "0", Label.Head -> "-1", Label.DependencyLabel -> "NA", Label.UniversalPartOfSpeech -> "ROOT")),
       Token("The", mutable.Map(Label.Id -> "1", Label.Head -> "2", Label.DependencyLabel -> "det", Label.UniversalPartOfSpeech -> "DET")),
-      Token("case", mutable.Map(Label.Id -> "2", Label.Head -> "5", Label.DependencyLabel -> "subj", Label.UniversalPartOfSpeech -> "NOUN")),
+      Token("case", mutable.Map(Label.Id -> "2", Label.Head -> "5", Label.DependencyLabel -> "nsubj", Label.UniversalPartOfSpeech -> "NOUN")),
       Token("against", mutable.Map(Label.Id -> "3", Label.Head -> "4", Label.DependencyLabel -> "case", Label.UniversalPartOfSpeech -> "ADP")),
       Token("Iran", mutable.Map(Label.Id -> "4", Label.Head -> "2", Label.DependencyLabel -> "nmod", Label.UniversalPartOfSpeech -> "PROPN")),
       Token("has", mutable.Map(Label.Id -> "5", Label.Head -> "0", Label.DependencyLabel -> "root", Label.UniversalPartOfSpeech -> "VERB")),
@@ -87,6 +87,7 @@ object OracleApp {
     // featurize
 
     val oracle = new OracleAS(new FeatureExtractor(false, false))
+    // val oracle = new OracleAE(new FeatureExtractor(false, false))
 
     // test 1
     val graph = Graph(createSentence2)

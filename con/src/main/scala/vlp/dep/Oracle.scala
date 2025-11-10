@@ -88,13 +88,16 @@ class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
     val arcs = ListBuffer[Dependency]()
     var config: Config = new ConfigAE(graph.sentence, stack, queue, arcs)
     val contexts = ListBuffer[Context]()
+    val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
+    val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
+    var transition = "SH"
     while (!config.isFinal) {
       // extract features
       val features = featureExtractor.extract(config)
+      transition = "SH"      
       // extract transition
       val u = stack.top
       val v = queue.front
-      var transition = "SH"
       if (graph.hasArc(v, u)) {
         transition = "LA-" + graph.sentence.token(u).dependencyLabel
       } else if (graph.hasArc(u, v)) {
@@ -104,14 +107,15 @@ class OracleAE(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
         if (config.isReducible(graph))
           transition = "RE"
       }
-      val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
-      val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
       val pastTransitions = contexts.map(_.transition).toSeq
       // add a parsing context      
       contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), 
         config.queue.clone(), config.arcs.clone(), words, tags, pastTransitions)
       config = config.next(transition)
     }
+    // add the final config 
+    contexts += Context(counter.getAndIncrement(), featureExtractor.extract(config), "STOP", config.stack.clone(), 
+      config.queue.clone(), config.arcs.clone(), words, tags, contexts.map(_.transition).toSeq)
     contexts.toList
   }
 }
@@ -133,10 +137,13 @@ class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
     val arcs = ListBuffer[Dependency]()
     var config: Config = new ConfigAS(graph.sentence, stack, queue, arcs)
     val contexts = ListBuffer[Context]()
+    val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
+    val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
+    var transition = "SH"
     while (!config.isFinal) {
       // extract features
       val features = featureExtractor.extract(config)
-      var transition = "SH" // default transition
+      transition = "SH"
       if (stack.nonEmpty && queue.nonEmpty) {
         // find the correct transition
         val (i, j) = (stack.top, queue.front)
@@ -151,14 +158,15 @@ class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
             transition = "RA-" + graph.sentence.token(j).dependencyLabel
         }
       }
-      val words = graph.sentence.tokens.map(_.word.toLowerCase()).toSeq
-      val tags = graph.sentence.tokens.map(_.universalPartOfSpeech).toSeq
       val pastTransitions = contexts.map(_.transition).toSeq
       // add a parsing context
       contexts += Context(counter.getAndIncrement(), features, transition, config.stack.clone(), 
         config.queue.clone(), config.arcs.clone(), words, tags, pastTransitions)
       config = config.next(transition)
     }
+    // add the final config 
+    contexts += Context(counter.getAndIncrement(), featureExtractor.extract(config), "STOP", config.stack.clone(), 
+      config.queue.clone(), config.arcs.clone(), words, tags, contexts.map(_.transition).toSeq)
     contexts.toList
   }
 }
