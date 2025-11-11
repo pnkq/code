@@ -32,7 +32,7 @@ case class PretrainerConfig(
   heads: Int = 4,
   hiddenSize: Int = 100,
   maskedRatio: Double = 0.3,
-  maxIters: Int = 15
+  maxIters: Int = 5
 )
 
 class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNumeric[Float]) extends ValidationMethod[Float] {
@@ -161,7 +161,7 @@ object TransitionPretrainer {
     val gf = ef.withColumn("label", g(col("transitions")))    
     gf.select("label").show(10, false)
     val gfV = efV.withColumn("label", g(col("transitions")))
-    (vocabMap.size, gf, gfV)
+    (vocabMap, gf, gfV)
   }
 
 
@@ -185,10 +185,16 @@ object TransitionPretrainer {
     val Array(df, dfV) = all.randomSplit(Array(0.8, 0.2), seed = 150909)
     dfV.show(10)
 
-    val (vocabSize, trainDF, validDF) = preprocess(df, dfV, config)
-    val model = createModel(config, vocabSize)
+    val (vocabMap, trainDF, validDF) = preprocess(df, dfV, config)
+    // save the pretraining data to JSONL
+    // println(s"vocabSize = $vocabSize")
+    // trainDF.repartition(4).write.json("dat/dep/UD_English/asp-train")
+    // validDF.repartition(1).write.json("dat/dep/UD_English/asp-valid")
+
+    val model = createModel(config, vocabMap.size)
     model.summary()
     
+    // train the BERT model
     train(model, config, trainDF, validDF)
 
     spark.stop()

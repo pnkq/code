@@ -9,7 +9,7 @@ lazy val commonSettings = Seq(
   name := "con",
   organization := "phuonglh.com",
   version := "1.0.0",
-//  scalaVersion := "2.12.19",
+  scalaVersion := "2.12.19",
 
   libraryDependencies ++= Seq(
     "org.apache.spark" %% "spark-core" % sparkVersion,
