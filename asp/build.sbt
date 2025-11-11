@@ -4,13 +4,12 @@ ThisBuild / scalaVersion     := "2.12.10"
 ThisBuild / version          := "0.1.0"
 ThisBuild / organization     := "pro.phuonglh"
 ThisBuild / organizationName := "phuonglh"
-// ThisBuild / useCoursier := false // this is for newer version of sbt (> 1.6)
 
 
 val sparkVersion = "3.1.2"
 val bigdlVersion = "2.1.0"
 
-lazy val root = (project in file("."))
+lazy val asp = (project in file("."))
   .settings(
     name := "asp",
     libraryDependencies ++= Seq(
