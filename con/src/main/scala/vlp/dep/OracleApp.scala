@@ -10,7 +10,7 @@ import java.nio.file.StandardOpenOption
 import org.json4s.jackson.Serialization
 
 
-case class T(words: Seq[String], transitions: Seq[String])
+case class T(words: Seq[String], heads: Seq[String], labels: Seq[String], transitions: Seq[String])
 
 /**
   * Created by phuonglh on 6/22/17.
@@ -75,8 +75,10 @@ object OracleApp {
     val lines = graphs.map { graph =>
       val configs = oracle.decode(graph)
       val words = graph.sentence.tokens.map(_.word)
+      val heads = graph.sentence.tokens.map(_.head)
+      val labels = graph.sentence.tokens.map(_.dependencyLabel)
       val transitions = configs.map(context => context.transition)
-      Serialization.write(T(words, transitions))(org.json4s.DefaultFormats)
+      Serialization.write(T(words, heads, labels, transitions))(org.json4s.DefaultFormats)
     }
     import scala.collection.JavaConverters._
     Files.write(Paths.get(pathOutput), lines.asJava, Charset.defaultCharset(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
@@ -86,8 +88,8 @@ object OracleApp {
     // test 0
     // featurize
 
-    // val oracle = new OracleAS(new FeatureExtractor(false, false))
-    val oracle = new OracleAE(new FeatureExtractor(false, false))
+    val oracle = new OracleAS(new FeatureExtractor(false, false))
+    // val oracle = new OracleAE(new FeatureExtractor(false, false))
 
     // test 1
     val graph = Graph(createSentence2)
@@ -107,12 +109,12 @@ object OracleApp {
     // run("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu", oracle, "dat/dep/en-as-test.jsonl")
 
     // create data for transition pretrainer
-    // val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
-    // val dfs = treebanks.map { name =>
-    //   val path = s"dat/dep/UD_English/$name"
-    //   println(name)
-    //   run(s"$path.conllu", oracle, s"$path-${oracle.name}.jsonl")
-    // }
+    val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
+    val dfs = treebanks.map { name =>
+      val path = s"dat/dep/UD_English/$name"
+      println(name)
+      run(s"$path.conllu", oracle, s"$path-${oracle.name}.jsonl")
+    }
 
   }
 }

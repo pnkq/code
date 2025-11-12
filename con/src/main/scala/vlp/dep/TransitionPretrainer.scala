@@ -32,7 +32,7 @@ case class PretrainerConfig(
   heads: Int = 4,
   hiddenSize: Int = 100,
   maskedRatio: Double = 0.3,
-  maxIters: Int = 5
+  maxIters: Int = 10
 )
 
 class TimeDistributedTop1Accuracy(paddingValue: Int = -1)(implicit ev: TensorNumeric[Float]) extends ValidationMethod[Float] {
@@ -105,7 +105,7 @@ object TransitionPretrainer {
       .setValidation(Trigger.everyEpoch, valid, Array(new TimeDistributedTop1Accuracy(-1)), batchSize)
       .setEndWhen(Trigger.maxEpoch(config.maxIters))
     estimator.fit(train)
-    model.saveModel(s"bin/asp/${config.language}.bigdl.osx", overWrite = true)
+    model.saveModel(s"bin/asp/${config.language}.bigdl", overWrite = true)
   }
 
   def preprocess(df: DataFrame, dfV: DataFrame, config: PretrainerConfig) = {
