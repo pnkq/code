@@ -51,6 +51,17 @@ object OracleApp {
     ))
   }
 
+  def createSentence3: Sentence = {
+    Sentence(ListBuffer(
+      Token("ROOT", mutable.Map(Label.Id -> "0", Label.Head -> "-1", Label.DependencyLabel -> "NA", Label.UniversalPartOfSpeech -> "ROOT")),
+      Token("what", mutable.Map(Label.Id -> "1", Label.Head -> "4", Label.DependencyLabel -> "obl", Label.UniversalPartOfSpeech -> "PRON")),
+      Token("does", mutable.Map(Label.Id -> "2", Label.Head -> "4", Label.DependencyLabel -> "aux", Label.UniversalPartOfSpeech -> "AUX")),
+      Token("Is", mutable.Map(Label.Id -> "3", Label.Head -> "4", Label.DependencyLabel -> "nsubj", Label.UniversalPartOfSpeech -> "PROPN")),
+      Token("stand", mutable.Map(Label.Id -> "4", Label.Head -> "0", Label.DependencyLabel -> "root", Label.UniversalPartOfSpeech -> "VERB")),
+      Token("for", mutable.Map(Label.Id -> "5", Label.Head -> "1", Label.DependencyLabel -> "case", Label.UniversalPartOfSpeech -> "ADP"))
+    ))
+  }
+
   def featurize: Unit = {
     val sentence = createSentence1
     println(sentence)
@@ -71,33 +82,65 @@ object OracleApp {
   def run(pathCoNLLU: String, oracle: Oracle, pathOutput: String) = {
     val graphs = GraphReader.read(pathCoNLLU)
     import org.json4s._
-    import org.json4s.jackson.Serialization    
-    val lines = graphs.map { graph =>
-      val configs = oracle.decode(graph)
+    import org.json4s.jackson.Serialization
+    val contexts = graphs.map(graph => (graph, oracle.decode(graph)))
+    val projectivities = contexts.map { pair => 
+      val arcs = pair._2.last.pastTransitions.filter(t => t.startsWith("LA") || t.startsWith("RA"))
+      (pair._1, pair._2, arcs.size == pair._1.sentence.tokens.size - 1)
+    }
+    val lines = projectivities.filter(pair => pair._3).map { pair =>
+      val graph = pair._1
       val words = graph.sentence.tokens.map(_.word)
       val heads = graph.sentence.tokens.map(_.head)
       val labels = graph.sentence.tokens.map(_.dependencyLabel)
-      val transitions = configs.map(context => context.transition)
+      val transitions = pair._2.map(context => context.transition)
       Serialization.write(T(words, heads, labels, transitions))(org.json4s.DefaultFormats)
     }
     import scala.collection.JavaConverters._
     Files.write(Paths.get(pathOutput), lines.asJava, Charset.defaultCharset(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    val nonProjectives = projectivities.filter(pair => !pair._3).map { pair =>
+      val graph = pair._1
+      val words = graph.sentence.tokens.map(_.word)
+      words.toString()
+    }
+    Files.write(Paths.get(pathOutput + "-non"), nonProjectives.asJava, Charset.defaultCharset(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+  }
+
+/**
+  * Check whether the oracle can recover all the dependencies of a given gold sentence.
+  * @param oracle
+  * @param graph
+  * @return true or false
+  */
+  def postCheck(oracle: Oracle, graph: Graph): Boolean = {
+    val contexts = oracle.decode(graph)
+    val arcs = contexts.last.pastTransitions.filter(t => t.startsWith("LA") || t.startsWith("RA"))
+    println(arcs)
+    if (arcs.size != graph.sentence.tokens.size-1) return false else return true
   }
 
   def main(args: Array[String]): Unit = {
     // test 0
     // featurize
 
-    val oracle = new OracleAS(new FeatureExtractor(false, false))
-    // val oracle = new OracleAE(new FeatureExtractor(false, false))
+    // val oracle = new OracleAS(new FeatureExtractor(false, false))
+    val oracle = new OracleAE(new FeatureExtractor(false, false))
 
-    // test 1
-    val graph = Graph(createSentence2)
-    println(graph)
-    oracle.decode(graph).foreach(println)
-    println
+    // // test 3
+    // val graph3 = Graph(createSentence3)
+    // println(graph3)
+    // oracle.decode(graph3).foreach(println)
+    // println
+    // println(postCheck(oracle, graph3))
 
     // // test 2
+    // val graph2 = Graph(createSentence2)
+    // println(graph2)
+    // oracle.decode(graph2).foreach(println)
+    // println
+    // println(postCheck(oracle, graph2))
+
+    // // test 1
     // val graphs = GraphReader.read("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu")
     // println(graphs.last)
     // // decode the last graph (as shown in the end of this file)
@@ -109,6 +152,7 @@ object OracleApp {
     // run("dat/dep/UD_English-EWT/en_ewt-ud-test.conllu", oracle, "dat/dep/en-as-test.jsonl")
 
     // create data for transition pretrainer
+    // val treebanks = Seq("atis")
     val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
     val dfs = treebanks.map { name =>
       val path = s"dat/dep/UD_English/$name"

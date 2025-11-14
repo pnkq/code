@@ -24,16 +24,16 @@ case class Context(id: Int, bof: String, transition: String,
     // sb.append(',')
     // sb.append(bof)
     sb.append(',')
-    sb.append(transition)
-    sb.append(',')
-    sb.append(stack)
+    sb.append(stack.clone().reverse)
     sb.append(',')
     sb.append(queue)
     sb.append(',')
     sb.append(arcs)
+    sb.append(')')
+    sb.append(" => ")
+    sb.append(transition)
     // sb.append(',')
     // sb.append(pastTransitions)
-    sb.append(')')
     sb.toString()
   }
 }
@@ -150,7 +150,9 @@ class OracleAS(featureExtractor: FeatureExtractor) extends Oracle(featureExtract
         // find the correct transition
         val (i, j) = (stack.top, queue.front)
         if (graph.hasArc(j, i)) {
-          // precondition for LA: i is not ROOT and i does not have a head
+          // precondition for LA: i is not ROOT AND i does not have a head
+          // REMOVE: LA will remove i but in the oracle mode, i is removed only if all remaining tokens do not take i as head
+          // if ((i != "0") && !arcs.exists(a => a.dependent == i) && !queue.exists(k => graph.hasArc(i, k)))
           if ((i != "0") && !arcs.exists(a => a.dependent == i))
             transition = "LA-" + graph.sentence.token(i).dependencyLabel
         } else if (graph.hasArc(i, j)) {
