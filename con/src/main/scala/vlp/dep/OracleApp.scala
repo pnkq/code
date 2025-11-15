@@ -123,8 +123,8 @@ object OracleApp {
     // test 0
     // featurize
 
-    // val oracle = new OracleAS(new FeatureExtractor(false, false))
-    val oracle = new OracleAE(new FeatureExtractor(false, false))
+    val oracle = new OracleAS(new FeatureExtractor(false, false))
+    // val oracle = new OracleAE(new FeatureExtractor(false, false))
 
     // // test 3
     // val graph3 = Graph(createSentence3)

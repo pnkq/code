@@ -108,38 +108,40 @@ object TransitionPretrainer {
     model.saveModel(s"bin/asp/${config.language}.bigdl", overWrite = true)
   }
 
+  // create a udf to transform a sequence of AS transition labels into a sequence of transition indices
+  // right pad with 0 values. Add segment ids, position ids and mask ids for BERT
+  // in the Arc-Standard system, if the sentence has more than 2 tokens, the first transition is always SH,
+  // therefore, we don't include the first transition into our features.
+  // Also, the last transition is also always a SH (to make the parsing config. final.)
+  def f(vocabMap: Map[String, Int], config: PretrainerConfig) = udf((xs: Seq[String]) => {
+    val seq = xs.slice(1, xs.length-1).map(x => vocabMap.getOrElse(x, 0))
+    val ids = if (seq.length >= config.maxSeqLen) 
+      seq.take(config.maxSeqLen)
+    else
+      seq ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
+    val segments = Seq.fill[Int](config.maxSeqLen)(0)
+    val positions = if (seq.length >= config.maxSeqLen)
+      (0 until config.maxSeqLen).toSeq
+    else
+      (0 until seq.length).toSeq ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
+    val masks = if (seq.length >= config.maxSeqLen)
+      Seq.fill[Int](config.maxSeqLen)(1)
+    else
+      Seq.fill[Int](seq.length)(1) ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
+    ids ++ segments ++ positions ++ masks
+  })
+
   def preprocess(df: DataFrame, dfV: DataFrame, config: PretrainerConfig) = {
+    // use a vectorizer to build a vocabulary from the training data
     val vectorizer = new CountVectorizer().setInputCol("transitions")
     val vectorizerModel = vectorizer.fit(df)
     // index the transitions, reserve 0 for padding value
     val vocabMap = vectorizerModel.vocabulary.zipWithIndex.map{ case (w, i) => (w, i+1) }.toMap
     logger.info(vocabMap.toString)
 
-    // create a udf to transform a sparse (count) vector into a sequence of transition indices
-    // right pad with 0 values. Add segment ids, position ids and mask ids for BERT
-    // in the Arc-Standard system, if the sentence has more than 2 tokens, the first transition is always SH,
-    // therefore, we don't include the first transition into our features.
-    // Also, the last transition is also always a SH (to make the parsing config. final.)
-    val f = udf((xs: Seq[String]) => {
-      val seq = xs.slice(1, xs.length-1).map(x => vocabMap.getOrElse(x, 0))
-      val ids = if (seq.length >= config.maxSeqLen) 
-        seq.take(config.maxSeqLen)
-      else
-        seq ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
-      val segments = Seq.fill[Int](config.maxSeqLen)(0)
-      val positions = if (seq.length >= config.maxSeqLen)
-        (0 until config.maxSeqLen).toSeq
-      else
-        (0 until seq.length).toSeq ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
-      val masks = if (seq.length >= config.maxSeqLen)
-        Seq.fill[Int](config.maxSeqLen)(1)
-      else
-        Seq.fill[Int](seq.length)(1) ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
-      ids ++ segments ++ positions ++ masks
-    })
     // transform the input data frame to have the "features" column
-    val ef = df.withColumn("features", f(col("transitions")))
-    val efV = dfV.withColumn("features", f(col("transitions")))
+    val ef = df.withColumn("features", f(vocabMap, config)(col("transitions")))
+    val efV = dfV.withColumn("features", f(vocabMap, config)(col("transitions")))
     ef.show(10)
     logger.info(ef.select("features").head.toString)
 
@@ -164,6 +166,30 @@ object TransitionPretrainer {
     (vocabMap, gf, gfV)
   }
 
+  // AS transition map that was pretrained by the [[train()]] method.
+  val transitionMapAS = Map(
+    "LA-aux" -> 18, "LA-advcl" -> 34, "LA-nmod" -> 39, "RA-det" -> 78, "LA-cc:preconj" -> 70, "RA-obj" -> 10, "RA-aux:pass" -> 83, 
+    "LA-nmod:desc" -> 94, "LA-list" -> 95, "RA-flat" -> 22, "LA-acl" -> 65, "RA-nmod" -> 9, "RA-advcl:relcl" -> 61, "RA-acl:relcl" -> 25, 
+    "RA-xcomp" -> 21, "LA-nsubj:pass" -> 30, "LA-csubj:outer" -> 87, "LA-nsubj" -> 5, "STOP" -> 7, "RA-csubj:pass" -> 84, 
+    "RA-dep" -> 50, "RA-advcl" -> 24, "LA-obj" -> 48, "RA-conj" -> 14, "LA-advmod" -> 13, "LA-nsubj:outer" -> 59, "LA-nmod:npmod" -> 75, 
+    "LA-discourse" -> 38, "RA-mark" -> 90, "LA-orphan" -> 86, "RA-aux" -> 82, "RA-expl" -> 63, "RA-appos" -> 31, "RA-cc" -> 85, 
+    "LA-case" -> 2, "RA-ccomp" -> 28, "RA-nmod:tmod" -> 42, "RA-flat:foreign" -> 79, "RA-reparandum" -> 89, "LA-punct" -> 12, "LA-reparandum" -> 56, 
+    "LA-nummod" -> 27, "LA-det" -> 3, "LA-csubj" -> 62, "LA-cc" -> 15, "LA-parataxis" -> 60, "SH" -> 1, "LA-mark" -> 17, "LA-obl" -> 33, 
+    "LA-aux:pass" -> 29, "LA-nmod:tmod" -> 80, "RA-obl" -> 11, "RA-discourse" -> 54, "LA-nmod:poss" -> 20, "RA-compound" -> 64, "RA-amod" -> 46, 
+    "LA-compound" -> 16, "RA-dislocated" -> 74, "LA-csubj:pass" -> 88, "LA-dislocated" -> 73, "LA-iobj" -> 93, "LA-amod" -> 8, "RA-nsubj" -> 35, 
+    "RA-goeswith" -> 71, "LA-vocative" -> 66, "RA-nummod" -> 45, "LA-obl:npmod" -> 52, "LA-cop" -> 19, "RA-nsubj:pass" -> 81, "RA-fixed" -> 41, 
+    "RA-compound:prt" -> 40, "RA-obl:tmod" -> 43, "RA-orphan" -> 76, "RA-case" -> 37, "LA-det:predet" -> 55, "LA-compound:prt" -> 96, "RA-root" -> 6, 
+    "RA-advmod" -> 23, "RA-vocative" -> 68, "RA-obl:agent" -> 51, "LA-xcomp" -> 77, "RA-nmod:npmod" -> 72, "RA-list" -> 49, "LA-ccomp" -> 57, 
+    "RA-acl" -> 26, "LA-expl" -> 44, "LA-dep" -> 69, "RA-csubj" -> 53, "RA-obl:npmod" -> 67, "LA-acl:relcl" -> 92, "RA-cop" -> 47, "LA-obl:tmod" -> 58, 
+    "RA-punct" -> 4, "RA-nmod:poss" -> 91, "RA-parataxis" -> 32, "RA-iobj" -> 36
+  )
+
+  def compute(net: KerasNet[Float], df: DataFrame, config: PretrainerConfig) = {
+    // transform the input data frame to have the "features" column
+    val ef = df.withColumn("features", f(transitionMapAS, config)(col("transitions")))
+    ef.show(10)
+    logger.info(ef.select("features").head.toString)
+  }
 
   def main(args: Array[String]): Unit = {
     Logger.getLogger("org.apache.spark").setLevel(Level.WARN)
