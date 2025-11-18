@@ -24,7 +24,6 @@ import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.optim.{Top1Accuracy, Trigger}
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
-import scala.util.Try
 
 
 /**
@@ -668,15 +667,6 @@ object TransitionClassifier {
             // prepare contexts
             val (uf, vf) = (classifier.createDF(trainingGraphs), classifier.createDF(developmentGraphs))
             vf.select("pasTransitions", "transition").show(5, false)
-            
-          case "precompute" => 
-            // precompute transition embeddings using a pretrained BERT model 
-            val modelPath = "bin/asp/eng.bigdl"
-              val model = Try(Models.loadModel[Float](modelPath)).getOrElse {
-                println("First load failed, retrying...")
-                Models.loadModel[Float](modelPath)
-              }
-              model.summary()
         }
         spark.stop()
       case None =>

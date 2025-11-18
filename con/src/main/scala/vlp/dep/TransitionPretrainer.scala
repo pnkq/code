@@ -22,6 +22,7 @@ import com.intel.analytics.bigdl.dllib.nn.abstractnn.Activity
 import com.intel.analytics.bigdl.dllib.optim.{AccuracyResult, ValidationMethod, ValidationResult}
 import com.intel.analytics.bigdl.dllib.tensor.Tensor
 import com.intel.analytics.bigdl.dllib.tensor.TensorNumericMath.TensorNumeric
+import scala.util.Try
 
 case class PretrainerConfig(
   language: String = "eng",
@@ -113,7 +114,7 @@ object TransitionPretrainer {
   // in the Arc-Standard system, if the sentence has more than 2 tokens, the first transition is always SH,
   // therefore, we don't include the first transition into our features.
   // Also, the last transition is also always a SH (to make the parsing config. final.)
-  def f(vocabMap: Map[String, Int], config: PretrainerConfig) = udf((xs: Seq[String]) => {
+  def b(vocabMap: Map[String, Int], config: PretrainerConfig, xs: Seq[String]): Seq[Int] = {
     val seq = xs.slice(1, xs.length-1).map(x => vocabMap.getOrElse(x, 0))
     val ids = if (seq.length >= config.maxSeqLen) 
       seq.take(config.maxSeqLen)
@@ -129,19 +130,23 @@ object TransitionPretrainer {
     else
       Seq.fill[Int](seq.length)(1) ++ Seq.fill[Int](config.maxSeqLen - seq.length)(0)
     ids ++ segments ++ positions ++ masks
+  }
+
+  def f(vocabMap: Map[String, Int], config: PretrainerConfig) = udf((xs: Seq[String]) => {
+    b(vocabMap, config, xs)
   })
 
   def preprocess(df: DataFrame, dfV: DataFrame, config: PretrainerConfig) = {
-    // use a vectorizer to build a vocabulary from the training data
-    val vectorizer = new CountVectorizer().setInputCol("transitions")
-    val vectorizerModel = vectorizer.fit(df)
-    // index the transitions, reserve 0 for padding value
-    val vocabMap = vectorizerModel.vocabulary.zipWithIndex.map{ case (w, i) => (w, i+1) }.toMap
-    logger.info(vocabMap.toString)
+    // // use a vectorizer to build a vocabulary from the training data
+    // val vectorizer = new CountVectorizer().setInputCol("transitions")
+    // val vectorizerModel = vectorizer.fit(df)
+    // // index the transitions, reserve 0 for padding value
+    // val vocabMap = vectorizerModel.vocabulary.zipWithIndex.map{ case (w, i) => (w, i+1) }.toMap
+    // logger.info(vocabMap.toString)
 
     // transform the input data frame to have the "features" column
-    val ef = df.withColumn("features", f(vocabMap, config)(col("transitions")))
-    val efV = dfV.withColumn("features", f(vocabMap, config)(col("transitions")))
+    val ef = df.withColumn("features", f(transitionMapAS, config)(col("transitions")))
+    val efV = dfV.withColumn("features", f(transitionMapAS, config)(col("transitions")))
     ef.show(10)
     logger.info(ef.select("features").head.toString)
 
@@ -149,7 +154,7 @@ object TransitionPretrainer {
     // we use the masked language modeling (MLM) objective
     val random = new scala.util.Random(220712)
     val g = udf((xs: Seq[String]) => {
-      val seq = xs.slice(1, xs.length-1).map(x => vocabMap.getOrElse(x, 0)) // 0 label will results in an error in BigDL
+      val seq = xs.slice(1, xs.length-1).map(x => transitionMapAS.getOrElse(x, 0)) // 0 label will results in an error in BigDL
       val ys = seq.map { s => 
         val keepProb = random.nextDouble()
         if (keepProb <= config.maskedRatio) s else -1
@@ -163,7 +168,7 @@ object TransitionPretrainer {
     val gf = ef.withColumn("label", g(col("transitions")))    
     gf.select("label").show(10, false)
     val gfV = efV.withColumn("label", g(col("transitions")))
-    (vocabMap, gf, gfV)
+    (transitionMapAS, gf, gfV)
   }
 
   // AS transition map that was pretrained by the [[train()]] method.
@@ -191,6 +196,20 @@ object TransitionPretrainer {
     logger.info(ef.select("features").head.toString)
   }
 
+  /**
+   * Compute the BERT representation of a sequence of 
+   * */
+  def compute(net: KerasNet[Float], config: PretrainerConfig, transitions: Seq[String]) = {
+    // convert to BERT expected input
+    val x = b(transitionMapAS, config, transitions).toArray.map(_.toFloat)
+    val shape = Array(1, config.maxSeqLen * 4) // the expected input shape of the model
+    val tensor = Tensor[Float](x, shape)
+    val output = net.forward(tensor).toTensor[Float] // 1 x maxSeqLen x numLabels
+    // select the vector of the first time step
+    val y = output.select(2, 1) // dimension 2 and row index 1, y has shape 1 x numLabels
+    y.squeeze // 1-d vector of dimension numLabels
+   }
+
   def main(args: Array[String]): Unit = {
     Logger.getLogger("org.apache.spark").setLevel(Level.WARN)
     val spark = SparkSession.builder().appName(getClass.getName)
@@ -201,28 +220,45 @@ object TransitionPretrainer {
       .getOrCreate()
     Engine.init
     val config = PretrainerConfig()
-    val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
-    val dfs = treebanks.map { name =>
-      val path = s"dat/dep/UD_English/$name-${config.system}.jsonl"
-      spark.read.json(path).filter(size(col("transitions")) >= 3)
+
+    val mode = "inference"
+
+    if (mode == "train") {
+      val treebanks = Seq("atis", "eslspok", "ewt", "gum", "lines", "partut", "pud")
+      val dfs = treebanks.map { name =>
+        val path = s"dat/dep/UD_English/$name-${config.system}.jsonl"
+        spark.read.json(path).filter(size(col("transitions")) >= 3)
+      }
+      val all = dfs.reduce((u, v) => u.union(v))
+      logger.info("Number of samples = " + all.count)
+      val Array(df, dfV) = all.randomSplit(Array(0.8, 0.2), seed = 150909)
+      dfV.show(10)
+
+      val (vocabMap, trainDF, validDF) = preprocess(df, dfV, config)
+      // save the pretraining data to JSONL
+      // println(s"vocabSize = $vocabSize")
+      // trainDF.repartition(4).write.json("dat/dep/UD_English/asp-train")
+      // validDF.repartition(1).write.json("dat/dep/UD_English/asp-valid")
+
+      val model = createModel(config, vocabMap.size)
+      model.summary()
+      
+      // train the BERT model
+      train(model, config, trainDF, validDF)
+    } else {
+      // inference mode
+      val path = "dat/dep/UD_English/pud-as.jsonl"
+      val df = spark.read.json(path).filter(size(col("transitions")) >= 3)
+      // precompute transition embeddings using a pretrained BERT model 
+      val modelPath = "bin/asp/eng.bigdl"
+      val model = Try(Models.loadModel[Float](modelPath)).getOrElse {
+        println("First load failed, retrying...")
+        Models.loadModel[Float](modelPath)
+      }
+      model.summary()
+      val y = compute(model, config, Array("SH", "LA-det", "SH", "SH", "LA-case", "RA-nmod", "SH"))
+      println(y)
     }
-    val all = dfs.reduce((u, v) => u.union(v))
-    logger.info("Number of samples = " + all.count)
-    val Array(df, dfV) = all.randomSplit(Array(0.8, 0.2), seed = 150909)
-    dfV.show(10)
-
-    val (vocabMap, trainDF, validDF) = preprocess(df, dfV, config)
-    // save the pretraining data to JSONL
-    // println(s"vocabSize = $vocabSize")
-    // trainDF.repartition(4).write.json("dat/dep/UD_English/asp-train")
-    // validDF.repartition(1).write.json("dat/dep/UD_English/asp-valid")
-
-    val model = createModel(config, vocabMap.size)
-    model.summary()
-    
-    // train the BERT model
-    train(model, config, trainDF, validDF)
-
     spark.stop()
   }
 }
