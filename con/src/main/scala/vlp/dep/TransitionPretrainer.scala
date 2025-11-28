@@ -197,7 +197,8 @@ object TransitionPretrainer {
   }
 
   /**
-   * Compute the BERT representation of a sequence of 
+   * Compute the BERT representation of a sequence of transitions.
+   * 
    * */
   def compute(net: KerasNet[Float], config: PretrainerConfig, transitions: Seq[String]) = {
     // convert to BERT expected input
@@ -207,7 +208,7 @@ object TransitionPretrainer {
     val output = net.forward(tensor).toTensor[Float] // 1 x maxSeqLen x numLabels
     // select the vector of the first time step
     val y = output.select(2, 1) // dimension 2 and row index 1, y has shape 1 x numLabels
-    y.squeeze // 1-d vector of dimension numLabels
+    y.squeeze.toArray // get a vector of dimension numLabels
    }
 
   def main(args: Array[String]): Unit = {

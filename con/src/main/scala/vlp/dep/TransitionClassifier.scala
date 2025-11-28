@@ -24,6 +24,7 @@ import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.optim.{Top1Accuracy, Trigger}
 import com.intel.analytics.bigdl.dllib.utils.Engine
 import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSummary}
+import scala.util.Try
 
 
 /**
@@ -663,10 +664,35 @@ object TransitionClassifier {
             }
           }
           case "test" => 
-          case "prepare" =>
+          case "precompute" =>
+            // load a pretrained transition models and compute vectors of all past transition sequences 
+            val modelPath = "bin/asp/eng.bigdl"
+            val model = Try(Models.loadModel[Float](modelPath)).getOrElse {
+              logger.info("First load failed, retrying...")
+              Models.loadModel[Float](modelPath)
+            }
+            model.summary()
+
             // prepare contexts
-            val (uf, vf) = (classifier.createDF(trainingGraphs), classifier.createDF(developmentGraphs))
-            vf.select("pasTransitions", "transition").show(5, false)
+            val (uf, vf) = (
+              classifier.createDF(trainingGraphs).select("pastTransitions"), 
+              classifier.createDF(developmentGraphs).select("pastTransitions")
+            )
+            import org.apache.spark.sql.functions._
+            val uvf = uf.union(vf).filter(size(col("pastTransitions")) > 0)
+            logger.info("#(total contexts) = " + uvf.count())
+
+            uvf.show(40, false)
+            // compute pretrained vectors
+            val pretrainerConfig = PretrainerConfig()
+            import spark.implicits._
+            val output = uvf.map { row => 
+              val xs = row.getAs[Seq[String]](0)
+              val ys = TransitionPretrainer.compute(model, pretrainerConfig, xs)
+              (xs, ys)
+            }.toDF("xs", "ys")
+            output.show(20)
+            output.write.format("json").save(s"dat/bin/asp/${config.language}/pretrained")
         }
         spark.stop()
       case None =>
