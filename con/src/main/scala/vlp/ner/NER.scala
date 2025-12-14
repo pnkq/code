@@ -61,7 +61,7 @@ object NER {
   private val numCores = Runtime.getRuntime.availableProcessors()
 
   /**
-    * Builds a pipeline for BigDL model: sequencer -> flattener -> padder
+    * Builds a preprocessor pipeline for BigDL model: [pretrained vectors] => sequencer -> flattener -> padder
     *
     * @param config config
     */
@@ -92,20 +92,6 @@ object NER {
     preprocessor
   }
 
-  private def labelWeights(spark: SparkSession, df: DataFrame, labelCol: String): Tensor[Float] = {
-    import spark.implicits._
-    // select non-padded labels
-    val ef = df.select(labelCol).flatMap(row => row.getAs[DenseVector](0).toArray.filter(_ > 0))
-    val ff = ef.groupBy("value").count // two columns [value, count]
-    // count their frequencies
-    val total: Long = ff.agg(sum("count")).head.getLong(0)
-    val numLabels: Long = ff.count()
-    val wf = ff.withColumn("w", lit(total.toDouble/numLabels)/col("count")).sort("value") // sort to align label indices
-    val w = wf.select("w").collect().map(row => row.getDouble(0)).map(_.toFloat)
-    Tensor[Float](w, Array(w.length))
-  }
-
-
   /**
     * Trains a NER model using the BigDL framework with user-defined model. This approach is more flexible than the [[trainJSL()]] method.
     * @param config a config
@@ -120,7 +106,7 @@ object NER {
       println("Applying the Snow preprocessor to (training, dev.) datasets...")
       val (af, bf) = (preprocessorSnow.transform(trainingDF), preprocessorSnow.transform(developmentDF))
       af.write.mode("overwrite").parquet(config.modelPath + "/af")
-      af.write.mode("overwrite").parquet(config.modelPath + "/bf")
+      bf.write.mode("overwrite").parquet(config.modelPath + "/bf")
       (preprocessorSnow, af, bf)
     } else {
       val preprocessorSnow = PipelineModel.load(config.modelPath + "/" + config.modelType)
@@ -137,12 +123,14 @@ object NER {
     val bigdl = Sequential()
     bigdl.add(Reshape(targetShape=Array(config.maxSeqLen, 768), inputShape=Shape(config.maxSeqLen*768)).setName("reshape"))
     for (j <- 1 to config.layers) {
-      bigdl.add(Bidirectional(LSTM(outputDim = config.hiddenSize, returnSequences = true).setName(s"LSTM-$j")))
+      bigdl.add(Bidirectional(LSTM(outputDim = config.hiddenSize, returnSequences = true)).setName(s"biLSTM-$j"))
     }
     bigdl.add(Dropout(0.1).setName("dropout"))
     bigdl.add(Dense(labelIndex.size, activation="softmax").setName("dense"))
+    bigdl.summary()
+
     val (featureSize, labelSize) = (Array(config.maxSeqLen*768), Array(config.maxSeqLen))
-    val w = labelWeights(SparkSession.getActiveSession.get, uf, "target")
+    val w = Tensor[Float](Array(0.1f, 0.9f, 0.9f, 0.9f, 0.9f, 0.9f, 0.9f), Array(labelIndex.size))
     // should set the sizeAverage=false in ClassNLLCriterion
     val criterion = ClassNLLCriterion(weights = w, sizeAverage = false, paddingValue = -1)
     val estimator = NNEstimator(bigdl, TimeDistributedCriterion(criterion, sizeAverage = true), featureSize, labelSize)
@@ -287,7 +275,7 @@ object NER {
       opt[String]('t', "modelType").action((x, conf) => conf.copy(modelType = x)).text("model type")
       opt[String]('o', "outputPath").action((x, conf) => conf.copy(outputPath = x)).text("output path")
       opt[String]('s', "scorePath").action((x, conf) => conf.copy(scorePath = x)).text("score path")
-      opt[Boolean]('f', "firstTime").action((_, conf) => conf.copy(firstTime = true)).text("first time in the training")
+      opt[Unit]('f', "firstTime").action((_, conf) => conf.copy(firstTime = true)).text("first time in the training")
     }
     opts.parse(args, ConfigNER()) match {
       case Some(config) =>
