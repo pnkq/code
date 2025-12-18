@@ -2,9 +2,9 @@ package vlp.ner
 
 case class ConfigNER(
   master: String = "local[*]",
-  totalCores: Int = 8,    // X
-  executorCores: Int = 8, // Y
-  executorMemory: String = "8g", // Z
+  totalCores: Int = 16,    // X
+  executorCores: Int = 16, // Y
+  executorMemory: String = "16g", // Z
   driverMemory: String = "16g", // D
   mode: String = "eval",
   batchSize: Int = 32,

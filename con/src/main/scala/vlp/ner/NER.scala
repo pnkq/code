@@ -201,14 +201,14 @@ object NER {
     }.flatMap { case (prediction, label) => prediction.zip(label) }
     val metrics = new MulticlassMetrics(predictionsAndLabels)
     val ls = metrics.labels
-    val numLabels = ls.max.toInt + 1 // zero-based labels
+    val numLabels = ls.max.toInt
     val precisionByLabel = Array.fill(numLabels)(0d)
     val recallByLabel = Array.fill(numLabels)(0d)
     val fMeasureByLabel = Array.fill(numLabels)(0d)
     ls.foreach { k => 
-      precisionByLabel(k.toInt) = metrics.precision(k)
-      recallByLabel(k.toInt) = metrics.recall(k)
-      fMeasureByLabel(k.toInt) = metrics.fMeasure(k)
+      precisionByLabel(k.toInt-1) = metrics.precision(k)
+      recallByLabel(k.toInt-1) = metrics.recall(k)
+      fMeasureByLabel(k.toInt-1) = metrics.fMeasure(k)
     }
     ScoreNER(
       config.modelType, split,
