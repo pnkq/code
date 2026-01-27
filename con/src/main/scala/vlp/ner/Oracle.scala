@@ -116,14 +116,12 @@ object Oracle {
     // (7,Stack(3, 4),Queue()) => RE-LOC,List(SH, RE-PER, OUT, OUT, SH, SH)    
 
     // test 3
-    val words = Seq("khảo", "sat", "lao", "thinh", "o", "nguoi", "tren", "50", "tuoi", 
-      "co", "nghe", "kem")
-    val spans = Map((2, 4) -> "problem", (10, 11) -> "problem")
+    val words = Seq("khảo", "sat", "lao", "thinh", "o", "nguoi", "tren", "50", "tuoi", "co", "nghe", "kem")
+    val spans = Map((2, 3) -> "problem", (10, 11) -> "problem")
     val contexts = decode(Sample(words, spans))
     contexts.foreach(println)
 
   }
-
 
 }
 

@@ -69,9 +69,9 @@ object OracleApp {
         while (j < v) {
           val parts = lines(j).trim.split("""\s+""")
           val label = if (twoColumns) parts(1) else parts(3)
-          if (label == "O" || j == v-1) {
+          if (label == "O" || j == v-1 || label.startsWith("B-")) {
             if (s < e) { // there will be an entity in the range (s, e)
-              spans.+=((s, e) -> prevLabel.substring(prevLabel.indexOf("-") + 1))
+              spans.+=((s-1, e-1) -> prevLabel.substring(prevLabel.indexOf("-") + 1))
               s = e
             }
             s = s + 1
