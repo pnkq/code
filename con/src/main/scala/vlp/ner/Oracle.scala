@@ -2,6 +2,7 @@ package vlp.ner
 
 import scala.collection.mutable.{ListBuffer, Stack, Queue}
 import java.util.concurrent.atomic.AtomicInteger
+import com.fasterxml.jackson.module.scala.deser.overrides
 
 
 /**
@@ -31,7 +32,11 @@ case class Context(id: Int, bof: String, transition: String, stack: Stack[Int], 
   }
 }
 
-case class Sample(words: Seq[String], spans: Map[(Int, Int), String]) 
+case class Sample(words: Seq[String], spans: Map[(Int, Int), String]) {
+  override def toString: String = {
+    "{" + words.zipWithIndex.toString() + "; " + spans.toString + "}"
+  }
+}
 
 
 /**
