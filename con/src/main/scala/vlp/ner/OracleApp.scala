@@ -28,7 +28,8 @@ object OracleApp {
     val lines = contexts.map { pair =>
       val sample = pair._1
       val words = sample.words
-      val transitions = pair._2.last.pastTransitions
+      val context = pair._2.last
+      val transitions = context.pastTransitions :+ context.transition
       Serialization.write(T(words, transitions))(org.json4s.DefaultFormats)
     }
     import scala.collection.JavaConverters._
@@ -68,7 +69,7 @@ object OracleApp {
         while (j < v) {
           val parts = lines(j).trim.split("""\s+""")
           val label = if (twoColumns) parts(1) else parts(3)
-          if (label == "O") {
+          if (label == "O" || j == v-1) {
             if (s < e) { // there will be an entity in the range (s, e)
               spans.+=((s, e) -> prevLabel.substring(prevLabel.indexOf("-") + 1))
               s = e
