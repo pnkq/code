@@ -40,6 +40,26 @@ object OracleApp {
     ???
   }
 
+  def extractSpans(labels: Seq[String], offset: Int): Map[(Int, Int), String] = {
+    if (labels.length > 0) {
+      var s = 0
+      // find the first start index of an entity
+      while (s < labels.size && !labels(s).startsWith("B-")) s = s + 1
+      // find the end index of this entity
+      var e = s + 1
+      while (e < labels.size && labels(e).startsWith("I-")) e = e + 1
+      // (s, e) is the boundary of the entity
+      if (s < labels.size) {
+        val j = labels(s).indexOf("-")
+        val entityName = labels(s).substring(j + 1)
+        return extractSpans(labels.slice(e, labels.length), offset + e) + ((s + offset, e - 1 + offset) -> entityName)
+      }
+      else return Map[(Int, Int), String]()
+    } else {
+      return Map[(Int, Int), String]()
+    }
+ }
+
   /**
     * Reads a NER corpus in CoNLL-2003 format.
     * @param dataPath
@@ -55,38 +75,18 @@ object OracleApp {
       v = indices(i)
       if (v > u) { // don't treat two consecutive empty lines
         val ls = lines.slice(u, v)
-        // extract words
-        val words = ls.map(line => {
+        val pairs = ls.map(line => {
           val parts = line.trim.split("""\s+""")
-          parts(0)
+          (parts(0), if (twoColumns) parts(1) else parts(3))
         })
-        // extract spans
-        val spans = mutable.Map[(Int, Int), String]()
-        var j = u
-        var s = 0
-        var e = 0
-        var prevLabel = "O"
-        while (j < v) {
-          val parts = lines(j).trim.split("""\s+""")
-          val label = if (twoColumns) parts(1) else parts(3)
-          if (label == "O" || j == v-1 || label.startsWith("B-")) {
-            if (s < e) { // there will be an entity in the range (s, e)
-              spans.+=((s-1, e-1) -> prevLabel.substring(prevLabel.indexOf("-") + 1))
-              s = e
-            }
-            s = s + 1
-            e = e + 1
-          } else {
-            prevLabel = label
-            e = e + 1
-          }
-          j = j + 1
-        }
-        sentences.append(Sample(words, spans.toMap))
+        val words = pairs.map(_._1)
+        val labels = pairs.map(_._2)
+        val spans = extractSpans(labels, 0)
+        sentences.append(Sample(words, spans))
       }
       u = v + 1
     }
-    sentences.toList
+    return sentences.toList
   }
 
   def main(args: Array[String]): Unit = {
@@ -94,7 +94,6 @@ object OracleApp {
     val treebanks = Seq("syll.txt")
     val dfs = treebanks.map { name =>
       val samples = readCoNLL(s"dat/med/$name")
-      // samples.foreach(println)
       run(samples, s"dat/med/$name.jsonl")
     }
   }
