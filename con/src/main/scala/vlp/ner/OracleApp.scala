@@ -91,9 +91,9 @@ object OracleApp {
 
   def main(args: Array[String]): Unit = {
     // create data for transition pretrainer
-    val treebanks = Seq("syll.txt")
+    val treebanks = Seq("covid19", "vietmedner", "vimedner", "vimq")
     val dfs = treebanks.map { name =>
-      val samples = readCoNLL(s"dat/med/$name")
+      val samples = readCoNLL(s"dat/med/$name.conll", true)
       run(samples, s"dat/med/$name.jsonl")
     }
   }
