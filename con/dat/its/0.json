@@ -1,0 +1,230 @@
+[
+  {
+    "problem_text": "Tính thể tích của một chiếc hộp bánh ít có dạng hình chóp tứ giác đều, có độ dài cạnh đáy là 3 cm và chiều cao là 2,5 cm.",
+    "topic": "Thể tích hình chóp tứ giác đều",
+    "grade_level": "Lớp 8",
+    "solution": {
+      "steps": [
+        {
+          "step_id": 1,
+          "goal": "Xác định công thức tính thể tích hình chóp tứ giác đều.",
+          "expected_expression": "V = (1/3) * S_đáy * h",
+          "result": null,
+          "hint": "Nhớ lại công thức tính thể tích của một hình chóp."
+        },
+        {
+          "step_id": 2,
+          "goal": "Tính diện tích đáy của hình chóp.",
+          "expected_expression": "S_đáy = a^2",
+          "result": null,
+          "hint": "Đáy của hình chóp là hình vuông có cạnh a."
+        },
+        {
+          "step_id": 3,
+          "goal": "Thay số vào công thức tính diện tích đáy.",
+          "expected_expression": "S_đáy = 3^2",
+          "result": null,
+          "hint": "a = 3 cm."
+        },
+        {
+          "step_id": 4,
+          "goal": "Tính toán diện tích đáy.",
+          "expected_expression": "S_đáy = 9 cm^2",
+          "result": null,
+          "hint": "Bình phương cạnh đáy."
+        },
+        {
+          "step_id": 5,
+          "goal": "Thay diện tích đáy và chiều cao vào công thức tính thể tích.",
+          "expected_expression": "V = (1/3) * 9 * 2.5",
+          "result": null,
+          "hint": "S_đáy = 9 cm^2 và h = 2.5 cm."
+        },
+        {
+          "step_id": 6,
+          "goal": "Tính toán thể tích của hình chóp.",
+          "expected_expression": "V = 7.5 cm^3",
+          "result": null,
+          "hint": "Thực hiện phép nhân và chia."
+        }
+      ],
+      "final_answer": "Thể tích của chiếc hộp bánh ít là 7.5 cm^3."
+    },
+    "student_answer": null,
+    "problem_id": "MATH_Lớp8_001"
+  },
+  {
+    "problem_text": "Mỗi cặp phân thức sau đây có bằng nhau không? Tại sao?\na) \\(\\dfrac{xy^2}{xy + y}\\) và \\(\\dfrac{xy}{x + 1}\\)",
+    "topic": "Rút gọn và so sánh phân thức đại số",
+    "grade_level": "Lớp 8",
+    "solution": {
+      "steps": [
+        {
+          "step_id": 1,
+          "goal": "Rút gọn phân thức thứ nhất.",
+          "expected_expression": "\\(\\dfrac{xy^2}{xy + y} = \\dfrac{xy^2}{y(x + 1)}\\)",
+          "result": null,
+          "hint": "Tìm nhân tử chung ở mẫu số."
+        },
+        {
+          "step_id": 2,
+          "goal": "Tiếp tục rút gọn phân thức thứ nhất.",
+          "expected_expression": "\\(\\dfrac{xy^2}{y(x + 1)} = \\dfrac{xy}{x + 1}\\)",
+          "result": null,
+          "hint": "Chia cả tử và mẫu cho nhân tử chung đã tìm được."
+        },
+        {
+          "step_id": 3,
+          "goal": "So sánh phân thức đã rút gọn với phân thức thứ hai.",
+          "expected_expression": "Phân thức thứ nhất sau khi rút gọn là \\(\\dfrac{xy}{x + 1}\\). Phân thức thứ hai là \\(\\dfrac{xy}{x + 1}\\).",
+          "result": null,
+          "hint": "Xem xét hai biểu thức thu được sau khi rút gọn."
+        },
+        {
+          "step_id": 4,
+          "goal": "Kết luận về sự bằng nhau của hai phân thức.",
+          "expected_expression": "Hai phân thức bằng nhau vì sau khi rút gọn, chúng có cùng biểu thức.",
+          "result": null,
+          "hint": "Nếu hai biểu thức giống hệt nhau, chúng bằng nhau."
+        }
+      ],
+      "final_answer": "Có, hai phân thức bằng nhau."
+    },
+    "student_answer": null,
+    "problem_id": "MATH_Lớp8_002"
+  },
+  {
+    "problem_text": "Trên một đoạn sông thẳng, xuất phát cùng một lúc từ một bến thuyền, thuyền đi xuôi dòng với vận tốc (v + 3) km/h, ca nô đi ngược dòng với tốc độ (2v – 3) km/h.\n\nLàm thế nào để tìm được quãng đường của mỗi phương tiện và khoảng cách giữa chúng sau khoảng thời gian t giờ kể từ khi rời bến?",
+    "topic": "Đa thức nhiều biến",
+    "grade_level": "Lớp 8",
+    "solution": {
+      "steps": [
+        {
+          "step_id": 1,
+          "goal": "Xác định vận tốc của thuyền đi xuôi dòng.",
+          "expected_expression": "Vận tốc thuyền xuôi dòng = v + 3 (km/h)",
+          "result": null,
+          "hint": "Đề bài đã cho biết vận tốc của thuyền đi xuôi dòng."
+        },
+        {
+          "step_id": 2,
+          "goal": "Xác định vận tốc của ca nô đi ngược dòng.",
+          "expected_expression": "Vận tốc ca nô ngược dòng = 2v – 3 (km/h)",
+          "result": null,
+          "hint": "Đề bài đã cho biết vận tốc của ca nô đi ngược dòng."
+        },
+        {
+          "step_id": 3,
+          "goal": "Tính quãng đường thuyền đi được sau thời gian t giờ.",
+          "expected_expression": "Quãng đường thuyền = (v + 3) * t (km)",
+          "result": null,
+          "hint": "Sử dụng công thức: Quãng đường = Vận tốc * Thời gian."
+        },
+        {
+          "step_id": 4,
+          "goal": "Tính quãng đường ca nô đi được sau thời gian t giờ.",
+          "expected_expression": "Quãng đường ca nô = (2v – 3) * t (km)",
+          "result": null,
+          "hint": "Sử dụng công thức: Quãng đường = Vận tốc * Thời gian."
+        },
+        {
+          "step_id": 5,
+          "goal": "Tính khoảng cách giữa hai phương tiện sau thời gian t giờ.",
+          "expected_expression": "Khoảng cách = Quãng đường thuyền + Quãng đường ca nô",
+          "result": null,
+          "hint": "Vì hai phương tiện đi ngược chiều nhau từ cùng một điểm xuất phát, khoảng cách giữa chúng bằng tổng quãng đường của mỗi phương tiện."
+        },
+        {
+          "step_id": 6,
+          "goal": "Thay thế biểu thức quãng đường vào công thức tính khoảng cách.",
+          "expected_expression": "Khoảng cách = (v + 3) * t + (2v – 3) * t",
+          "result": null,
+          "hint": "Thực hiện phép thế các biểu thức đã tính ở bước 3 và 4 vào biểu thức ở bước 5."
+        },
+        {
+          "step_id": 7,
+          "goal": "Rút gọn biểu thức tính khoảng cách.",
+          "expected_expression": "Khoảng cách = vt + 3t + 2vt - 3t = 3vt (km)",
+          "result": null,
+          "hint": "Phân phối t vào các ngoặc và sau đó cộng hoặc trừ các số hạng đồng dạng."
+        }
+      ],
+      "final_answer": "Quãng đường thuyền đi được là (v + 3)t km. Quãng đường ca nô đi được là (2v – 3)t km. Khoảng cách giữa hai phương tiện sau thời gian t giờ là 3vt km."
+    },
+    "student_answer": null,
+    "problem_id": "MATH_Lớp8_003"
+  },
+  {
+    "problem_text": "Ba bạn Bảo, Châu, Dương được xếp ngẫu nhiên ngồi trên một hàng ghế có ba chỗ ngồi. Tính xác suất của biến cố sau: “Bảo không ngồi ngoài cùng bên phải”", 
+    "topic": "Xác suất của một biến cố",
+    "grade_level": "Lớp 9",
+    "solution": {
+      "steps": [
+        {
+          "step_id": 1,
+          "goal": "Tìm không gian mẫu",
+          "expected_expression": "Có 6 cách sắp xếp chỗ ngồi cho ba bạn",
+          "result": null,
+          "hint": "Chỗ thứ nhất có 3 cách chọn người ngồi. Chỗ thứ hai còn 2 cách chọn. Chỗ thứ ba còn 1 cách chọn."
+        },
+        {
+          "step_id": 2,
+          "goal": "Tìm biến cố đối",
+          "expected_expression": "Có 2 cách sắp xếp mà Bảo chắc chắn ngồi ở ghế ngoài cùng",
+          "result": null,
+          "hint": "Biến cố đối của \"Bảo không ngồi ngoài cùng bên phải\" chính là \"Bảo ngồi ngoài cùng bên phải\"."
+        },
+        {
+          "step_id": 3,
+          "goal": "Tìm số trường hợp thuận lợi",
+          "expected_expression": "4",
+          "result": null,
+          "hint": "Số cách xếp mà \"Bảo không ngồi ngoài cùng bên phải\" là tổng số cách xếp trừ đi số cách mà Bảo ngồi ở đó."
+        },
+        {
+          "step_id": 4,
+          "goal": "Tính xác suất",
+          "expected_expression": "2/3",
+          "result": null,
+          "hint": "Công thức tính xác suất là số trường hợp thuận lợi chia tổng số trường hợp. Rút gọn phân số."
+        }
+      ],
+      "final_answer": "Xác suất của biến cố \"Bảo không ngồi ngoài cùng bên phải\" là 2/3."
+    },
+    "student_answer": null,
+    "problem_id": "MATH_Lớp9_001"
+  },
+  {
+    "problem_text": "Hộp thứ nhất đựng 1 quả bóng trắng, 1 quả bóng đỏ. Hộp thứ hai đựng 1 quả bóng đỏ, 1 quả bóng vàng. Lấy ra ngẫu nhiên từ mỗi hộp 1 quả bóng. Biết rằng các quả bóng có cùng kích thước và khối lượng. Hãy tính xác suất của mỗi biến cố sau: “2 quả bóng lấy ra có cùng màu”", 
+    "topic": "Xác suất của một biến cố",
+    "grade_level": "Lớp 9",
+    "solution": {
+      "steps": [
+        {
+          "step_id": 1,
+          "goal": "Tìm không gian mẫu",
+          "expected_expression": "(T, Đ), (T, V), (Đ, Đ), (Đ, V)",
+          "result": null,
+          "hint": "Để xác định không gian mẫu, ta cần liệt kê tất cả các cặp kết quả có thể xảy ra khi lấy 1 quả bóng từ mỗi hộp. Gọi các màu bóng là: T (Trắng), Đ (Đỏ), V (Vàng)."
+        },
+        {
+          "step_id": 2,
+          "goal": "Tìm số trường hợp thuận lợi",
+          "expected_expression": "Có một cặp (Đ, Đ)",
+          "result": null,
+          "hint": "Trong 4 cặp này, có cặp nào mà cả hai quả bóng đều có cùng một màu không? Nếu có, đó là cặp nào và có bao nhiêu cặp như vậy?"
+        },
+        {
+          "step_id": 3,
+          "goal": "Tính xác suất",
+          "expected_expression": "1/4",
+          "result": null,
+          "hint": "Công thức tính xác suất là số trường hợp thuận lợi chia tổng số trường hợp. Rút gọn phân số."
+        }
+      ],
+      "final_answer": "Xác suất của biến cố \"2 quả bóng lấy ra có cùng màu\" là 1/4, tức 25%"
+    },
+    "student_answer": null,
+    "problem_id": "MATH_Lớp9_002"
+  }  
+]
