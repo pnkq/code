@@ -14,7 +14,7 @@ model = EsmModel.from_pretrained(model_name)
 
 # 2. Load protein sequences from a CSV file
 
-df = pd.read_csv("/Users/phuonglh/code/con/dat/sol/eSol_train.csv")
+df = pd.read_csv("/Users/phuonglh/code/con/dat/sol/S.cerevisiae_test.csv")
 
 # Basic Data Cleaning
 # It's a good idea to remove any rows with missing sequences 
@@ -74,7 +74,7 @@ metadata_df = df[['gene', 'solubility']].reset_index(drop=True)
 final_df = pd.concat([metadata_df, embedding_df], axis=1)
 
 # 4. Save to Parquet
-final_df.to_parquet("/Users/phuonglh/code/con/dat/sol/eSol_train_embeddings.parquet", engine='pyarrow', compression='snappy')
+final_df.to_parquet("/Users/phuonglh/code/con/dat/sol/S.cerevisiae_test_embeddings.parquet", engine='pyarrow', compression='snappy')
 
 print(f"Successfully saved to Parquet! File size is roughly {final_df.memory_usage().sum() / 1e6:.2f} MB")
 
