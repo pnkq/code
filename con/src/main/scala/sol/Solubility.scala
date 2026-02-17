@@ -11,6 +11,9 @@ import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.regression.RandomForestRegressionModel
 import org.apache.spark.ml.regression.GBTRegressor
 import org.apache.spark.ml.regression.GBTRegressionModel
+import org.apache.spark.ml.regression.LinearRegression
+import org.apache.spark.ml.regression.Regressor
+import org.apache.spark.ml.regression.LinearRegressionModel
 
 /**
  * (C) phuonglh@gmail.com
@@ -18,12 +21,23 @@ import org.apache.spark.ml.regression.GBTRegressionModel
  * An implementation of solubility prediction of protein using traditional ML models.
  *
  */
+
+object RegressorType extends Enumeration {
+  val RANDOM_FOREST, GRADIENT_BOOSTED_TREE, LINEAR_REGRESSION = Value
+}
+
 object Solubility {
-  def run(uf: DataFrame, vf: DataFrame, esm: Boolean = false, gbt: Boolean = false, verbose: Boolean = false) = {
-    val regressor = if (!gbt) {
-      new RandomForestRegressor().setFeaturesCol("features").setLabelCol("solubility").setNumTrees(128)
-    } else {
-      new GBTRegressor().setFeaturesCol("features").setLabelCol("solubility")
+
+  def run(uf: DataFrame, vf: DataFrame, esm: Boolean = false, t: RegressorType.Value = RegressorType.RANDOM_FOREST, verbose: Boolean = false) = {
+    val regressor = t match {
+      case RegressorType.RANDOM_FOREST =>
+        new RandomForestRegressor().setLabelCol("solubility").setNumTrees(128)
+      case RegressorType.GRADIENT_BOOSTED_TREE =>
+        new GBTRegressor().setLabelCol("solubility")
+      case RegressorType.LINEAR_REGRESSION => 
+        new LinearRegression().setLabelCol("solubility").setRegParam(1E-4)
+      case _ =>
+        new RandomForestRegressor().setLabelCol("solubility").setNumTrees(128)
     }
     val pipeline = if (!esm) {
       val hashing = new HashingTF().setInputCol("tokens").setOutputCol("features").setNumFeatures(32)
@@ -39,21 +53,28 @@ object Solubility {
     val bf = model.transform(vf)
     af.select("prediction", "solubility", "features").show(5)
 
+    if (verbose) {
+      t match {
+        case RegressorType.RANDOM_FOREST => 
+          val regressor = model.stages(1).asInstanceOf[RandomForestRegressionModel] 
+          println(s"Learned regression model:\n ${regressor.toDebugString}")
+        case RegressorType.GRADIENT_BOOSTED_TREE => 
+          val regressor = model.stages(1).asInstanceOf[GBTRegressionModel]
+          println(s"Learned regression model:\n ${regressor.toDebugString}")
+        case RegressorType.LINEAR_REGRESSION => 
+          val regressor = model.stages(1).asInstanceOf[LinearRegressionModel]
+          println(s"Coefficients: ${regressor.coefficients} Intercept: ${regressor.intercept}")
+          val trainingSummary = regressor.summary
+          println(s"numIterations: ${trainingSummary.totalIterations}")
+          println(s"objectiveHistory: [${trainingSummary.objectiveHistory.mkString(",")}]")
+          trainingSummary.residuals.show()          
+      }
+    }
     val evaluator = new RegressionEvaluator().setLabelCol("solubility").setPredictionCol("prediction").setMetricName("r2")
     var metric = evaluator.evaluate(bf)
     println(s" R^2 on test data = $metric")
     metric = evaluator.evaluate(af)
     println(s"R^2 on train data = $metric")
-
-    val verbose = false
-    if (verbose) {
-      val regressor = if (!gbt) {
-        model.stages(1).asInstanceOf[RandomForestRegressionModel] 
-      } else {
-        model.stages(1).asInstanceOf[GBTRegressionModel]
-      }
-      println(s"Learned regression model:\n ${regressor.toDebugString}")
-    }
   }
 
   def main(args: Array[String]): Unit = {
@@ -63,6 +84,8 @@ object Solubility {
     val basePath = "dat/sol/"
 
     val esm: Boolean = true
+    val regressorType = RegressorType.LINEAR_REGRESSION
+    println(s"esm = $esm, regressorType = $regressorType")
 
     val (uf, vf) = if (!esm) {
       val paths = Array("eSol_train", "eSol_test", "S.cerevisiae_test").map(p => s"$basePath/$p.csv")
@@ -81,13 +104,12 @@ object Solubility {
       (uf, vf)
     }
     // // Exp 1. ESM with RF (320 features)
-    // run(uf, vf, esm, false, false)
-    // Exp 2. ESM with GBT (320 features)
-    run(uf, vf, esm, true, false)
-    // // Exp 3. BoAA with RF (32 features)
-    // run(uf, vf, esm, false, false)
-    // Exp 4. BoAA with GBT (32 features)
-    // run(uf, vf, esm, true, false)
+    // run(uf, vf, esm, regressorType, false)
+    // // Exp 2. ESM with GBT (320 features)
+    // run(uf, vf, esm, regressorType, false)
+    // Exp 3. ESM with LR (320 features)
+    run(uf, vf, esm, regressorType, true)
+
     spark.stop()
   }
 }
