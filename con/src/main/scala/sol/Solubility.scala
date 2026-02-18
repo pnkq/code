@@ -83,13 +83,13 @@ object Solubility {
   }
 
   def main(args: Array[String]): Unit = {
-    val spark = SparkSession.builder.master("local[4]").appName(getClass.getName).getOrCreate()
+    val spark = SparkSession.builder.master("local[*]").appName(getClass.getName).getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
 
     val basePath = "dat/sol/"
 
     val esm: Boolean = true
-    val dimensions = 320 // 1280 // 320
+    val dimensions = 1280 // 320
     val regressorType = RegressorType.LINEAR_REGRESSION
     println(s"esm = $esm, regressorType = $regressorType")
 
