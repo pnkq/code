@@ -18,6 +18,7 @@ import com.intel.analytics.bigdl.dllib.visualization.{TrainSummary, ValidationSu
 import org.apache.spark.SparkContext
 import com.intel.analytics.bigdl.dllib.utils.Shape
 import com.intel.analytics.bigdl.dllib.keras.metrics.MSE
+import org.apache.spark.ml.evaluation.RegressionEvaluator
 
 /**
  * (C) phuonglh@gmail.com
@@ -44,12 +45,12 @@ object SolubilityDL {
     val sequential = Sequential()
     sequential.add(Masking(0, inputShape = Shape(maxSeqLen)))
     sequential.add(Embedding(inputDim = vocabSize, outputDim = embeddingSize, inputLength = maxSeqLen))
-    sequential.add(LSTM(64))
-    sequential.add(Dense(1, activation = "softmax"))
+    sequential.add(LSTM(32))
+    sequential.add(Dense(1, activation = "sigmoid"))
   }
 
   def main(args: Array[String]): Unit = {
-    val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[4]")
+    val conf = Engine.createSparkConf().setAppName(getClass.getName).setMaster("local[*]")
       .set("spark.executor.memory", "4g").set("spark.driver.memory", "8g")
     val sc = new SparkContext(conf)
     Engine.init
@@ -72,7 +73,7 @@ object SolubilityDL {
 
     val (uf, vf) = (ef, efV)
 
-    val model = createModel(maxSeqLen, vocabSize, 32)
+    val model = createModel(maxSeqLen, vocabSize, 16)
     model.summary()
 
     val criterion = MSECriterion()
@@ -83,11 +84,20 @@ object SolubilityDL {
     estimator.setLabelCol("solubility").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-4))
-      .setMaxEpoch(20)
+      .setMaxEpoch(2)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Loss(MSECriterion[Float])), batchSize)
-    // estimator.fit(uf)
+    estimator.fit(uf)
+
+    val af = model.predict(uf, Array("features"), "prediction", batchSize).withColumn("z", explode(col("prediction")))
+    val bf = model.predict(vf, Array("features"), "prediction", batchSize).withColumn("z", explode(col("prediction")))
+    af.select("gene", "solubility", "prediction", "z").show(5, false)
+    val evaluator = new RegressionEvaluator().setLabelCol("solubility").setPredictionCol("z").setMetricName("r2")
+    var metric = evaluator.evaluate(af)
+    println(s"R^2 on train data = $metric")
+    metric = evaluator.evaluate(bf)
+    println(s"R^2 on valid data = $metric")
 
     spark.stop()
   }

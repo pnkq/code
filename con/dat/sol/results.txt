@@ -1,0 +1,48 @@
+// LR: 1280 -> pcaDim = 100
+// R^2 on train data = 0.452657006991827
+// R^2 on valid data = 0.46908930981841157
+//  R^2 on test data = 0.20075190776298402
+
+// LR: 1280 -> pcaDim = 150
+// R^2 on train data = 0.4833639485449147
+// R^2 on valid data = 0.4757732482484923
+//  R^2 on test data = 0.28382794045609094
+
+// LR: 1280 -> pcaDim = 175
+// R^2 on train data = 0.49856933606402476
+// R^2 on valid data = 0.47730561085786216
+//  R^2 on test data = 0.21744389415184173
+
+// LR: 1280 -> pcaDim = 200
+// R^2 on train data = 0.5104691521812326
+// R^2 on valid data = 0.48936898360717007
+//  R^2 on test data = 0.26846188757462297
+
+// LR: 1280 -> pcaDim = 225
+// R^2 on train data = 0.521172975322634
+// R^2 on valid data = 0.48480776981487783
+//  R^2 on test data = 0.26725390310149155
+
+// LR: 1280 -> pcaDim = 256
+// R^2 on train data = 0.5345584853378907
+// R^2 on valid data = 0.47324336794226074
+//  R^2 on test data = 0.21443438713396057
+
+// LR: 1280 -> pcaDim = 320
+// R^2 on train data = 0.5585711610944915
+// R^2 on valid data = 0.4725999187455301
+//  R^2 on test data = 0.14878219842157892
+
+
+RF: 1280 -> pcaDim = 200
+R^2 on train data = 0.4122169886466265
+R^2 on valid data = 0.27606943547231255
+ R^2 on test data = -0.026797198635652775
+
+
+RF: 1280 -> pcaDim = 320
+R^2 on train data = 0.41405946357027046
+R^2 on valid data = 0.25632530185430136
+ R^2 on test data = -0.059250095807867664 
+
+ 

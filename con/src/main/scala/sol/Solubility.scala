@@ -15,6 +15,7 @@ import org.apache.spark.ml.regression.LinearRegression
 import org.apache.spark.ml.regression.Regressor
 import org.apache.spark.ml.regression.LinearRegressionModel
 import breeze.linalg.dim
+import org.apache.spark.ml.feature.PCA
 
 /**
  * (C) phuonglh@gmail.com
@@ -37,7 +38,7 @@ object Solubility {
       case RegressorType.GRADIENT_BOOSTED_TREE =>
         new GBTRegressor().setLabelCol("solubility")
       case RegressorType.LINEAR_REGRESSION => 
-        new LinearRegression().setLabelCol("solubility")
+        new LinearRegression().setLabelCol("solubility").setRegParam(1E-4) // avoid overfitting
       case _ =>
         new RandomForestRegressor().setLabelCol("solubility").setNumTrees(128)
     }
@@ -46,8 +47,9 @@ object Solubility {
       new Pipeline().setStages(Array(hashing, regressor))
     } else {
       val columns = (0 until dimensions).map(j => s"dim_$j").toArray
-      val assembler = new VectorAssembler().setInputCols(columns).setOutputCol("features")
-      new Pipeline().setStages(Array(assembler, regressor))
+      val assembler = new VectorAssembler().setInputCols(columns).setOutputCol("x")
+      val pca = new PCA().setInputCol("x").setOutputCol("features").setK(320)
+      new Pipeline().setStages(Array(assembler, pca, regressor))
     }
 
     val model = pipeline.fit(uf)
@@ -57,15 +59,16 @@ object Solubility {
     af.select("prediction", "solubility", "features").show(5)
 
     if (verbose) {
+      val n = model.stages.length - 1 // last stage, which is the regressor model
       t match {
         case RegressorType.RANDOM_FOREST => 
-          val regressor = model.stages(1).asInstanceOf[RandomForestRegressionModel] 
+          val regressor = model.stages(n).asInstanceOf[RandomForestRegressionModel] 
           println(s"Learned regression model:\n ${regressor.toDebugString}")
         case RegressorType.GRADIENT_BOOSTED_TREE => 
-          val regressor = model.stages(1).asInstanceOf[GBTRegressionModel]
+          val regressor = model.stages(n).asInstanceOf[GBTRegressionModel]
           println(s"Learned regression model:\n ${regressor.toDebugString}")
         case RegressorType.LINEAR_REGRESSION => 
-          val regressor = model.stages(1).asInstanceOf[LinearRegressionModel]
+          val regressor = model.stages(n).asInstanceOf[LinearRegressionModel]
           println(s"Coefficients: ${regressor.coefficients} Intercept: ${regressor.intercept}")
           val trainingSummary = regressor.summary
           println(s"numIterations: ${trainingSummary.totalIterations}")
@@ -90,7 +93,7 @@ object Solubility {
 
     val esm: Boolean = true
     val dimensions = 1280 // 320
-    val regressorType = RegressorType.LINEAR_REGRESSION
+    val regressorType = RegressorType.RANDOM_FOREST
     println(s"esm = $esm, regressorType = $regressorType")
 
     val (uf, vf, wf) = if (!esm) {
@@ -119,3 +122,4 @@ object Solubility {
     spark.stop()
   }
 }
+
