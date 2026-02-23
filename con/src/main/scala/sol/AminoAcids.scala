@@ -8,7 +8,7 @@ object AminoAcids {
         "L" -> "Leucine",
         "I" -> "Isoleucine",
         "M" -> "Methionine",
-        "P" -> "Phenylalanine",
+        "F" -> "Phenylalanine",
         "W" -> "Tryptophan",
         "P" -> "Proline",
         "G" -> "Glycine"
@@ -28,4 +28,6 @@ object AminoAcids {
         "Y" -> "Tyrosine",
         "C" -> "Cysteine",
     )
+    val INDEX = Seq("A", "V", "L", "I", "M", "F", "W", "P", "G", "D", "E", "K", "R", "H", "S", "T", "N", "Q", "Y", "C")
+        .zipWithIndex.map{case (c, i) => (c, i + 1)}.toMap
 }
