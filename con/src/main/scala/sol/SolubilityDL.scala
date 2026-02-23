@@ -31,14 +31,14 @@ object SolubilityDL {
 
   val hash = udf((tokens: Array[String], maxSeqLen: Int) => {
     val hs = tokens.map { token => AminoAcids.INDEX.getOrElse(token, 0) }
-    if (hs.length < maxSeqLen) hs ++ Array.fill[Int](maxSeqLen - hs.length)(0) else hs.take(maxSeqLen)
+    if (hs.length < maxSeqLen) Array.fill[Int](maxSeqLen - hs.length)(0) ++ hs else hs.take(maxSeqLen)
   })
 
   private def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int) = {
     val sequential = Sequential()
     sequential.add(Masking(0, inputShape = Shape(maxSeqLen)).setName("masking"))
     sequential.add(Embedding(inputDim = vocabSize + 1, outputDim = embeddingSize, inputLength = maxSeqLen).setName("embedding"))
-    sequential.add(LSTM(16).setName("lstm"))
+    sequential.add(LSTM(32).setName("lstm"))
     sequential.add(Dense(1).setName("dense"))
   }
 
@@ -77,7 +77,7 @@ object SolubilityDL {
     estimator.setLabelCol("solubility").setFeaturesCol("features")
       .setBatchSize(batchSize)
       .setOptimMethod(new Adam(2E-4))
-      .setMaxEpoch(5)
+      .setMaxEpoch(10)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
       .setValidation(Trigger.everyEpoch, vf, Array(new Loss(MSECriterion[Float]), new Loss(SmoothL1Criterion[Float]())), batchSize)
