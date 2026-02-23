@@ -8,7 +8,7 @@ import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.dllib.keras.Sequential
 import com.intel.analytics.bigdl.dllib.keras.layers.{Masking, Dense, Embedding, LSTM}
 import com.intel.analytics.bigdl.dllib.keras.optimizers.Adam
-import com.intel.analytics.bigdl.dllib.nn.MSECriterion
+import com.intel.analytics.bigdl.dllib.nn.{MSECriterion, SmoothL1Criterion}
 import com.intel.analytics.bigdl.dllib.nnframes.NNEstimator
 import com.intel.analytics.bigdl.dllib.optim.{Trigger, Loss}
 import com.intel.analytics.bigdl.dllib.utils.Engine
@@ -36,10 +36,10 @@ object SolubilityDL {
 
   private def createModel(maxSeqLen: Int, vocabSize: Int, embeddingSize: Int) = {
     val sequential = Sequential()
-    sequential.add(Masking(0, inputShape = Shape(maxSeqLen)))
-    sequential.add(Embedding(inputDim = vocabSize + 1, outputDim = embeddingSize, inputLength = maxSeqLen))
-    sequential.add(LSTM(16))
-    sequential.add(Dense(1, activation = "sigmoid"))
+    sequential.add(Masking(0, inputShape = Shape(maxSeqLen)).setName("masking"))
+    sequential.add(Embedding(inputDim = vocabSize + 1, outputDim = embeddingSize, inputLength = maxSeqLen).setName("embedding"))
+    sequential.add(LSTM(16).setName("lstm"))
+    sequential.add(Dense(1).setName("dense"))
   }
 
   def main(args: Array[String]): Unit = {
@@ -62,14 +62,14 @@ object SolubilityDL {
 
     val ef = train.withColumn("tokens", f(col("sequence"))).withColumn("features", hash(col("tokens"), lit(maxSeqLen)))
     val efV = valid.withColumn("tokens", f(col("sequence"))).withColumn("features", hash(col("tokens"), lit(maxSeqLen)))
-    ef.select("solubility", "features").show(false)
+    ef.select("solubility", "sequence", "features").show(false)
 
     val (uf, vf) = (ef, efV)
 
     val model = createModel(maxSeqLen, vocabSize, 16)
     model.summary()
 
-    val criterion = MSECriterion()
+    val criterion = SmoothL1Criterion() // MSECriterion()
     val estimator = NNEstimator(model, criterion, Array(maxSeqLen), Array(1))
     val trainingSummary = TrainSummary(appName = "lstm", logDir = "sum/sol/")
     val validationSummary = ValidationSummary(appName = "lstm", logDir = "sum/sol/")
@@ -80,7 +80,7 @@ object SolubilityDL {
       .setMaxEpoch(5)
       .setTrainSummary(trainingSummary)
       .setValidationSummary(validationSummary)
-      .setValidation(Trigger.everyEpoch, vf, Array(new Loss(MSECriterion[Float])), batchSize)
+      .setValidation(Trigger.everyEpoch, vf, Array(new Loss(MSECriterion[Float]), new Loss(SmoothL1Criterion[Float]())), batchSize)
     estimator.fit(uf)
 
     val af = model.predict(uf, Array("features"), "prediction", batchSize).withColumn("z", explode(col("prediction")))
