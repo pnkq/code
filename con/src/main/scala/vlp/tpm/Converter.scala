@@ -4,6 +4,7 @@ import org.apache.spark.ml.UnaryTransformer
 import org.apache.spark.ml.util.{DefaultParamsReadable, DefaultParamsWritable, Identifiable}
 import org.apache.spark.sql.types.{ArrayType, DataType, StringType}
 import vlp.tok.WordShape
+import org.tartarus.snowball.ext.englishStemmer
 
 /**
   * A transformer to pre-process tokens.
@@ -14,6 +15,7 @@ import vlp.tok.WordShape
 class Converter(override val uid: String) extends UnaryTransformer[Seq[String], Seq[String], Converter] with DefaultParamsWritable {
 
   def this() = this(Identifiable.randomUID("converter"))
+  val stemmer = new englishStemmer()
 
   override protected def createTransformFunc: Seq[String] => Seq[String] = {
     _.map(token => WordShape.shape(token) match {
@@ -23,7 +25,7 @@ class Converter(override val uid: String) extends UnaryTransformer[Seq[String], 
       case "time" => "<time>"
       case "percentage" => "<percent>"
       case "number" => "<number>"
-      case _ => token.toLowerCase
+      case _ => token.toLowerCase // run stemmer
     })
   }
 

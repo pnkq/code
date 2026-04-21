@@ -1,0 +1,1 @@
+{"class":"vlp.tpm.Converter","timestamp":1775790141084,"sparkVersion":"3.1.3","uid":"converter_dc5c93568ca7","paramMap":{"outputCol":"ws","inputCol":"words"},"defaultParamMap":{"outputCol":"converter_dc5c93568ca7__output"}}

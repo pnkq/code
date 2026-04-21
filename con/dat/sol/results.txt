@@ -13,10 +13,10 @@
 // R^2 on valid data = 0.47730561085786216
 //  R^2 on test data = 0.21744389415184173
 
-// LR: 1280 -> pcaDim = 200
-// R^2 on train data = 0.5104691521812326
-// R^2 on valid data = 0.48936898360717007
-//  R^2 on test data = 0.26846188757462297
+LR: 1280 -> pcaDim = 200
+R^2 on train data = 0.5104691521812326
+R^2 on valid data = 0.48936898360717007
+ R^2 on test data = 0.26846188757462297
 
 // LR: 1280 -> pcaDim = 225
 // R^2 on train data = 0.521172975322634

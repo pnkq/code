@@ -133,14 +133,13 @@ object LDA {
             lda.eval(dataset)
           }
           case "eval" => {
-            val dataset = lda.createDataset(config.dataPath)
+            val dataset = lda.createDataset(config.dataPath, "text")
             lda.eval(dataset)
           }
           case "predict" =>
             val model = PipelineModel.load(config.modelPath)
             logger.info(lda.topicTerms(model).toString())
-            val document = Document("Do_vậy , Chủ_tịch FPT Software khẳng_định năng_suất lao_động là yếu_tố sống_còn của các doanh_nghiệp . Tuy_nhiên , việc nhân_viên \" chăm_chỉ hơn mỗi ngày  nhiệt_tình hơn mỗi giờ \" + " +
-              "thực_tế không giải_quyết được bao_nhiêu . Điều quan_trọng , giúp biến_đổi về \" chất \" , là phải ứng_dụng chuyển_đổi số .")
+            val document = Document("According to the law, a complaint against an employer can be filed with the Ministry of Labor by the employee himself, or by the representative labor organization at the workplace, and if there is no labor organization - by the labor organization to which the employee belongs. The complaint will be filed with the Labor Court, which has unique authority to hear claims against employers under the law.")
             val result = lda.predict(document, model)
             logger.info(result.toString)
         }
