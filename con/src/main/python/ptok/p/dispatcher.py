@@ -7,6 +7,8 @@ from p.validator import VietnameseValidator
 
 class Dispatcher:
     WORD = re.compile(r"\w+|[^\w\s]")
+    PUNCT = re.compile(r"""[,.;:'?"`!@#$%^&*)()}{|~/\+=-]+""")
+    NUMBER = re.compile(r"""\d+""")
     validator = VietnameseValidator("vietnamese_words.txt")
 
     def dispatch(self, text):
@@ -20,6 +22,10 @@ class Dispatcher:
             elif re.search("[" + Constants.VOWELS_VI + "đ]", word.lower()):
                 lang = "vie"
             elif self.validator.is_valid_syllable(word):
+                lang = "vie"
+            elif self.PUNCT.fullmatch(word):
+                lang = "vie"
+            elif self.NUMBER.fullmatch(word):
                 lang = "vie"
             elif word.isascii():
                 lang = "eng"

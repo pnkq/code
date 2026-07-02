@@ -51,7 +51,6 @@ canh
 cao
 cau
 cay
-cc
 cha
 chai
 chan
@@ -95,7 +94,6 @@ cua
 cum
 cun
 cung
-d
 da
 dai
 dam
@@ -110,6 +108,7 @@ di
 dinh
 do
 doa
+doanh
 doi
 dom
 don
@@ -125,7 +124,6 @@ em
 en
 eng
 eo
-g
 ga
 gai
 gala
@@ -165,7 +163,6 @@ gon
 gr
 gram
 gu
-h
 ha
 hai
 ham
@@ -183,6 +180,7 @@ heo
 hi
 hia
 hin
+hy
 ho
 hoa
 hoai
@@ -198,6 +196,7 @@ hot
 hua
 hun
 hung
+huy
 huynh
 i
 im
@@ -206,7 +205,6 @@ inh
 inox
 ion
 iot
-k
 ka
 kaki
 kali
@@ -304,7 +302,6 @@ lua
 lui
 lung
 ly
-m
 m2
 m3
 ma
@@ -454,7 +451,6 @@ polime
 pom
 pop
 psi
-q
 qua
 quai
 quan
@@ -487,6 +483,7 @@ rin
 rinh
 rit
 riu
+ro
 roi
 ron
 rong
@@ -498,7 +495,6 @@ rui
 rum
 run
 rung
-s
 sa
 sai
 sam
