@@ -1,11 +1,13 @@
 from p.constants import Constants
+from p.piece import Piece
 
 class VietnameseTokenizer:
 
-    def tokenize(self, syllable: str) -> list[str]:
+    def tokenize(self, span: str) -> list[str]:
         """
         Breaks a Vietnamese syllable into sub-parts according to the Vietnamese syllable formation.
         """
+        syllable = span.text
         s = syllable.lower()
         
         # Find the first vowel index
@@ -26,4 +28,14 @@ class VietnameseTokenizer:
         ]
         
         # Filter out empty strings and return
-        return [p for p in parts if p]        
+        non_empty_parts = [p for p in parts if p]
+        pieces = []
+        cursor = span.start
+        for w in non_empty_parts:
+            pieces.append(
+                Piece(text=w, source="vie", language="vie", start=cursor, end=cursor + len(w))
+            )
+            cursor += len(w)
+
+        return pieces       
+
