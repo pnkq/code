@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+from json import JSONEncoder
 
 @dataclass
 class Piece:
@@ -10,11 +10,24 @@ class Piece:
     """
     text: str
     # Which tokenizer produced this piece?
-    source: str      # "vi", "bpe", "punct"
+    source: str      # "vie", "bpe", "punct"
     # Original language of the span
-    language: str    # "vi", "en", "punct"
+    language: str    # "vie", "eng", "punct"
     # Character offsets in the original text
     start: int
     end: int
+    # word id of this piece
+    word_id: int = -1
 
+
+@dataclass
+class PieceStat:
+    frequency: int = 0
+    source: str = ""
+    language: str = ""
+
+
+class PieceStatEncoder(JSONEncoder):
+    def default(self, o):
+        return o.__dict__
     

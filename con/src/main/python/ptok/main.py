@@ -1,25 +1,22 @@
 import unicodedata
 from p.tokenizer import HybridTokenizer
-from p.vocabulary import Vocabulary
+from p.vocabulary import VocabularyBuilder
+from p.pipeline import Pipeline
 
 
-text = """
-Sự trỗi dậy của công nghệ bảo hiểm (Insurtech) 
-Hoàng An
-Trong những năm vừa qua, khi thu nhập người dân được cải thiện và số hóa ngày càng được ứng dụng mạnh mẽ hơn, ngành bảo hiểm đã có nhiều sự thay đổi. Công nghệ bảo hiểm (hay còn gọi là Insurtech) nổi lên như một lĩnh vực tiềm năng và có sức tăng trưởng tốt...
-The WISE Talk số thứ 06 với chủ đề: “Sự trỗi dậy của công nghệ bảo hiểm (Insurtech)” sẽ được phát sóng trực tuyến vào hồi 14:00 giờ ngày 30/3/2023 trên nền tảng VnEconomy và Fanpage VnEconomy.
-"""
+pipeline = Pipeline()
 
-tokenizer = HybridTokenizer()
-nfc_text = unicodedata.normalize("NFC", text)
-pieces = tokenizer.tokenize(nfc_text)
+text = """Tôi đang học transformers của OpenAI và SpaceX."""
 
-print("TOKENS")
+pieces = pipeline.tokenize(text)
+
 for p in pieces:
     print(p)
 
 
-# vocab = Vocabulary()
-# ids = vocab.encode(pieces)
-# print(ids)
+# vocab_builder = VocabularyBuilder()
+# vocab_builder.add_stream(pieces)
+# vocab = vocab_builder.build()
+# vocab_builder.save(vocab, "vocab.json", "stat.json")
+
 
