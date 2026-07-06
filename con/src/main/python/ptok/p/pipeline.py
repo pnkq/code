@@ -12,10 +12,15 @@ class Pipeline:
         self.plugins = PluginManager()
         self.postprocessor = PostProcessor()
 
-    def tokenize(self, text):
+    # def tokenize(self, text):
+    #     text = self.normalizer.normalize(text)
+    #     spans = self.dispatcher.dispatch(text)
+    #     pieces = self.plugins.process(spans)
+    #     pieces = self.postprocessor.process(pieces)
+    #     return pieces
+
+    def encode(self, text):
         text = self.normalizer.normalize(text)
         spans = self.dispatcher.dispatch(text)
         pieces = self.plugins.process(spans)
-        pieces = self.postprocessor.process(pieces)
-        return pieces
-
+        return self.encoder.encode(text, pieces)

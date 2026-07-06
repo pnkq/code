@@ -13,7 +13,7 @@ class TestDecoder(unittest.TestCase):
         self.assertEqual(decoded, text)
 
     def test_vietnamese(self):
-        self.roundtrip("Tôi đang học")
+        self.roundtrip("Tôi đang học .")
 
     def test_english(self):
         self.roundtrip("I love transformers.")
