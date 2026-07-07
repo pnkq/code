@@ -10,9 +10,9 @@ class Piece:
     """
     text: str
     # Which tokenizer produced this piece?
-    source: str      # "vie", "bpe", "punct"
+    source: str      # "vie", "bpe", "pad"
     # Original language of the span
-    language: str    # "vie", "eng", "punct"
+    language: str    # "vie", "eng", "pad"
     # Character offsets in the original text
     start: int
     end: int
