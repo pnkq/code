@@ -206,8 +206,9 @@ object TransitionPretrainer {
     val shape = Array(1, config.maxSeqLen * 4) // the expected input shape of the model
     val tensor = Tensor[Float](x, shape)
     val output = net.forward(tensor).toTensor[Float] // 1 x maxSeqLen x numLabels
-    // output the matrix of all time steps // seqLen x numLabels
-    output.squeeze().narrow(1, 1, transitions.length)
+    // select the vector of the first time step
+    val y = output.select(2, 1) // dimension 2 and row index 1, y has shape 1 x numLabels
+    y.squeeze.toArray // get a vector of dimension numLabels
    }
 
   def main(args: Array[String]): Unit = {
@@ -247,6 +248,8 @@ object TransitionPretrainer {
       train(model, config, trainDF, validDF)
     } else {
       // inference mode
+      val path = "dat/dep/UD_English/pud-as.jsonl"
+      val df = spark.read.json(path).filter(size(col("transitions")) >= 3)
       // precompute transition embeddings using a pretrained BERT model 
       val modelPath = "bin/asp/eng.bigdl"
       val model = Try(Models.loadModel[Float](modelPath)).getOrElse {
