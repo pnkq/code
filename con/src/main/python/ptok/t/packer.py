@@ -11,9 +11,7 @@ class SequencePacker:
 
     # drop the last incomplete sequence
     def flush(self):
-        self.buffer = []
-        return []
+        self.buffer.clear()
     
-
 
 

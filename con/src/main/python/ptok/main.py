@@ -18,12 +18,14 @@ pipeline = Pipeline()
 # vocab_builder.save(vocab, "vocab.json", "stat.json")
 
 # build and save the vocab
-# reader = CorpusReader("0")
-# builder = VocabularyBuilder(pipeline)
-# vocab = builder.build(reader)
-# vocab.save("0.json")
+reader = CorpusReader("d")
+builder = VocabularyBuilder(pipeline)
+vocab = builder.build(reader)
+vocab.save("d.json")
 
-vocab = Vocabulary.load("0.json")
+# vocab = Vocabulary.load("d.json")
 
-builder = DatasetBuilder(pipeline, vocab, "0", max_length=128)
+builder = DatasetBuilder(pipeline, vocab, "d", max_length=512)
 builder.save("0.npy")
+print("   pieces = {}".format(builder.stats.pieces))
+print("documents = {}".format(builder.stats.documents))

@@ -30,7 +30,6 @@ class VocabularyEntry:
     token: str
     source: str
     language: str
-    can_start_word: bool = True
 
 
 class Vocabulary:
@@ -44,11 +43,11 @@ class Vocabulary:
         # next available id
         self.next_id = 0 
 
-    def add(self, token, source, language, can_start_word=True):
+    def add(self, token, source, language):
         if token in self.token2entry:
             return self.token2entry[token]
 
-        entry = VocabularyEntry(id=self.next_id, token=token, source=source, language=language, can_start_word=can_start_word)
+        entry = VocabularyEntry(id=self.next_id, token=token, source=source, language=language)
         self.token2entry[token] = entry
         self.id2entry[self.next_id] = entry
         self.next_id += 1
