@@ -1,49 +1,27 @@
 from collections import Counter
 import json
 from dataclasses import dataclass, asdict
-from p.piece import Piece, PieceStat, PieceStatEncoder
+from p.piece import Piece
 
 
 class VocabularyBuilder:
-    def __init__(self):
-        self.counter = Counter()
-        self.stats = {}
+    def __init__(self, pipeline):
+        self.pipeline = pipeline
+        self.vocabulary = Vocabulary()
+    def initialize(self):
+        self.vocabulary.add("<pad>", "pad", "pad")
+        self.vocabulary.add("<unk>", "pad", "pad")
+        self.vocabulary.add("<s>", "pad", "pad")
+        self.vocabulary.add("</s>", "pad", "pad")
+        self.vocabulary.add("<mask>", "pad", "pad")
 
-    def add_piece(self, piece):
-        self.counter[piece.text] += 1
-        self.stats[piece.text] = PieceStat(frequency=self.counter[piece.text], source=piece.source, language=piece.language)
-
-    def add_stream(self, stream):
-        for piece in stream:
-            self.add_piece(piece)
-
-    def build(self, min_frequency=2, special_tokens=None):
-        if special_tokens is None:
-            special_tokens = ["<pad>", "<unk>", "<s>", "</s>", "<mask>"]
-        vocab = {}
-        #
-        # Special tokens first
-        #
-        for token in special_tokens:
-            vocab[token] = len(vocab)
-
-        #
-        # Frequency order
-        #
-        for token, freq in self.counter.most_common():
-            if freq < min_frequency:
-                continue
-            vocab[token] = len(vocab)
-
-        return vocab
-
-    def save(self, vocab, vocab_file, stat_file):
-        with open(vocab_file, "w", encoding="utf8") as f:
-            json.dump(vocab, f, ensure_ascii=False, indent=2)
-        with open(stat_file, "w", encoding="utf8") as f:
-            json.dump(self.stats, f, ensure_ascii=False, indent=2, cls=PieceStatEncoder)
-
-
+    def build(self, corpus_reader):
+        self.initialize()
+        for document in corpus_reader.documents():
+            pieces = self.pipeline.tokenize(document)
+            for piece in pieces:
+                self.vocabulary.add(piece.text, piece.source, piece.language)
+        return self.vocabulary        
 
 
 @dataclass

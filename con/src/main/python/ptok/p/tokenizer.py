@@ -15,9 +15,7 @@ class HybridTokenizer:
 
     def tokenize(self, text):
         pieces = []
-
         spans = self.dispatcher.dispatch(text)
-
         for span in spans:
             if span.lang == "vie":
                 tokens = self.vie.tokenize(span)
@@ -27,7 +25,6 @@ class HybridTokenizer:
                 pieces.extend(tokens)
             else:
                 pieces.append(Piece(text=span.text, source="unk", language="unk", start=span.start, end=span.end))
-
         return pieces
 
     

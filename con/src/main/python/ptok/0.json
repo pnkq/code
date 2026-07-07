@@ -1,0 +1,1567 @@
+{
+  "version": "1.0",
+  "vocab_size": 223,
+  "entries": [
+    {
+      "id": 0,
+      "token": "<pad>",
+      "source": "pad",
+      "language": "pad",
+      "can_start_word": true
+    },
+    {
+      "id": 1,
+      "token": "<unk>",
+      "source": "pad",
+      "language": "pad",
+      "can_start_word": true
+    },
+    {
+      "id": 2,
+      "token": "<s>",
+      "source": "pad",
+      "language": "pad",
+      "can_start_word": true
+    },
+    {
+      "id": 3,
+      "token": "</s>",
+      "source": "pad",
+      "language": "pad",
+      "can_start_word": true
+    },
+    {
+      "id": 4,
+      "token": "<mask>",
+      "source": "pad",
+      "language": "pad",
+      "can_start_word": true
+    },
+    {
+      "id": 5,
+      "token": "S",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 6,
+      "token": "ự",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 7,
+      "token": "tr",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 8,
+      "token": "ỗi",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 9,
+      "token": "d",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 10,
+      "token": "ậy",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 11,
+      "token": "c",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 12,
+      "token": "ủa",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 13,
+      "token": "ô",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 14,
+      "token": "ng",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 15,
+      "token": "ngh",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 16,
+      "token": "ệ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 17,
+      "token": "b",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 18,
+      "token": "ảo",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 19,
+      "token": "h",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 20,
+      "token": "iể",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 21,
+      "token": "m",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 22,
+      "token": "(",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 23,
+      "token": "Ins",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 24,
+      "token": "ur",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 25,
+      "token": "tech",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 26,
+      "token": ")",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 27,
+      "token": "H",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 28,
+      "token": "oà",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 29,
+      "token": "A",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 30,
+      "token": "n",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 31,
+      "token": "Tr",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 32,
+      "token": "o",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 33,
+      "token": "nh",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 34,
+      "token": "ữ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 35,
+      "token": "ă",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 36,
+      "token": "v",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 37,
+      "token": "ừa",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 38,
+      "token": "q",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 39,
+      "token": "ua",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 40,
+      "token": ",",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 41,
+      "token": "kh",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 42,
+      "token": "i",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 43,
+      "token": "th",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 44,
+      "token": "u",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 45,
+      "token": "ậ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 46,
+      "token": "p",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 47,
+      "token": "ười",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 48,
+      "token": "â",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 49,
+      "token": "đ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 50,
+      "token": "ượ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 51,
+      "token": "ải",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 52,
+      "token": "iệ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 53,
+      "token": "à",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 54,
+      "token": "s",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 55,
+      "token": "ố",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 56,
+      "token": "óa",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 57,
+      "token": "ày",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 58,
+      "token": "ứ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 59,
+      "token": "ụ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 60,
+      "token": "ạ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 61,
+      "token": "ẽ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 62,
+      "token": "ơ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 63,
+      "token": "ã",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 64,
+      "token": "ó",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 65,
+      "token": "iều",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 66,
+      "token": "ay",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 67,
+      "token": "ổi",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 68,
+      "token": ".",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 69,
+      "token": "C",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 70,
+      "token": "ò",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 71,
+      "token": "g",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 72,
+      "token": "ọi",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 73,
+      "token": "l",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 74,
+      "token": "ê",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 75,
+      "token": "ư",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 76,
+      "token": "ộ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 77,
+      "token": "t",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 78,
+      "token": "ĩ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 79,
+      "token": "iề",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 80,
+      "token": "ưở",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 81,
+      "token": "Th",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 82,
+      "token": "e",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 83,
+      "token": "W",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 84,
+      "token": "ISE",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 85,
+      "token": "Talk",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 86,
+      "token": "06",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 87,
+      "token": "ới",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 88,
+      "token": "ch",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 89,
+      "token": "ủ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 90,
+      "token": "ề",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 91,
+      "token": ":",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 92,
+      "token": "“",
+      "source": "unk",
+      "language": "unk",
+      "can_start_word": true
+    },
+    {
+      "id": 93,
+      "token": "”",
+      "source": "unk",
+      "language": "unk",
+      "can_start_word": true
+    },
+    {
+      "id": 94,
+      "token": "ph",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 95,
+      "token": "á",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 96,
+      "token": "uyế",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 97,
+      "token": "ào",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 98,
+      "token": "ồi",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 99,
+      "token": "14",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 100,
+      "token": "00",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 101,
+      "token": "iờ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 102,
+      "token": "30",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 103,
+      "token": "/",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 104,
+      "token": "3",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 105,
+      "token": "2023",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 106,
+      "token": "ả",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 107,
+      "token": "VnEconomy",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 108,
+      "token": "Fanpage",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 109,
+      "token": "eo",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 110,
+      "token": "áo",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 111,
+      "token": "Google",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 112,
+      "token": "Bain",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 113,
+      "token": "2022",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 114,
+      "token": "V",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 115,
+      "token": "N",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 116,
+      "token": "a",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 117,
+      "token": "ầ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 118,
+      "token": "50",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 119,
+      "token": "%",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 120,
+      "token": "ù",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 121,
+      "token": "Indonesia",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 122,
+      "token": "Philippines",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 123,
+      "token": "uy",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 124,
+      "token": "uyệ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 125,
+      "token": "ối",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 126,
+      "token": "ẫ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 127,
+      "token": "ỏ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 128,
+      "token": "iê",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 129,
+      "token": "ếu",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 130,
+      "token": "iữ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 131,
+      "token": "ại",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 132,
+      "token": "ì",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 133,
+      "token": "6",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 134,
+      "token": "au",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 135,
+      "token": "insurtech",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 136,
+      "token": "Thailand",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 137,
+      "token": "Singapore",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 138,
+      "token": "ây",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 139,
+      "token": "T",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 140,
+      "token": "ị",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 141,
+      "token": "ườ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 142,
+      "token": "ũ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 143,
+      "token": "iố",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 144,
+      "token": "ều",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 145,
+      "token": "ồ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 146,
+      "token": "ài",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 147,
+      "token": "oá",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 148,
+      "token": "ớ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 149,
+      "token": "iải",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 150,
+      "token": "L",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 151,
+      "token": "iệu",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 152,
+      "token": "iế",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 153,
+      "token": "ìa",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 154,
+      "token": "ể",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 155,
+      "token": "iú",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 156,
+      "token": "oa",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 157,
+      "token": "ưu",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 158,
+      "token": "oạ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 159,
+      "token": "k",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 160,
+      "token": "ẩ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 161,
+      "token": "uả",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 162,
+      "token": "ầu",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 163,
+      "token": "?",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 164,
+      "token": "X",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 165,
+      "token": "ướ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 166,
+      "token": "ói",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 167,
+      "token": "r",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 168,
+      "token": "ặ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 169,
+      "token": "Covid",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 170,
+      "token": "-",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 171,
+      "token": "19",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 172,
+      "token": "iễ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 173,
+      "token": "ế",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 174,
+      "token": "Nh",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 175,
+      "token": "ợ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 176,
+      "token": "ừ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 177,
+      "token": "ú",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 178,
+      "token": "ao",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 179,
+      "token": "ý",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 180,
+      "token": "iá",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 181,
+      "token": "í",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 182,
+      "token": "Đ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 183,
+      "token": "iả",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 184,
+      "token": "ái",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 185,
+      "token": "K",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 186,
+      "token": "ươ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 187,
+      "token": "ai",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 188,
+      "token": "Tech",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 189,
+      "token": "Connect",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 190,
+      "token": "ổ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 191,
+      "token": "Talkshow",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 192,
+      "token": "ội",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 193,
+      "token": "uậ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 194,
+      "token": "ở",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 195,
+      "token": "Ch",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 196,
+      "token": "uyể",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 197,
+      "token": "ỡ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 198,
+      "token": "ấy",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 199,
+      "token": "iêu",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 200,
+      "token": "âu",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 201,
+      "token": "ỗ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 202,
+      "token": "ắ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 203,
+      "token": "ữa",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 204,
+      "token": "2",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 205,
+      "token": "Kh",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 206,
+      "token": "ời",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 207,
+      "token": "Ô",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 208,
+      "token": "Ng",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 209,
+      "token": "D",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 210,
+      "token": "Ph",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 211,
+      "token": "B",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 212,
+      "token": "CEO",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 213,
+      "token": "Sal",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 214,
+      "token": "ad",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 215,
+      "token": "in",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 216,
+      "token": "ấ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 217,
+      "token": "Host",
+      "source": "bpe",
+      "language": "eng",
+      "can_start_word": true
+    },
+    {
+      "id": 218,
+      "token": "uyề",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 219,
+      "token": "ọ",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 220,
+      "token": "uý",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 221,
+      "token": "õi",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    },
+    {
+      "id": 222,
+      "token": "!",
+      "source": "vie",
+      "language": "vie",
+      "can_start_word": true
+    }
+  ]
+}
