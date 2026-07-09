@@ -15,7 +15,7 @@ class DatasetBuilder:
     def build(self):
         progress = tqdm(unit=" pieces")
         for doc in self.reader.documents():
-            self.stats.documents += 1
+            self.stats.lines += 1
             ids = self.encoder.encode_document(doc)
             self.stats.pieces += len(ids)
             progress.update(len(ids))
@@ -31,5 +31,5 @@ class DatasetBuilder:
 
 @dataclass
 class BuildStats:
-    documents: int = 0
+    lines: int = 0
     pieces: int = 0
