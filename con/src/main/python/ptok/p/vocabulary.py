@@ -1,5 +1,6 @@
 from collections import Counter
 import json
+from json import JSONEncoder
 from dataclasses import dataclass, asdict
 from p.piece import Piece
 
@@ -8,6 +9,8 @@ class VocabularyBuilder:
     def __init__(self, pipeline):
         self.pipeline = pipeline
         self.vocabulary = Vocabulary()
+        self.counter = Counter()
+
     def initialize(self):
         self.vocabulary.add("<pad>", "pad", "pad")
         self.vocabulary.add("<unk>", "pad", "pad")
@@ -19,8 +22,12 @@ class VocabularyBuilder:
         self.initialize()
         for document in corpus_reader.documents():
             pieces = self.pipeline.tokenize(document)
+            self.stat = self.counter.update(pieces)
             for piece in pieces:
-                self.vocabulary.add(piece.text, piece.source, piece.language)
+                entry = VocabularyEntry(token=piece.text, source=piece.source, language=piece.language)
+                self.stat[entry].frequency += 1
+                self.vocabulary.add(entry)
+            
         return self.vocabulary        
 
 
@@ -30,6 +37,7 @@ class VocabularyEntry:
     token: str
     source: str
     language: str
+    frequency: int = 0
 
 
 class Vocabulary:
@@ -43,15 +51,20 @@ class Vocabulary:
         # next available id
         self.next_id = 0 
 
+    def add(self, entry):
+        if entry.token in self.token2entry:
+            return self.token2entry[entry.token]
+        self.token2entry[entry.token] = entry
+        self.id2entry[self.next_id] = entry
+        self.next_id += 1
+        return entry
+
     def add(self, token, source, language):
         if token in self.token2entry:
             return self.token2entry[token]
 
         entry = VocabularyEntry(id=self.next_id, token=token, source=source, language=language)
-        self.token2entry[token] = entry
-        self.id2entry[self.next_id] = entry
-        self.next_id += 1
-        return entry
+        return self.add(entry)
     
     def token_to_id(self, token):
         if token not in self.token2entry:
@@ -105,10 +118,10 @@ class Vocabulary:
             entry = VocabularyEntry(**item)
             vocab.token2entry[entry.token] = entry
             vocab.id2entry[entry.id] = entry
-            vocab.next_id = max(
-                vocab.next_id,
-                entry.id + 1
-            )
+            vocab.next_id = max(vocab.next_id, entry.id + 1)
         return vocab    
     
-    
+
+class VocabularyEntryEncoder(JSONEncoder):
+    def default(self, o):
+        return o.__dict__

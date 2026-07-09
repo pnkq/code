@@ -1,3 +1,4 @@
+
 class CorpusEncoder:
     def __init__(self, pipeline, vocab):
         self.pipeline = pipeline
