@@ -12,13 +12,8 @@ pipeline = Pipeline()
 # for p in pieces:
 #     print(p)
 
-# vocab_builder = VocabularyBuilder()
-# vocab_builder.add_stream(pieces)
-# vocab = vocab_builder.build()
-# vocab_builder.save(vocab, "vocab.json", "stat.json")
-
 # build and save the vocab
-corpus_dir = "d"
+corpus_dir = "20231101_vie"
 
 reader = CorpusReader(corpus_dir)
 builder = VocabularyBuilder(pipeline)

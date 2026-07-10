@@ -15,7 +15,7 @@ class CorpusReader:
                     if line:
                         i += 1
                         yield line
-                    if i % 100 == 0:
-                        progress.update(100)
+                    if i % 1000 == 0:
+                        progress.update(1000)
         progress.close()
 

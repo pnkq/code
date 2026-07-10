@@ -1,21 +1,25 @@
-from tokenizers import Tokenizer
 from p.piece import Piece
-# from transformers import AutoTokenizer
+from transformers import AutoTokenizer
 
 
 class EnglishTokenizer:
     def __init__(self):
-        # self.tokenizer = AutoTokenizer.from_pretrained("roberta-base")
-        self.tokenizer = Tokenizer.from_file("p/bpe_eng.json")
-
-    # def tokenize(self, word):
-    #     return self.tokenizer.tokenize(word)
+        self.tokenizer = AutoTokenizer.from_pretrained("roberta-base")
 
     def tokenize(self, span):
-        enc = self.tokenizer.encode(span.text)
-        pieces = []
+        # 1. Encode the text
+        inputs = self.tokenizer(span.text, return_offsets_mapping=True)
 
-        for token, (s, e) in zip(enc.tokens, enc.offsets):
+        # 2. Extract the IDs and the Offsets from the dictionary
+        input_ids = inputs["input_ids"]
+        offsets = inputs["offset_mapping"]
+
+        # 3. Convert the input IDs back into token strings
+        tokens = self.tokenizer.convert_ids_to_tokens(input_ids)
+
+        pieces = []
+        for token, offset in zip(tokens, offsets):
+            s, e = offset
             pieces.append(
                 Piece(text=token, source="bpe", language="eng", start=span.start + s, end=span.start + e)
             )

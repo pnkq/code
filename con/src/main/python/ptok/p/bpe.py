@@ -17,7 +17,7 @@ tokenizer.pre_tokenizer = Whitespace()
 
 # Trainer
 
-trainer = BpeTrainer(vocab_size=16384, min_frequency=2, special_tokens=["<pad>", "<unk>", "<s>", "</s>", "<mask>"])
+trainer = BpeTrainer(vocab_size=16384, min_frequency=5, special_tokens=["<pad>", "<unk>", "<s>", "</s>", "<mask>"])
 
 #tokenizer.train(["20231101/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"], trainer)
 tokenizer.train(["20231101/eng.txt"], trainer)
@@ -26,4 +26,4 @@ tokenizer.train(["20231101/eng.txt"], trainer)
 #tokenizer.save("p/bpe_vie.json")
 tokenizer.save("p/bpe_eng.json")
 
-print("Vocabulary size:", tokenizer.get_vocab_size())
+print("Vocab size:", tokenizer.get_vocab_size())
