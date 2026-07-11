@@ -109,7 +109,24 @@ class Vocabulary:
             vocab.token2entry[entry.token] = entry
             vocab.id2entry[entry.id] = entry
             vocab.next_id = max(vocab.next_id, entry.id + 1)
-        return vocab    
+        return vocab
+    
+    @classmethod
+    def load_and_prune(cls, filename, min_frequency=5):
+        with open(filename, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        vocab = cls()
+        vocab.next_id = 0
+        vocab.token2entry.clear()
+        vocab.id2entry.clear()
+        for item in data["entries"]:
+            entry = VocabularyEntry(**item)
+            if (entry.language == "pad") or (entry.frequency >= min_frequency):
+              vocab.token2entry[entry.token] = entry
+              vocab.id2entry[entry.id] = entry
+              vocab.next_id = max(vocab.next_id, entry.id + 1)
+        return vocab
     
 
 class VocabularyEntryEncoder(JSONEncoder):
