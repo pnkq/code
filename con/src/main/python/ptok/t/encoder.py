@@ -1,13 +1,11 @@
+from p.tokenizer import HybridTokenizer
 
 class CorpusEncoder:
-    def __init__(self, pipeline, vocab):
-        self.pipeline = pipeline
-        self.vocab = vocab
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
 
-    def encode_document(self, text):
-        # Piece stream
-        pieces = self.pipeline.tokenize(text)
-        # ids
-        ids = self.vocab.encode(pieces)
-        return ids
+    def encode(self, text):
+        return self.tokenizer.encode(text)
+    
+    
     

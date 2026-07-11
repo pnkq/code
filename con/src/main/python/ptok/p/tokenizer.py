@@ -1,88 +1,113 @@
-from p.pipeline import Pipeline
-from p.vocabulary import Vocabulary
+from typing import List, Union
+import torch
+
 
 class HybridTokenizer:
-    def __init__(self, vocab_file, max_length=512):
-        self.pipeline = Pipeline()
-        self.max_length = max_length
-        
-        # 1. Define your vocabulary mapping (Ensure special tokens are included!)
-        self.vocab = Vocabulary.load(vocab_file)
-        
-        # 2. Required Hugging Face Special Token Properties
-        self.bos_token_id = self.vocab.token_to_id("<s>")
-        self.pad_token_id = self.vocab.token_to_id("<pad>")
-        self.eos_token_id = self.vocab.token_to_id("</s>")
-        self.unk_token_id = self.vocab.token_to_id("<unk>")
-        self.mask_token_id = self.vocab.token_to_id("<mask>")
-        
-        self.mask_token = "<mask>"
+
+    def __init__(self, pipeline, vocab):
+        self.pipeline = pipeline
+        self.vocab = vocab
+
+        self.bos_token = "<s>"
+        self.eos_token = "</s>"
         self.pad_token = "<pad>"
+        self.unk_token = "<unk>"
+        self.mask_token = "<mask>"
+
+        self.bos_token_id = self.vocab.token_to_id(self.bos_token)
+        self.eos_token_id = self.vocab.token_to_id(self.eos_token)
+        self.pad_token_id = self.vocab.token_to_id(self.pad_token)
+        self.unk_token_id = self.vocab.token_to_id(self.unk_token)
+        self.mask_token_id = self.vocab.token_to_id(self.mask_token)
 
     def __len__(self):
-        # Required so RobertaConfig knows the vocabulary size
         return len(self.vocab)
 
-    def _tokenize_single_text(self, text):
-        # Tokenize the text into pieces
+    @property
+    def vocab_size(self):
+        return len(self.vocab)
+
+    def encode(self, text):
         pieces = self.pipeline.tokenize(text)
-        # Find token ids using the vocab
-        input_ids = self.vocab.encode(pieces)        
-        # Create the attention mask (1 for real tokens)
-        attention_mask = [1] * len(input_ids)
-        
-        return input_ids, attention_mask
+        return self.vocab.encode(pieces)
+    
+    def encode_with_special_tokens(self, text):
+        token_ids = self.encode(text)
+        return [ self.bos_token_id, *token_ids, self.eos_token_id ]
 
-    def __call__(self, text, padding=True, truncation=True, max_length=None, return_special_tokens_mask=False, **kwargs):
-        """
-        The main gateway Hugging Face calls. 
-        It must handle both a single string and a list of strings (batches).
-        """
-        if max_length is None:
-            max_length = self.max_length
+    def encode_batch(self, texts):
+        return [ self.encode(t) for t in texts ]
+    
+    def decode(self, ids, skip_special_tokens=True):
+        if skip_special_tokens:
+            ids = [ i for i in ids if i not in { self.bos_token_id, self.eos_token_id, self.pad_token_id} ]
+        pieces = self.vocab.decode(ids)
+        return self.pipeline.decoder.decode(pieces)
 
-        # Handle batches vs single strings
+    def build_inputs_with_special_tokens(self, token_ids):
+        return [ self.bos_token_id, *token_ids, self.eos_token_id]
+    
+    def get_special_tokens_mask(self, token_ids):
+        specials = { self.bos_token_id, self.eos_token_id, self.pad_token_id }
+        return [ 1 if i in specials else 0 for i in token_ids ]
+
+    def __call__(self, text: Union[str, List[str]], return_attention_mask=True, return_special_tokens_mask=False, return_tensors=None):
+        """
+        Tokenize one or more texts.
+
+        This method is intended for inference / HuggingFace compatibility.
+
+        Returns
+        -------
+        {
+            "input_ids": ...,
+            "attention_mask": ...,
+            "special_tokens_mask": ...
+        }
+        """
         is_batch = isinstance(text, list)
         texts = text if is_batch else [text]
-        
         batch_input_ids = []
         batch_attention_mask = []
         batch_special_tokens_mask = []
 
-        for t in texts:
-            ids, mask = self._tokenize_single_text(t)
-            
-            # Dynamic Truncation
-            if truncation and len(ids) > max_length:
-                ids = ids[:max_length]
-                mask = mask[:max_length]
-                
+        for sentence in texts:
+            ids = self.encode(sentence)
+            #
+            # Add <s> and </s>
+            #
+            ids = self.build_inputs_with_special_tokens(ids)
             batch_input_ids.append(ids)
-            batch_attention_mask.append(mask)
-            
+            if return_attention_mask:
+                batch_attention_mask.append([1] * len(ids))
+
             if return_special_tokens_mask:
-                # 1 for special tokens (<s>, </s>, <pad>), 0 for regular words. Crucial for MLM data collator!
-                spec_mask = [1 if x in [self.bos_token_id, self.eos_token_id, self.pad_token_id] else 0 for x in ids]
-                batch_special_tokens_mask.append(spec_mask)
+                batch_special_tokens_mask.append(self.get_special_tokens_mask(ids, already_has_special_tokens=True))
 
-        # Dynamic Padding
-        if padding:
-            longest = max(len(ids) for ids in batch_input_ids)
-            for i in range(len(batch_input_ids)):
-                pad_len = longest - len(batch_input_ids[i])
-                batch_input_ids[i] += [self.pad_token_id] * pad_len
-                batch_attention_mask[i] += [0] * pad_len  # 0 means ignore padding tokens
-                if return_special_tokens_mask:
-                    batch_special_tokens_mask[i] += [1] * pad_len
-
-        # Construct final output dictionary
+        #
+        # Construct output dictionary
+        #
         output = {
-            "input_ids": batch_input_ids if is_batch else batch_input_ids[0],
-            "attention_mask": batch_attention_mask if is_batch else batch_attention_mask[0]
+            "input_ids": batch_input_ids
         }
-        
+
+        if return_attention_mask:
+            output["attention_mask"] = batch_attention_mask
+
         if return_special_tokens_mask:
-            output["special_tokens_mask"] = batch_special_tokens_mask if is_batch else batch_special_tokens_mask[0]
-            
+            output["special_tokens_mask"] = batch_special_tokens_mask
+
+        #
+        # Convert batch of size 1 back to a single example
+        #
+        if not is_batch:
+            output = { key: value[0] for key, value in output.items() }
+
+        #
+        # Convert to PyTorch tensors
+        #
+        if return_tensors == "pt":
+            output = { key: torch.tensor(value, dtype=torch.long) for key, value in output.items() }
+
         return output
-    
+

@@ -6,11 +6,11 @@ from p.postprocessor import PostProcessor
 
 class Pipeline:
 
-    def __init__(self, max_length=512):
+    def __init__(self):
         self.normalizer = Normalizer()
         self.dispatcher = Dispatcher()
         self.plugins = PluginManager()
-        self.postprocessor = PostProcessor(max_length)
+        self.postprocessor = PostProcessor()
 
     def tokenize(self, text):
         text = self.normalizer.normalize(text)

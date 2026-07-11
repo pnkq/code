@@ -6,22 +6,33 @@ from tqdm import tqdm
 from dataclasses import dataclass
 
 class DatasetBuilder:
-    def __init__(self, pipeline, vocab, corpus_dir, max_length=512):
+    def __init__(self, tokenizer, corpus_dir, sequence_length=512, drop_last=True):
+        self.tokenizer = tokenizer
         self.reader = CorpusReader(corpus_dir)
-        self.encoder = CorpusEncoder(pipeline, vocab)
-        self.packer = SequencePacker(max_length)
+        self.encoder = CorpusEncoder(tokenizer)
+        self.packer = SequencePacker(sequence_length)
+        self.drop_last = drop_last
         self.stats = BuildStats()
 
     def build(self):
         progress = tqdm(unit=" pieces")
+        
         for doc in self.reader.documents():
+            ids = self.encoder.encode(doc)
             self.stats.lines += 1
-            ids = self.encoder.encode_document(doc)
             self.stats.pieces += len(ids)
             progress.update(len(ids))
-            yield from self.packer.add(ids)
-        self.packer.flush()
-        progress.close()
+            for seq in self.packer.add(ids):
+                seq = self.tokenizer.build_inputs_with_special_tokens(seq)
+                self.stats.sequences += 1
+                yield seq            
+
+        for seq in self.packer.flush(drop_last=self.drop_last, pad_id=self.tokenizer.pad_token_id):
+            seq = self.tokenizer.build_inputs_with_special_tokens(seq)
+            self.stats.sequences += 1
+            yield seq
+
+        progress.close()            
 
     def save(self, filename):
         sequences = list(self.build())
@@ -33,3 +44,4 @@ class DatasetBuilder:
 class BuildStats:
     lines: int = 0
     pieces: int = 0
+    sequences: int = 0
