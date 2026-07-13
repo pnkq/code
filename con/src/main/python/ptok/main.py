@@ -3,6 +3,7 @@ from p.vocabulary import VocabularyBuilder, Vocabulary
 from p.pipeline import Pipeline
 from t.dataset import DatasetBuilder
 from p.tokenizer import HybridTokenizer
+from t.memmap import MemMapWriter, MemMapDataset
 
 
 pipeline = Pipeline()
@@ -40,12 +41,36 @@ result3 = tokenizer([text, "Thực hiện theo ý kiến chỉ đạo của Giá
 print(result3)
 
 # TEST 5: test the dataset builder that convert a corpus into sequences of ids
-corpus_dir = "0"
-builder = DatasetBuilder(tokenizer, "{}".format(corpus_dir), sequence_length=32)
-seqs = builder.build()
-for s in seqs:
-    print(s)
-# builder.save("{}.npy".format(corpus_dir))
-print("   pieces = {}".format(builder.stats.pieces))
-print("    lines = {}".format(builder.stats.lines))
-print(" sequences = {}".format(builder.stats.sequences))
+# corpus_dir = "0"
+# builder = DatasetBuilder(tokenizer, "{}".format(corpus_dir), sequence_length=32)
+# seqs = builder.build()
+# for s in seqs:
+#     print(s)
+# # builder.save("{}.npy".format(corpus_dir))
+# print("   pieces = {}".format(builder.stats.pieces))
+# print("    lines = {}".format(builder.stats.lines))
+# print(" sequences = {}".format(builder.stats.sequences))
+
+
+# TEST 6: build memmap writer and save the corpus into a *.bin file for training,
+# then load the binary dataset into a mem-map dataset. 
+#corpus_dir = "0"
+corpus_dir = "1"
+#corpus_dir = "20231101_vie"
+
+sequence_length = 512
+
+# builder = DatasetBuilder(tokenizer, "{}".format(corpus_dir), sequence_length=sequence_length)
+# writer = MemMapWriter("{}.bin".format(corpus_dir), sequence_length=sequence_length+2)
+# for seq in builder.build():
+#     writer.write(seq)
+
+# writer.close()
+
+dataset = MemMapDataset("{}.bin".format(corpus_dir),  sequence_length=sequence_length+2)
+print(f"Number of sequences = {len(dataset)}")
+sample = dataset[0]
+print(f"Shape of a sequence is {sample["input_ids"].shape}")
+
+
+
