@@ -184,3 +184,17 @@ class HybridTokenizer:
     def is_fast(self):
         return False
     
+    @property
+    def normal_token_ids(self):
+        if not hasattr(self, "_normal_token_ids"):
+            forbidden = {
+                self.bos_token_id,
+                self.eos_token_id,
+                self.pad_token_id,
+                self.mask_token_id
+            }
+            self._normal_token_ids = [
+                i for i in range(self.vocab_size)
+                if i not in forbidden
+            ]
+        return self._normal_token_ids

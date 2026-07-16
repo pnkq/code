@@ -4,25 +4,16 @@ import torch
 
 class MaskedLanguageModelDataCollator:
 
-    def __init__(self, tokenizer, mlm_probability=0.15):
+    def __init__(self, tokenizer, mlm_probability=0.15, debug=False):
         self.tokenizer = tokenizer
         self.mlm_probability = mlm_probability
+        self.debug = debug
 
         self.special_ids = {
             tokenizer.bos_token_id,
             tokenizer.eos_token_id,
             tokenizer.pad_token_id
         }
-
-        self.normal_token_ids = torch.tensor([ i
-            for i in range(tokenizer.vocab_size)
-            if i not in {
-                tokenizer.pad_token_id,
-                tokenizer.bos_token_id,
-                tokenizer.eos_token_id,
-                tokenizer.mask_token_id
-            }
-        ])
 
     def __call__(self, examples):
         input_ids = torch.tensor([e["input_ids"] for e in examples], dtype=torch.long)
@@ -47,26 +38,33 @@ class MaskedLanguageModelDataCollator:
         # Ignore unmasked tokens
         labels[~masked_indices] = -100
 
+        rand = torch.rand(labels.shape)
         # 80% -> <mask>
-        replace_prob = torch.full(labels.shape, 0.8)
-        indices_replaced = (torch.bernoulli(replace_prob).bool() & masked_indices)
-        input_ids[indices_replaced] = self.tokenizer.mask_token_id
-
+        indices_replaced = masked_indices & (rand < 0.8)
         # 10% -> random token
-        random_prob = torch.full(labels.shape, 0.5)
-        indices_random = (torch.bernoulli(random_prob).bool() & masked_indices & ~indices_replaced)
+        indices_random = masked_indices & (rand >= 0.8) & (rand < 0.9)
+        # indices_unchanged = masked_indices & (rand >= 0.9) # for clarity only
 
-        indices = torch.randint(len(self.normal_token_ids), labels.shape)
-        random_words = self.normal_token_ids[indices]
-        
+        indices = torch.randint(len(self.tokenizer.normal_token_ids),labels.shape)
+        random_words = torch.tensor(self.tokenizer.normal_token_ids, dtype=torch.long)[indices]
+
+        input_ids[indices_replaced] = self.tokenizer.mask_token_id
         input_ids[indices_random] = random_words[indices_random]
 
         # Remaining 10% unchanged
         attention_mask = (input_ids != self.tokenizer.pad_token_id).long()
 
-        return {
+        output = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels
         }
+
+        if self.debug:
+            output["masked_indices"] = masked_indices
+            output["indices_replaced"] = indices_replaced
+            output["indices_random"] = indices_random
+            output["special_tokens_mask"] = special_tokens_mask        
+            
+        return output
     

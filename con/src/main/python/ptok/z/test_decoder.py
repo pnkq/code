@@ -1,3 +1,7 @@
+import sys
+sys.path
+sys.path.append('/home/phuonglh/code/con/src/main/python/ptok/')
+
 import unittest
 from p.pipeline import Pipeline
 from p.decoder import Decoder

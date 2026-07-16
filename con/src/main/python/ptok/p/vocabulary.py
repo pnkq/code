@@ -60,7 +60,13 @@ class Vocabulary:
     def token_to_id(self, token):
         if token not in self.token2entry:
             return self.token2entry["<unk>"].id
-        return self.token2entry[token].id        
+        return self.token2entry[token].id
+
+    def id_to_token(self, id):
+        if id not in self.id2entry:
+            return self.id2entry[self.token_to_id("<unk>")].token
+        return self.id2entry[id].token
+
     
     def encode(self, pieces):
         ids = []

@@ -8,7 +8,7 @@ class EnglishTokenizer:
 
     def tokenize(self, span):
         # 1. Encode the text
-        inputs = self.tokenizer(span.text, return_offsets_mapping=True)
+        inputs = self.tokenizer(span.text, return_offsets_mapping=True, add_special_tokens=False)
 
         # 2. Extract the IDs and the Offsets from the dictionary
         input_ids = inputs["input_ids"]
