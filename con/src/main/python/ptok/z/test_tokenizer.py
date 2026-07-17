@@ -1,8 +1,10 @@
 import sys
-sys.path
-sys.path.append('/home/phuonglh/code/con/src/main/python/ptok/')
-
+from pathlib import Path
 import unittest
+
+HOME_DIR = Path.home()
+sys.path.append(f"{HOME_DIR}/code/con/src/main/python/ptok/")
+
 from p.pipeline import Pipeline
 
 class TestDecoder(unittest.TestCase):

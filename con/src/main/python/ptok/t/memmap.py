@@ -3,8 +3,6 @@ import numpy as np
 import os
 
 
-
-
 class MemMapWriter:
     def __init__(self, filename, sequence_length, dtype=np.int32, buffer_size=10000):
         self.filename = filename

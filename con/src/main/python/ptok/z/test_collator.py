@@ -1,9 +1,11 @@
 import sys
-sys.path
-sys.path.append('/home/phuonglh/code/con/src/main/python/ptok/')
+from pathlib import Path
 
-from p.tokenizer import HybridTokenizer
+HOME_DIR = Path.home()
+sys.path.append(f"{HOME_DIR}/code/con/src/main/python/ptok/")
+
 from p.pipeline import Pipeline
+from p.tokenizer import HybridTokenizer
 from p.vocabulary import VocabularyBuilder, Vocabulary
 from t.collator import MaskedLanguageModelDataCollator
 

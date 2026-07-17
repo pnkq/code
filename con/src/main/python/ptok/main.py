@@ -1,7 +1,7 @@
 import unicodedata
 from p.vocabulary import VocabularyBuilder, Vocabulary
 from p.pipeline import Pipeline
-from t.dataset import DatasetBuilder
+from t.dataset import CorpusReader, DatasetBuilder
 from p.tokenizer import HybridTokenizer
 from t.memmap import MemMapWriter, MemMapDataset
 
@@ -30,15 +30,15 @@ pipeline = Pipeline()
 # TEST 4: test the HybridTokenizer
 vocab = Vocabulary.load("vocab.json")
 tokenizer = HybridTokenizer(pipeline, vocab)
-text = """Tôi đang học transformers của OpenAI."""
-result = tokenizer.encode(text)
-print(result)
-print()
-result2 = tokenizer(text)
-print(result2)
-print()
-result3 = tokenizer([text, "Thực hiện theo ý kiến chỉ đạo của Giám đốc Đại học Quốc gia Hà Nội"])
-print(result3)
+# text = """Tôi đang học transformers của OpenAI."""
+# result = tokenizer.encode(text)
+# print(result)
+# print()
+# result2 = tokenizer(text)
+# print(result2)
+# print()
+# result3 = tokenizer([text, "Thực hiện theo ý kiến chỉ đạo của Giám đốc Đại học Quốc gia Hà Nội"])
+# print(result3)
 
 # TEST 5: test the dataset builder that convert a corpus into sequences of ids
 # corpus_dir = "0"
@@ -70,7 +70,7 @@ sequence_length = 512
 dataset = MemMapDataset("{}.bin".format(corpus_dir),  sequence_length=sequence_length+2)
 print(f"Number of sequences = {len(dataset)}")
 sample = dataset[0]
-print(f"Shape of a sequence is {sample["input_ids"].shape}")
+print(f'Shape of a sequence is {sample["input_ids"].shape}')
 
 
 
