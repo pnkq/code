@@ -1,7 +1,13 @@
 from transformers import RobertaForMaskedLM, Trainer, TrainingArguments
 
+import sys
+from pathlib import Path
+
+HOME_DIR = Path.home()
+sys.path.append(f"{HOME_DIR}/code/con/src/main/python/ptok/")
+
 from m.config import TrainingConfig
-from t.dataset import MemMapDataset
+from t.memmap import MemMapDataset
 from t.collator import MaskedLanguageModelDataCollator
 from p.tokenizer import HybridTokenizer
 from p.pipeline import Pipeline
@@ -27,7 +33,6 @@ def main():
 
     args = TrainingArguments(
         output_dir="checkpoints",
-        overwrite_output_dir=True,
         per_device_train_batch_size=cfg.batch_size,
         num_train_epochs=cfg.epochs,
         learning_rate=cfg.learning_rate,
@@ -49,7 +54,8 @@ def main():
         data_collator=collator
     )
 
-    trainer.train()
+    # Pass the path to your checkpoint folder directly when starting training
+    trainer.train(resume_from_checkpoint="./results/checkpoint-1000")
     trainer.save_model("model")
 
 
