@@ -55,7 +55,7 @@ def main():
     )
 
     # Pass the path to your checkpoint folder directly when starting training
-    trainer.train(resume_from_checkpoint="./results/checkpoint-1000")
+    trainer.train()
     trainer.save_model("model")
 
 

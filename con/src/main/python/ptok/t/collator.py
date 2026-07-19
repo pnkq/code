@@ -16,7 +16,9 @@ class MaskedLanguageModelDataCollator:
         }
 
     def __call__(self, examples):
-        input_ids = torch.tensor([e["input_ids"] for e in examples], dtype=torch.long)
+        # input_ids = torch.tensor([e["input_ids"] for e in examples], dtype=torch.long)
+        batch = np.stack([e["input_ids"] for e in examples], axis=0)
+        input_ids = torch.from_numpy(batch)        
         labels = input_ids.clone()
 
         probability_matrix = torch.full(
