@@ -28,7 +28,11 @@ def main():
 
     cfg = TrainingConfig(
         vocab_size=len(tokenizer),
-        batch_size=16,
+        batch_size=32,
+        hidden_size=256,
+        num_hidden_layers=6,
+        num_attention_heads=4,
+        intermediate_size=1024,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id
@@ -66,7 +70,7 @@ def main():
 
     # Pass the path to your checkpoint folder directly when starting training
     trainer.train()
-    trainer.save_model("model")
+    trainer.save_model(f"model_{cfg.hidden_size}_{cfg.num_hidden_layers}_{cfg.num_attention_heads}_{cfg.intermediate_size}")
 
 
 if __name__ == "__main__":
