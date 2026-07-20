@@ -42,7 +42,7 @@ class TrainingConfig:
     #
     # Training
     #
-    batch_size: int = 64
+    batch_size: int = 32
     epochs: int = 10
     warmup_ratio: float = 0.06
     gradient_accumulation_steps: int = 1

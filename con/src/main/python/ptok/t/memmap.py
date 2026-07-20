@@ -56,20 +56,23 @@ class MemMapDataset(Dataset):
         itemsize = self.dtype.itemsize
         filesize = os.path.getsize(filename)
 
-        self.num_sequences = filesize // (sequence_length * itemsize)
+        record_size = sequence_length * self.dtype.itemsize
 
-        self.data = np.memmap(
-            filename,
-            mode="r",
-            dtype=self.dtype,
-            shape=(self.num_sequences, sequence_length)
-        )
+        if filesize % record_size != 0:
+            raise ValueError(
+                f"Corrupted memmap file.\n"
+                f"File size = {filesize}\n"
+                f"Record size = {record_size}"
+            )
+
+        self.num_sequences = filesize // record_size
+        self.data = np.memmap(filename, mode="r", dtype=self.dtype, shape=(self.num_sequences, sequence_length))
 
     def __len__(self):
         return self.num_sequences
 
     def __getitem__(self, idx):
         return {
-            "input_ids": self.data[idx]
+            "input_ids": np.array(self.data[idx], copy=True)
         }
     

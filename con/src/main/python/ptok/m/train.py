@@ -18,7 +18,7 @@ def main():
 
     tokenizer = HybridTokenizer(Pipeline(), Vocabulary.load("vocab.json"))
 
-    dataset = MemMapDataset("1.bin", sequence_length=514)
+    dataset = MemMapDataset("1.bin", sequence_length=512+2)
 
     cfg = TrainingConfig(
         vocab_size=len(tokenizer),
@@ -53,6 +53,35 @@ def main():
         train_dataset=dataset,
         data_collator=collator
     )
+
+    print(len(dataset))
+    x = dataset[0]
+    print(type(x))
+    print(type(x["input_ids"]))
+    print(x["input_ids"].shape)
+    print(x["input_ids"][:10])
+
+    print("Creating train dataloader...")
+    loader = trainer.get_train_dataloader()
+    print("Done.")
+    print(dataset.data.dtype)
+    print(dataset.data.shape)    
+
+    print(dataset[0]["input_ids"][:10])
+    print(dataset[1]["input_ids"][:10])
+
+    import platform
+    import torch
+    import numpy as np
+
+    print(platform.platform())
+    print(torch.__version__)
+    print(np.__version__)
+
+    print("Use collator to create batches...")
+    examples = [dataset[i] for i in range(64)]
+    batch = collator(examples)
+    print(batch["input_ids"].shape)
 
     # Pass the path to your checkpoint folder directly when starting training
     trainer.train()
