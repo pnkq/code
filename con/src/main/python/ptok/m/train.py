@@ -6,6 +6,9 @@ from pathlib import Path
 HOME_DIR = Path.home()
 sys.path.append(f"{HOME_DIR}/code/con/src/main/python/ptok/")
 
+# import os
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 from m.config import TrainingConfig
 from t.memmap import MemMapDataset
 from t.collator import MaskedLanguageModelDataCollator
@@ -18,22 +21,29 @@ def main():
 
     tokenizer = HybridTokenizer(Pipeline(), Vocabulary.load("vocab.json"))
 
-    dataset = MemMapDataset("1.bin", sequence_length=512+2)
+    dataset = MemMapDataset("1.bin", sequence_length=512)
+    print(f"Vocab size: {len(tokenizer)}")
+    print(f"Number of sequences: {dataset.num_sequences}")
+    print(f"Shape of a sequence: {dataset[0]["input_ids"].shape}")
 
     cfg = TrainingConfig(
         vocab_size=len(tokenizer),
+        batch_size=16,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id
     )
 
     model = RobertaForMaskedLM(cfg.create_model_config())
+    # Returns total number of parameters
+    print(f"Total Parameters: {model.num_parameters():,}")
 
     collator = MaskedLanguageModelDataCollator(tokenizer)
 
     args = TrainingArguments(
         output_dir="checkpoints",
         per_device_train_batch_size=cfg.batch_size,
+        per_device_eval_batch_size=cfg.batch_size,
         num_train_epochs=cfg.epochs,
         learning_rate=cfg.learning_rate,
         weight_decay=cfg.weight_decay,
@@ -53,35 +63,6 @@ def main():
         train_dataset=dataset,
         data_collator=collator
     )
-
-    print(len(dataset))
-    x = dataset[0]
-    print(type(x))
-    print(type(x["input_ids"]))
-    print(x["input_ids"].shape)
-    print(x["input_ids"][:10])
-
-    print("Creating train dataloader...")
-    loader = trainer.get_train_dataloader()
-    print("Done.")
-    print(dataset.data.dtype)
-    print(dataset.data.shape)    
-
-    print(dataset[0]["input_ids"][:10])
-    print(dataset[1]["input_ids"][:10])
-
-    import platform
-    import torch
-    import numpy as np
-
-    print(platform.platform())
-    print(torch.__version__)
-    print(np.__version__)
-
-    print("Use collator to create batches...")
-    examples = [dataset[i] for i in range(64)]
-    batch = collator(examples)
-    print(batch["input_ids"].shape)
 
     # Pass the path to your checkpoint folder directly when starting training
     trainer.train()

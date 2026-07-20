@@ -16,21 +16,12 @@ class MaskedLanguageModelDataCollator:
         }
 
     def __call__(self, examples):
-        # input_ids = torch.tensor([e["input_ids"] for e in examples], dtype=torch.long) # slow
-        # batch = np.stack([e["input_ids"] for e in examples], axis=0)
-        # input_ids = torch.from_numpy(batch)
-        # batch = np.asarray([e["input_ids"] for e in examples], dtype=np.int32)
-        # input_ids = torch.tensor(batch, dtype=torch.long) # bug: segmenation fault on MacOS
-        # input_ids = torch.from_numpy(batch).long()
-        batch = np.stack([e["input_ids"] for e in examples]).astype(np.int64, copy=False)
-        input_ids = torch.from_numpy(batch)
-        
+        batch = np.stack([e["input_ids"] for e in examples])
+        input_ids = torch.from_numpy(batch).long()
+
         labels = input_ids.clone()
 
-        probability_matrix = torch.full(
-            labels.shape,
-            self.mlm_probability
-        )
+        probability_matrix = torch.full(labels.shape, self.mlm_probability)
 
         # Never mask special tokens
         special_tokens_mask = torch.zeros_like(labels, dtype=torch.bool)

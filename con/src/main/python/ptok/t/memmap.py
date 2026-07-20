@@ -53,7 +53,6 @@ class MemMapDataset(Dataset):
         self.sequence_length = sequence_length
         self.dtype = np.dtype(dtype)
 
-        itemsize = self.dtype.itemsize
         filesize = os.path.getsize(filename)
 
         record_size = sequence_length * self.dtype.itemsize
@@ -73,6 +72,6 @@ class MemMapDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            "input_ids": np.array(self.data[idx], copy=True)
+            "input_ids": self.data[idx].copy()
         }
     

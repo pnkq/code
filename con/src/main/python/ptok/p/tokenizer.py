@@ -8,16 +8,16 @@ class HybridTokenizer:
         self.pipeline = pipeline
         self.vocab = vocab
 
-        self.bos_token = "<s>"
-        self.eos_token = "</s>"
         self.pad_token = "<pad>"
         self.unk_token = "<unk>"
+        self.bos_token = "<s>"
+        self.eos_token = "</s>"
         self.mask_token = "<mask>"
 
-        self.bos_token_id = self.vocab.token_to_id(self.bos_token)
-        self.eos_token_id = self.vocab.token_to_id(self.eos_token)
         self.pad_token_id = self.vocab.token_to_id(self.pad_token)
         self.unk_token_id = self.vocab.token_to_id(self.unk_token)
+        self.bos_token_id = self.vocab.token_to_id(self.bos_token)
+        self.eos_token_id = self.vocab.token_to_id(self.eos_token)
         self.mask_token_id = self.vocab.token_to_id(self.mask_token)
 
     def __len__(self):

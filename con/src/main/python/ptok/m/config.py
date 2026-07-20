@@ -4,7 +4,6 @@ from transformers import RobertaConfig
 
 @dataclass
 class TrainingConfig:
-
     vocab_size: int
 
     #
@@ -29,7 +28,7 @@ class TrainingConfig:
     #
     # Token ids
     #
-    pad_token_id: int = 1
+    pad_token_id: int = 0
     bos_token_id: int = 2
     eos_token_id: int = 3
 
@@ -42,7 +41,7 @@ class TrainingConfig:
     #
     # Training
     #
-    batch_size: int = 32
+    batch_size: int = 8
     epochs: int = 10
     warmup_ratio: float = 0.06
     gradient_accumulation_steps: int = 1

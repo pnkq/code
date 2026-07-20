@@ -95,8 +95,8 @@ def main():
             prune_vocabulary("20231101_vie", "vocab.json")
         case 'memmap': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
-            memmap_writer(tokenizer, "1", 512)
-            memmap_dataset("1", 512)
+            memmap_writer(tokenizer, "1", 510)
+            memmap_dataset("1", 510)
         case 'dataset': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
             dataset_builder(tokenizer, "0")
