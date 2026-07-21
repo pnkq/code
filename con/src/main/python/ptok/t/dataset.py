@@ -19,7 +19,7 @@ class DatasetBuilder:
         pending = 0
         for line in self.reader.documents():
             before = self.packer.tokens_processed
-            ids = self.tokenizer.encode(line)
+            ids = self.tokenizer.encode_text(line)
             for seq in self.packer.add(ids):
                 yield self._finalize(seq)
             count = self.packer.tokens_processed - before
