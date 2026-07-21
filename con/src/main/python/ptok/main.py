@@ -13,6 +13,11 @@ def tokenize_simple_text(pipeline):
     pieces = pipeline.tokenize(text)
     for p in pieces:
         print(p)
+    
+    print()
+    subs = pipeline.tokenize_to_text(text)
+    for s in subs:
+        print(s)
 
 def build_vocabulary(corpus_dir):
     """Test 2: Build and save a vocabulary."""
@@ -29,7 +34,7 @@ def prune_vocabulary(input_vocab_file, output_vocab_file="vocab.json", min_frequ
     vocab.save(output_vocab_file)
 
 def tokenize(pipeline, vocab_file="vocab.json"):
-    """Test 4: Test a hybrid tokenizer using a pre-built vocabulary."""
+    """Test 4a: Test a hybrid tokenizer using a pre-built vocabulary."""
     vocab = Vocabulary.load(vocab_file)
     tokenizer = HybridTokenizer(pipeline, vocab)
     text = """Tôi đang học transformers của OpenAI."""
@@ -41,6 +46,15 @@ def tokenize(pipeline, vocab_file="vocab.json"):
     print()
     result3 = tokenizer([text, "Thực hiện theo ý kiến chỉ đạo của Giám đốc Đại học Quốc gia Hà Nội"])
     print(result3)
+
+def tokenize_text(pipeline, vocab_file="vocab.json"):
+    """Test 4b: Test a hybrid tokenizer using a pre-built vocabulary."""
+    vocab = Vocabulary.load(vocab_file)
+    tokenizer = HybridTokenizer(pipeline, vocab)
+    text = """Tôi đang học transformers của OpenAI."""
+    result = tokenizer.encode_text(text)
+    print(result)
+    print()
 
 def dataset_builder(tokenizer, corpus_dir):
     """Test 5: Convert a corpus into sequences of ids."""
@@ -88,15 +102,19 @@ def main():
 
     match args.action:
         case 'tokenize': 
+            tokenize_simple_text(pipeline)
             tokenize(pipeline)
+            tokenize_text(pipeline)
         case 'vocab': 
             build_vocabulary("20231101_vie")
         case 'prune':
             prune_vocabulary("20231101_vie", "vocab.json")
         case 'memmap': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
-            memmap_writer(tokenizer, "1", 510)
-            memmap_dataset("1", 510)
+            # memmap_writer(tokenizer, "1", 510)
+            # memmap_dataset("1", 510)
+            # memmap_writer(tokenizer, "20231101_vie", 510)
+            memmap_dataset("20231101_vie", 510)
         case 'dataset': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
             dataset_builder(tokenizer, "0")

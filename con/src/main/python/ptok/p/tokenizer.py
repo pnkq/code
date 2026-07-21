@@ -2,6 +2,11 @@ from typing import List, Union
 import torch
 
 
+"""
+    tokenizer(text) -> {"input_ids": ..., "attention_mask": ..., "special_tokens_mask": ... }
+    
+    tokenizer.tokenize_to_text(text) -> list[str]
+"""
 class HybridTokenizer:
 
     def __init__(self, pipeline, vocab):
@@ -30,6 +35,13 @@ class HybridTokenizer:
     def encode(self, text):
         pieces = self.pipeline.tokenize(text)
         return self.vocab.encode(pieces)
+    
+    def tokenize_to_text(self, text):
+        return self.pipeline.tokenize_to_text(text)
+    
+    def encode_text(self, text):
+        subs = self.tokenize_to_text(text)
+        return self.vocab.encode_text(subs)
     
     def encode_with_special_tokens(self, text):
         token_ids = self.encode(text)
@@ -75,7 +87,7 @@ class HybridTokenizer:
         
         return [self.vocab.id_to_token(i) for i in ids]
 
-    def __call__(self, text: Union[str, List[str]], return_attention_mask=True, return_special_tokens_mask=False, return_tensors=None):        
+    def __call__(self, text: Union[str, List[str]], return_attention_mask=True, return_special_tokens_mask=False, return_tensors=None):
         """
         Tokenize one or more texts.
 

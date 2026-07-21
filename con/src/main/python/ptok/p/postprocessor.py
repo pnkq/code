@@ -2,6 +2,6 @@ from p.piece import Piece
 
 
 class PostProcessor:
-    def process(self, pieces):
-        return pieces
+    def process(self, xs):
+        return xs
     

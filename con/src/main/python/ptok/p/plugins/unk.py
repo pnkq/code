@@ -5,9 +5,12 @@ class UnknownPlugin(TokenizerPlugin):
     def __init__(self):
         super().__init__()
 
-    def accepts(self, span):
-        return span.lang == "unk"
+    def accepts(self, lang):
+        return lang == "unk"
 
-    def tokenize(self, span):
-        return [ Piece(text=span.text, source="unk", language="unk", start=span.start, end=span.end) ]
+    def tokenize(self, token, return_pieces):
+        if return_pieces:
+            return [ Piece(text=token.text, source="unk", language="unk", start=token.start, end=token.end) ]
+        else:
+            return [ token[0] ]
 

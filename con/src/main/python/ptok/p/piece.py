@@ -1,12 +1,8 @@
 from dataclasses import dataclass
 
-@dataclass
+@dataclass(slots=True)
 class Piece:
-    """
-    One output token produced by a tokenizer.
-
-    This is the basic unit that will become a vocabulary entry.
-    """
+    """One output token produced by a tokenizer."""
     text: str
     # Which tokenizer produced this piece?
     source: str      # "vie", "bpe", "pad"

@@ -3,11 +3,18 @@ from p.piece import Piece
 
 class VietnameseTokenizer:
 
-    def tokenize(self, span: str) -> list[str]:
+    def tokenize(self, token, return_pieces=True):
         """
         Breaks a Vietnamese syllable into sub-parts according to the Vietnamese syllable formation.
         """
-        syllable = span.text
+        syllable = ""
+        if return_pieces:
+            # the token is of type Token(text, lang, start, end)
+            syllable = token.text
+        else:
+            # the token is a pair (text, lang)
+            syllable = token[0]
+
         s = syllable.lower()
         
         # Find the first vowel index
@@ -27,15 +34,18 @@ class VietnameseTokenizer:
             syllable[j+1:]       # Coda (final consonant)
         ]
         
-        # Filter out empty strings and return
+        # Filter out empty strings and return an iterator for streaming...
+        # we intentionally do not want to return a list
         non_empty_parts = [p for p in parts if p]
-        pieces = []
-        cursor = span.start
-        for w in non_empty_parts:
-            pieces.append(
-                Piece(text=w, source="vie", language="vie", start=cursor, end=cursor + len(w))
-            )
-            cursor += len(w)
 
-        return pieces       
+        if return_pieces:
+            cursor = token.start
+            for w in non_empty_parts:
+                yield Piece(text=w, source="vie", language="vie", start=cursor, end=cursor + len(w))
+                cursor += len(w)
+        else:
+            for p in non_empty_parts:
+                yield p
+        
+
 

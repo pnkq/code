@@ -6,9 +6,10 @@ class VietnamesePlugin(TokenizerPlugin):
         super().__init__()
         self.tokenizer = VietnameseTokenizer()
 
-    def accepts(self, span):
-        return span.lang == "vie"
+    def accepts(self, lang):
+        return lang == "vie"
 
-    def tokenize(self, span):
-        return self.tokenizer.tokenize(span)
+    def tokenize(self, token, return_pieces):
+        return self.tokenizer.tokenize(token, return_pieces)
+    
 

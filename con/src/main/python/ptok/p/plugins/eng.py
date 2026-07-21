@@ -6,9 +6,9 @@ class EnglishPlugin(TokenizerPlugin):
         super().__init__()
         self.tokenizer = EnglishTokenizer()
 
-    def accepts(self, span):
-        return span.lang == "eng"
+    def accepts(self, lang):
+        return lang == "eng"
 
-    def tokenize(self, span):
-        return self.tokenizer.tokenize(span)
+    def tokenize(self, token, return_pieces):
+        return self.tokenizer.tokenize(token, return_pieces)
 

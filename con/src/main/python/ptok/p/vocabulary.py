@@ -67,13 +67,14 @@ class Vocabulary:
             return self.id2entry[self.token_to_id("<unk>")].token
         return self.id2entry[id].token
 
-    
     def encode(self, pieces):
-        ids = []
         for piece in pieces:
-            ids.append(self.token_to_id(piece.text))
-        return ids
+            yield self.token_to_id(piece.text)
     
+    def encode_text(self, subs):
+        for s in subs:
+            yield self.token_to_id(s)
+
     def decode(self, ids):
         pieces = []
         for idx in ids:
