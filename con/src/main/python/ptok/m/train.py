@@ -24,7 +24,7 @@ def main():
     dataset = MemMapDataset("20231101_vie.bin", sequence_length=512)
     print(f"Vocab size: {len(tokenizer)}")
     print(f"Number of sequences: {dataset.num_sequences}")
-    print(f"Shape of a sequence: {dataset[0]["input_ids"].shape}")
+    print(f"Shape of a sequence: {dataset[0]['input_ids'].shape}")
 
     cfg = TrainingConfig(
         vocab_size=len(tokenizer),

@@ -62,15 +62,16 @@ def dataset_builder(tokenizer, corpus_dir):
     seqs = builder.build()
     for s in seqs:
         print(s)
-    print("   pieces = {}".format(builder.stats.pieces))
-    print("    lines = {}".format(builder.stats.lines))
-    print(" sequences = {}".format(builder.stats.sequences))
-    
+    print(f"   pieces = {builder.stats.pieces}")
+    print(f"    lines = {builder.stats.lines}")
+    print(f"sequences = {builder.stats.sequences}")
+
 def memmap_writer(tokenizer, corpus_dir, sequence_length):
     """Test 6: Save the corpus into a *.bin file for training, then load the binary dataset into a mem-map dataset."""
     builder = DatasetBuilder(tokenizer, f"{corpus_dir}", sequence_length=sequence_length)
     writer = MemMapWriter(f"{corpus_dir}.bin", sequence_length=sequence_length+2)
 
+    # trigger the generator...
     for seq in builder.build():
         writer.write(seq)
 
@@ -111,10 +112,12 @@ def main():
             prune_vocabulary("20231101_vie", "vocab.json")
         case 'memmap': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
-            # memmap_writer(tokenizer, "1", 510)
-            # memmap_dataset("1", 510)
+            memmap_writer(tokenizer, "1", 510)
+            memmap_dataset("1", 510)
+            # memmap_writer(tokenizer, "2", 510)
+            # memmap_dataset("2", 510)
             # memmap_writer(tokenizer, "20231101_vie", 510)
-            memmap_dataset("20231101_vie", 510)
+            # memmap_dataset("20231101_vie", 510)
         case 'dataset': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
             dataset_builder(tokenizer, "0")
