@@ -1,7 +1,12 @@
 from pathlib import Path
 from tqdm import tqdm 
 
+# (C) phuonglh@gmail.com
+
 class CorpusReader:
+    """
+    Read all *.txt files in a directory into an iterator of lines.
+    """
     def __init__(self, corpus_dir):
         self.corpus_dir = Path(corpus_dir)
 
@@ -23,4 +28,29 @@ class CorpusReader:
             progress.update(i)
             
         progress.close()
+
+
+class CorpusShard:
+    """
+    A corpus shard that reads all bytes in a particular range (start, end).
+    This is the mechanism that allows sharding a very large file into multiple partitions.
+    """
+    def __init__(self, filename, start, end):
+        self.filename = filename
+        self.start = start
+        self.end = end
+
+    def documents(self):
+        with open(self.filename, "r", encoding="utf-8") as fp:
+            fp.seek(self.start)
+            # Skip partial line
+            if self.start != 0:
+                fp.readline()
+            while True:
+                if fp.tell() >= self.end:
+                    break
+                line = fp.readline()
+                if not line:
+                    break
+                yield line.rstrip("\n")
 

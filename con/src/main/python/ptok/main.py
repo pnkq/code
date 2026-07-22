@@ -1,8 +1,9 @@
 from p.vocabulary import VocabularyBuilder, Vocabulary
 from p.pipeline import Pipeline
-from t.dataset import CorpusReader, DatasetBuilder
+from t.dataset import CorpusReader, DatasetBuilder, DatasetBuilderPar
 from p.tokenizer import HybridTokenizer
 from t.memmap import MemMapWriter, MemMapDataset
+from t.partitioner import BytePartitioner
 
 import argparse
 import sys
@@ -93,7 +94,7 @@ def main():
     # Define the choices available to the user
     parser.add_argument(
         'action',
-        choices=['tokenize', 'vocab', 'memmap', 'dataset'],
+        choices=['tokenize', 'vocab', 'prune', 'memmap', 'dataset', 'partition', "memmap_par"],
         help="The specific function/action you want to execute."
     )
 
@@ -121,6 +122,17 @@ def main():
         case 'dataset': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
             dataset_builder(tokenizer, "0")
+        case 'partition':
+            # this is a big text file (1.3GB):
+            filename = "/home/phuonglh/code/con/src/main/python/ptok/20231101_vie/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"
+            offsets = BytePartitioner().partition(filename, num_workers=8)
+            for pair in offsets:
+                print(pair)
+        case 'memmap_par':
+            corpus_file = "/home/phuonglh/corpora/oscar/21/vi_part_1.txt"
+            builder = DatasetBuilderPar(sequence_length=510, num_workers=4)
+            builder.build(corpus_file, "vi_part_1")
+            return
         case _:
             print("Invalid action selection.", file=sys.stderr)
 
