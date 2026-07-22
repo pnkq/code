@@ -129,9 +129,12 @@ def main():
             for pair in offsets:
                 print(pair)
         case 'memmap_par':
-            corpus_file = "/home/phuonglh/corpora/oscar/21/vi_part_1.txt"
-            builder = DatasetBuilderPar(sequence_length=510, num_workers=16)
-            builder.build(corpus_file, "vi_part_1.bin")
+            corpus_file = "2/corpus_2.txt"
+            builder = DatasetBuilderPar(sequence_length=510, num_workers=8)
+            builder.build(corpus_file, "2.bin")
+            # corpus_file = "/home/phuonglh/corpora/oscar/21/vi_part_1.txt"
+            # builder = DatasetBuilderPar(sequence_length=510, num_workers=16)
+            # builder.build(corpus_file, "vi_part_1.bin")
             # corpus_file = "/home/phuonglh/code/con/src/main/python/ptok/20231101_vie/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"
             # builder = DatasetBuilderPar(sequence_length=510, num_workers=10)
             # builder.build(corpus_file, "v.bin")
