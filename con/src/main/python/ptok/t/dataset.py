@@ -1,6 +1,5 @@
 from t.corpus import CorpusReader, CorpusShard
 from t.packer import SequencePacker
-import numpy as np
 from tqdm import tqdm
 
 from t.partitioner import BytePartitioner

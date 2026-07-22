@@ -41,16 +41,11 @@ class CorpusShard:
         self.end = end
 
     def documents(self):
-        with open(self.filename, "r", encoding="utf-8") as fp:
+        with open(self.filename, "rb") as fp:
             fp.seek(self.start)
-            # Skip partial line
-            if self.start != 0:
-                fp.readline()
-            while True:
-                if fp.tell() >= self.end:
-                    break
+            while fp.tell() < self.end:
                 line = fp.readline()
                 if not line:
                     break
-                yield line.rstrip("\n")
+                yield line.decode("utf-8").rstrip("\n")
 

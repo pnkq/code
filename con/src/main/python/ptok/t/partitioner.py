@@ -9,13 +9,20 @@ class BytePartitioner:
     def partition(self, filename, num_workers=8):
         filesize = os.path.getsize(filename)
         chunk = filesize // num_workers
-        offsets = []
+        offsets = [0]
+        with open(filename, "rb") as fp:
+            # find the beginning of each partition
+            for i in range(1, num_workers):
+                pos = i * chunk
+                fp.seek(pos)
+                # skip the remainder of the current line
+                fp.readline()
+                offsets.append(fp.tell())
+
+        offsets.append(filesize)
+        partitions = []
         for i in range(num_workers):
-            start = i * chunk
-            if i == num_workers - 1:
-                end = filesize
-            else:
-                end = (i + 1) * chunk
-            offsets.append((start, end))
-        return offsets
+            partitions.append((offsets[i], offsets[i+1]))
+
+        return partitions
     
