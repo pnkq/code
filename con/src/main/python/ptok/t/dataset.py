@@ -2,6 +2,9 @@ from t.corpus import CorpusReader, CorpusShard
 from t.packer import SequencePacker
 from tqdm import tqdm
 
+from multiprocessing import RLock
+tqdm.set_lock(RLock())
+
 from t.partitioner import BytePartitioner
 from t.worker import WorkerBuilder
 from t.merger import DatasetMerger
@@ -10,7 +13,6 @@ from t.stats import BuildStats
 from multiprocessing import Process
 from pathlib import Path
 import tempfile
-import os
 
 class DatasetBuilderPar:
     """
