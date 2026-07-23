@@ -10,19 +10,41 @@ from t.worker import WorkerBuilder
 from t.merger import DatasetMerger
 from t.stats import BuildStats
 
-from multiprocessing import Process
+from multiprocessing import Process, Value
 from pathlib import Path
 import tempfile
+from ctypes import c_longlong
+import threading
+import time
+
 
 class DatasetBuilderPar:
     """
     Parallel version of DatasetBuilder.
     """
-
     def __init__(self, sequence_length, drop_last=True, num_workers=8):
         self.sequence_length = sequence_length
         self.drop_last = drop_last
         self.num_workers = num_workers
+
+    def monitor(self, progress, processes):
+        total = 0
+        # fmt = "{desc}: {percentage:3.0f}% |{bar}| {n:,d}/{total:,d} [{elapsed}<{remaining}]"
+        fmt="{desc}: {n:,d} {unit} [{elapsed}, {rate_fmt}]"
+        bar = tqdm(unit=" tokens", desc="Tokenizing", bar_format=fmt)
+
+        while True:
+            current = sum(counter.value for counter in progress)
+            bar.update(current - total)
+            total = current
+            if all(not p.is_alive() for p in processes):
+                break
+            time.sleep(0.5)
+
+        current = sum(counter.value for counter in progress)
+        bar.update(current - total)
+
+        bar.close()
 
     def build(self, corpus_file, output_file):
         temp_dir = Path(tempfile.mkdtemp(prefix="dataset_builder_"))
@@ -31,16 +53,23 @@ class DatasetBuilderPar:
 
         processes = []
         part_files = []
+        # shared progress counters, each counter stores the number of tokens processed by one worker.
+        progress = [Value(c_longlong, 0) for _ in range(self.num_workers)]
 
         for worker_id, (start, end) in enumerate(partitions):
             part_file = temp_dir / f"part_{worker_id:03d}.bin"
             part_files.append(part_file)
-            process = Process(target=self._worker, args=(worker_id, corpus_file, start, end, part_file))
+            process = Process(target=self._worker, args=(worker_id, corpus_file, start, end, part_file, progress[worker_id]))
             process.start()
             processes.append(process)
 
+        monitor_thread = threading.Thread(target=self.monitor, args=(progress, processes))
+        monitor_thread.start()
+
         for process in processes:
             process.join()
+
+        monitor_thread.join()
         
         # for i, process in enumerate(processes):
         #     print(f"Worker {i}: exit code = {process.exitcode}")
@@ -51,7 +80,7 @@ class DatasetBuilderPar:
 
         DatasetMerger().merge(part_files, output_file)
 
-    def _worker(self, worker_id, corpus_file, start, end, output_file):
+    def _worker(self, worker_id, corpus_file, start, end, output_file, counter):
         try:
             shard = CorpusShard(corpus_file, start, end)
             builder = WorkerBuilder(
@@ -59,7 +88,8 @@ class DatasetBuilderPar:
                 shard=shard, 
                 output_file=output_file, 
                 sequence_length=self.sequence_length, 
-                drop_last=self.drop_last
+                drop_last=self.drop_last,
+                progress_counter=counter
             )
             builder.build()
         except Exception:
