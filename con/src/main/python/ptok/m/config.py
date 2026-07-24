@@ -9,10 +9,10 @@ class TrainingConfig:
     #
     # RoBERTa architecture
     #
-    hidden_size: int = 128
-    num_hidden_layers: int = 4
-    num_attention_heads: int = 4
-    intermediate_size: int = 256
+    hidden_size: int = 16
+    num_hidden_layers: int = 2
+    num_attention_heads: int = 2
+    intermediate_size: int = 64
 
     #
     # Input
@@ -41,8 +41,8 @@ class TrainingConfig:
     #
     # Training
     #
-    batch_size: int = 8
-    epochs: int = 10
+    batch_size: int = 2
+    epochs: int = 1
     warmup_ratio: float = 0.06
     gradient_accumulation_steps: int = 1
 

@@ -21,7 +21,8 @@ def main():
 
     tokenizer = HybridTokenizer(Pipeline(), Vocabulary.load("vocab.json"))
 
-    dataset = MemMapDataset("20231101_vie.bin", sequence_length=512)
+    # dataset = MemMapDataset("20231101_vie.bin", sequence_length=512)
+    dataset = MemMapDataset("2.bin", sequence_length=512)
     print(f"Vocab size: {len(tokenizer)}")
     print(f"Number of sequences: {dataset.num_sequences}")
     print(f"Shape of a sequence: {dataset[0]['input_ids'].shape}")
