@@ -29,14 +29,15 @@ def main():
 
     cfg = TrainingConfig(
         vocab_size=len(tokenizer),
-        batch_size=32,
-        hidden_size=256,
-        num_hidden_layers=6,
+        batch_size=16,
+        hidden_size=64,
+        num_hidden_layers=4,
         num_attention_heads=4,
-        intermediate_size=1024,
+        intermediate_size=256,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id
+        eos_token_id=tokenizer.eos_token_id,
+        epochs=1
     )
 
     model = RobertaForMaskedLM(cfg.create_model_config())
