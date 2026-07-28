@@ -78,7 +78,9 @@ class Vocabulary:
     def decode(self, ids):
         pieces = []
         for idx in ids:
-            entry = self.id_to_entry(idx)
+            if hasattr(idx, "item"): # for idx == tensor(id)
+                idx = idx.item()
+            entry = self.id2entry[idx]
             pieces.append(Piece(text=entry.token, source=entry.source, language=entry.language, start=-1, end=-1, word_id=-1))
         return pieces
     

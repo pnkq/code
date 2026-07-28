@@ -4,6 +4,7 @@ from t.dataset import CorpusReader, DatasetBuilder, DatasetBuilderPar
 from p.tokenizer import HybridTokenizer
 from t.memmap import MemMapWriter, MemMapDataset
 from t.partitioner import BytePartitioner
+from e.intrinsic import MLMAccuracyEvaluator
 
 import argparse
 import sys
@@ -83,7 +84,37 @@ def memmap_dataset(corpus_dir, sequence_length):
     print(f"Number of sequences = {len(dataset)}")
     sample = dataset[0]
     print(f'Shape of a sequence is {sample["input_ids"].shape}')
-        
+
+def evaluate(corpus_dir, tokenizer, model):
+    from torch.utils.data import DataLoader
+    from t.collator import MaskedLanguageModelDataCollator
+
+    collator = MaskedLanguageModelDataCollator(tokenizer, mlm_probability=0.15, debug=True)
+    dataset = MemMapDataset(f"{corpus_dir}.bin",  sequence_length=512)
+    print(f"Number of sequences = {len(dataset)}")
+    sample = dataset[0]
+    print(f'Shape of a sequence is {sample["input_ids"].shape}')
+    print(sample)
+    loader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=collator)
+    batch = next(iter(loader))
+    print(batch.keys())
+    print(batch["input_ids"].shape)
+    print(batch["attention_mask"].shape)
+    print(batch["labels"].shape)    
+    labels = batch["labels"][0]
+
+    masked_positions = (labels != -100).nonzero(as_tuple=True)[0]
+    print(masked_positions)
+
+    for pos in masked_positions:
+        print(
+            pos.item(),
+            tokenizer.convert_ids_to_tokens([batch["input_ids"][0][pos].item()]),
+            tokenizer.decode([labels[pos].item()])
+        )
+    # evaluator = MLMAccuracyEvaluator(model, device="cpu", top_k=5)
+    # result = evaluator.evaluate(loader)
+    # print(result)
 
 def main():
     # Set up the argument parser
@@ -94,7 +125,7 @@ def main():
     # Define the choices available to the user
     parser.add_argument(
         'action',
-        choices=['tokenize', 'vocab', 'prune', 'memmap', 'dataset', 'partition', "memmap_par"],
+        choices=['tokenize', 'vocab', 'prune', 'memmap', 'dataset', 'partition', "memmap_par", "evaluate"],
         help="The specific function/action you want to execute."
     )
 
@@ -138,6 +169,9 @@ def main():
             # corpus_file = "/home/phuonglh/code/con/src/main/python/ptok/20231101_vie/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"
             # builder = DatasetBuilderPar(sequence_length=510, num_workers=10)
             # builder.build(corpus_file, "v.bin")
+        case 'evaluate':
+            tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
+            evaluate("1", tokenizer, None)
         case _:
             print("Invalid action selection.", file=sys.stderr)
 

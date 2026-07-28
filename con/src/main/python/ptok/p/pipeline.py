@@ -3,6 +3,7 @@ from p.dispatcher import Dispatcher
 from p.plugin_manager import PluginManager
 from p.postprocessor import PostProcessor
 from p.piece import Piece
+from p.decoder import Decoder
 
 
 class Pipeline:
@@ -12,6 +13,7 @@ class Pipeline:
         self.dispatcher = Dispatcher()
         self.plugins = PluginManager()
         self.postprocessor = PostProcessor()
+        self.decoder = Decoder()
 
     def tokenize(self, text) -> list[Piece]:
         text = self.normalizer.normalize(text)
