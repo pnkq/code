@@ -3,7 +3,7 @@ import json
 import gzip
 
 # streaming=True bypasses HF disk cache completely
-split = "train" # "validation"
+split = "validation" # "validation"
 output_file = f"c4_vi_{split}.jsonl.gz"
 
 # 1. Load dataset stream
