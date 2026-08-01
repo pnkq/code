@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 HOME_DIR = Path.home()
-sys.path.append(f"{HOME_DIR}/code/con/src/main/python/ptok/")
+sys.path.append(f"{HOME_DIR}/code/ptok/")
 
 # import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -72,7 +72,7 @@ def main():
 
     # Pass the path to your checkpoint folder directly when starting training
     trainer.train()
-    trainer.save_model(f"v-model_{cfg.hidden_size}_{cfg.num_hidden_layers}_{cfg.num_attention_heads}_{cfg.intermediate_size}")
+    trainer.save_model(f"w-model_{cfg.hidden_size}_{cfg.num_hidden_layers}_{cfg.num_attention_heads}_{cfg.intermediate_size}")
 
 
 if __name__ == "__main__":
