@@ -139,36 +139,26 @@ def main():
             tokenize(pipeline)
             tokenize_text(pipeline)
         case 'vocab': 
-            build_vocabulary("20231101_vie")
+            build_vocabulary("w")
         case 'prune':
-            prune_vocabulary("20231101_vie", "vocab.json")
+            prune_vocabulary("w", "vocab.json")
         case 'memmap': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
             # memmap_writer(tokenizer, "1", 510)
             # memmap_dataset("1", 510)
-            # memmap_writer(tokenizer, "2", 510)
-            # memmap_dataset("2", 510)
-            # memmap_writer(tokenizer, "20231101_vie", 510)
-            # memmap_dataset("20231101_vie", 510)
         case 'dataset': 
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
             dataset_builder(tokenizer, "0")
         case 'partition':
-            # this is a big text file (1.3GB):
-            filename = "/home/phuonglh/code/con/src/main/python/ptok/20231101_vie/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"
-            offsets = BytePartitioner().partition(filename, num_workers=8)
+            # this is a big text file containing all Vietnamese Wikipedia articles (1.3GB):
+            wiki_corpus_file = "/home/phuonglh/code/ptok/w/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"
+            offsets = BytePartitioner().partition(wiki_corpus_file, num_workers=8)
             for pair in offsets:
                 print(pair)
         case 'memmap_par':
-            # corpus_file = "2/corpus_2.txt"
-            # builder = DatasetBuilderPar(sequence_length=510, num_workers=8)
-            # builder.build(corpus_file, "2.bin")
-            corpus_file = "/run/media/phuonglh/3a5b07b6-98a8-4045-aa89-120a55aae3ae/home/phuonglh/corpora/21/vi_part_2.txt"
+            wiki_corpus_file = "/home/phuonglh/code/ptok/w/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"
             builder = DatasetBuilderPar(sequence_length=510, num_workers=16)
-            builder.build(corpus_file, "vi_part_2.bin")
-            # corpus_file = "/home/phuonglh/code/con/src/main/python/ptok/20231101_vie/part-00000-b2514431-1ed1-4374-ba72-5814e6ba27cf-c000.txt"
-            # builder = DatasetBuilderPar(sequence_length=510, num_workers=10)
-            # builder.build(corpus_file, "v.bin")
+            builder.build(wiki_corpus_file, "w.bin")
         case 'evaluate':
             tokenizer = HybridTokenizer(pipeline, Vocabulary.load("vocab.json"))
             evaluate("1", tokenizer, None)
