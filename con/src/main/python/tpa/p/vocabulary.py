@@ -2,7 +2,6 @@ from collections import Counter
 import json
 from json import JSONEncoder
 from dataclasses import dataclass, asdict
-from p.piece import Piece
 
 
 class VocabularyBuilder:
@@ -76,13 +75,13 @@ class Vocabulary:
             yield self.token_to_id(s)
 
     def decode(self, ids):
-        pieces = []
+        result = []
         for idx in ids:
             if hasattr(idx, "item"): # for idx == tensor(id)
                 idx = idx.item()
             entry = self.id2entry[idx]
-            pieces.append(Piece(text=entry.token, source=entry.source, language=entry.language, start=-1, end=-1, word_id=-1))
-        return pieces
+            result.append(entry)
+        return entry
     
     def __contains__(self, token):
         return token in self.token2entry
