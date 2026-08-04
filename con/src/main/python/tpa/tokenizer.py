@@ -5,12 +5,10 @@ import torch
 """
     tokenizer(text) -> {"input_ids": ..., "attention_mask": ..., "special_tokens_mask": ... }
     
-    tokenizer.tokenize_to_text(text) -> list[str]
 """
 class TransitionTokenizer:
 
-    def __init__(self, pipeline, vocab):
-        self.pipeline = pipeline
+    def __init__(self, vocab):
         self.vocab = vocab
 
         self.pad_token = "<pad>"
@@ -33,18 +31,11 @@ class TransitionTokenizer:
         return len(self.vocab)
 
     def encode(self, text):
-        pieces = self.pipeline.tokenize(text)
-        return self.vocab.encode(pieces)
+        transitions = text.split()
+        return self.vocab.encode(transitions)
     
-    def tokenize_to_text(self, text):
-        return self.pipeline.tokenize_to_text(text)
-    
-    def encode_text(self, text):
-        subs = self.tokenize_to_text(text)
-        return self.vocab.encode_text(subs)
-    
-    def encode_with_special_tokens(self, text):
-        token_ids = self.encode(text)
+    def encode_with_special_tokens(self, transitions):
+        token_ids = self.encode(transitions)
         return [ self.bos_token_id, *token_ids, self.eos_token_id ]
 
     def encode_batch(self, texts):
@@ -53,8 +44,7 @@ class TransitionTokenizer:
     def decode(self, ids, skip_special_tokens=True):
         if skip_special_tokens:
             ids = [ i for i in ids if i not in { self.bos_token_id, self.eos_token_id, self.pad_token_id} ]
-        pieces = self.vocab.decode(ids)
-        return self.pipeline.decoder.decode(pieces)
+        return self.vocab.decode(ids)
 
     def build_inputs_with_special_tokens(self, token_ids):
         return [ self.bos_token_id, *token_ids, self.eos_token_id]

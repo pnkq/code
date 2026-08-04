@@ -4,17 +4,15 @@ from pathlib import Path
 HOME_DIR = Path.home()
 sys.path.append(f"{HOME_DIR}/code/con/src/main/python/tpa/")
 
-from p.pipeline import Pipeline
-from p.tokenizer import TransitionTokenizer
-from p.vocabulary import VocabularyBuilder, Vocabulary
-from t.collator import MaskedLanguageModelDataCollator
+from tokenizer import TransitionTokenizer
+from vocabulary import VocabularyBuilder, Vocabulary
+from collator import MaskedLanguageModelDataCollator
 
 
-text = "Tôi yêu ChatGPT."
+text = "SH RA-cop SH SH LA-det SH SH LA-det"
 
-pipeline = Pipeline()
 vocab = Vocabulary.load("vocab.json")
-tokenizer = TransitionTokenizer(pipeline, vocab)
+tokenizer = TransitionTokenizer(vocab)
 
 ids = tokenizer.encode(text)
 ids = tokenizer.build_inputs_with_special_tokens(ids)

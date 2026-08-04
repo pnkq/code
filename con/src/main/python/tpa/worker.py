@@ -1,10 +1,9 @@
-from t.packer import SequencePacker
+from packer import SequencePacker
 import numpy as np
-from p.tokenizer import HybridTokenizer
-from p.vocabulary import Vocabulary
-from p.pipeline import Pipeline
-from t.memmap import MemMapWriter
-from t.stats import BuildStats
+from tokenizer import TransitionTokenizer
+from vocabulary import Vocabulary
+from memmap import MemMapWriter
+from stats import BuildStats
 
 class WorkerBuilder:
     """
@@ -14,7 +13,7 @@ class WorkerBuilder:
         self.id = id
         self.shard = shard
         self.output_file = output_file
-        self.tokenizer = HybridTokenizer(Pipeline(), Vocabulary.load("vocab.json"))
+        self.tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
         self.packer = SequencePacker(sequence_length)
         self.sequence_length = sequence_length
         self.drop_last = drop_last

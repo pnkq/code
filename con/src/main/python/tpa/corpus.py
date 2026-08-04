@@ -1,5 +1,7 @@
 from pathlib import Path
 from tqdm import tqdm 
+import json
+
 
 # (C) phuonglh@gmail.com
 
@@ -29,6 +31,15 @@ class CorpusReader:
             
         progress.close()
 
+    def transitions(self):
+        """Yield the transition sequence from each JSONL record."""
+        for file in sorted(self.corpus_dir.glob("*.jsonl")):
+            with open(file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        record = json.loads(line)
+                        yield record["transitions"]
+                        
 
 class CorpusShard:
     """

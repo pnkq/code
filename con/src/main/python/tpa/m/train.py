@@ -4,25 +4,23 @@ import sys
 from pathlib import Path
 
 HOME_DIR = Path.home()
-sys.path.append(f"{HOME_DIR}/code/con/src/main/python/ptok/")
+sys.path.append(f"{HOME_DIR}/code/con/src/main/python/tpa/")
 
 # import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 from m.config import TrainingConfig
-from t.memmap import MemMapDataset
-from t.collator import MaskedLanguageModelDataCollator
-from p.tokenizer import HybridTokenizer
-from p.pipeline import Pipeline
-from p.vocabulary import Vocabulary
+from memmap import MemMapDataset
+from collator import MaskedLanguageModelDataCollator
+from tokenizer import TransitionTokenizer
+from vocabulary import Vocabulary
 
 
 def main():
 
-    tokenizer = HybridTokenizer(Pipeline(), Vocabulary.load("vocab.json"))
+    tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
 
-    # dataset = MemMapDataset("20231101_vie.bin", sequence_length=512)
-    dataset = MemMapDataset("2.bin", sequence_length=512)
+    dataset = MemMapDataset("0.bin", sequence_length=512)
     print(f"Vocab size: {len(tokenizer)}")
     print(f"Number of sequences: {dataset.num_sequences}")
     print(f"Shape of a sequence: {dataset[0]['input_ids'].shape}")

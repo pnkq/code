@@ -5,23 +5,21 @@ from dataclasses import dataclass, asdict
 
 
 class VocabularyBuilder:
-    def __init__(self, pipeline):
-        self.pipeline = pipeline
+    def __init__(self):
         self.vocabulary = Vocabulary()
 
     def initialize(self):
-        self.vocabulary.add("<pad>", "pad", "pad")
-        self.vocabulary.add("<unk>", "pad", "pad")
-        self.vocabulary.add("<s>", "pad", "pad")
-        self.vocabulary.add("</s>", "pad", "pad")
-        self.vocabulary.add("<mask>", "pad", "pad")
+        self.vocabulary.add("<pad>")
+        self.vocabulary.add("<unk>")
+        self.vocabulary.add("<s>")
+        self.vocabulary.add("</s>")
+        self.vocabulary.add("<mask>")
 
     def build(self, corpus_reader):
         self.initialize()
-        for document in corpus_reader.documents():
-            pieces = self.pipeline.tokenize(document)
-            for piece in pieces:
-                self.vocabulary.add(token=piece.text, source=piece.source, language=piece.language)
+        for transitions in corpus_reader.transitions():
+            for t in transitions:
+                self.vocabulary.add(token=t)
             
         return self.vocabulary        
 
@@ -30,8 +28,6 @@ class VocabularyBuilder:
 class VocabularyEntry:
     id: int
     token: str
-    source: str
-    language: str
     frequency: int = 0
 
 
@@ -46,11 +42,11 @@ class Vocabulary:
         # next available id
         self.next_id = 0 
 
-    def add(self, token, source, language):
+    def add(self, token):
         if token in self.token2entry:
             self.token2entry[token].frequency += 1
             return self.token2entry[token]
-        entry = VocabularyEntry(id=self.next_id, token=token, source=source, language=language, frequency=1)
+        entry = VocabularyEntry(id=self.next_id, token=token, frequency=1)
         self.token2entry[token] = entry
         self.id2entry[self.next_id] = entry
         self.next_id += 1
@@ -66,13 +62,9 @@ class Vocabulary:
             return self.id2entry[self.token_to_id("<unk>")].token
         return self.id2entry[id].token
 
-    def encode(self, pieces):
-        for piece in pieces:
-            yield self.token_to_id(piece.text)
-    
-    def encode_text(self, subs):
-        for s in subs:
-            yield self.token_to_id(s)
+    def encode(self, transitions):
+        for t in transitions:
+            yield self.token_to_id(t)
 
     def decode(self, ids):
         result = []
