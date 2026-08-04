@@ -7,7 +7,7 @@ import torch
     
     tokenizer.tokenize_to_text(text) -> list[str]
 """
-class HybridTokenizer:
+class TransitionTokenizer:
 
     def __init__(self, pipeline, vocab):
         self.pipeline = pipeline
