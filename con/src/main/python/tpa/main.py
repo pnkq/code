@@ -18,7 +18,7 @@ def tokenize():
     """Test a tokenizer using a pre-built vocabulary."""
     vocab = Vocabulary.load("vocab.json")
     tokenizer = TransitionTokenizer(vocab)
-    result = tokenizer([["SH RA-cop SH SH LA-det SH SH LA-det"], ["LA-case SH RA-compound"]])
+    result = tokenizer(["SH RA-cop SH SH LA-det SH SH LA-det", "LA-case SH RA-compound"])
     print(result)
 
 def dataset_builder(tokenizer, corpus_dir):
