@@ -1,5 +1,5 @@
 from vocabulary import VocabularyBuilder, Vocabulary
-from dataset import CorpusReader, DatasetBuilder, DatasetBuilderPar
+from dataset import CorpusReader, DatasetBuilder
 from tokenizer import TransitionTokenizer
 from memmap import MemMapWriter, MemMapDataset
 from e.intrinsic import MLMAccuracyEvaluator
@@ -21,9 +21,9 @@ def tokenize():
     result = tokenizer(["SH RA-cop SH SH LA-det SH SH LA-det", "LA-case SH RA-compound"])
     print(result)
 
-def dataset_builder(tokenizer, corpus_dir):
+def dataset_builder(tokenizer, corpus_dir, sequence_length=32):
     """Convert a transition corpus into sequences of ids."""
-    builder = DatasetBuilder(tokenizer, "{}".format(corpus_dir), sequence_length=32)
+    builder = DatasetBuilder(tokenizer, f"{corpus_dir}", sequence_length=sequence_length)
     seqs = builder.build()
     for s in seqs:
         print(s)
@@ -102,11 +102,10 @@ def main():
             tokenize()
         case 'dataset': 
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            dataset_builder(tokenizer, "0")
+            dataset_builder(tokenizer, "0", 16)
         case 'memmap':
-            corpus_file = "???"
-            builder = DatasetBuilderPar(sequence_length=80, num_workers=16)
-            builder.build(corpus_file, "0.bin")
+            tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
+            memmap_writer(tokenizer, "0", 32)
         case 'evaluate':
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
             evaluate("0", tokenizer, None)

@@ -40,23 +40,3 @@ class CorpusReader:
                         record = json.loads(line)
                         yield record["transitions"]
                         
-
-class CorpusShard:
-    """
-    A corpus shard that reads all bytes in a particular range (start, end).
-    This is the mechanism that allows sharding a very large file into multiple partitions.
-    """
-    def __init__(self, filename, start, end):
-        self.filename = filename
-        self.start = start
-        self.end = end
-
-    def documents(self):
-        with open(self.filename, "rb") as fp:
-            fp.seek(self.start)
-            while fp.tell() < self.end:
-                line = fp.readline()
-                if not line:
-                    break
-                yield line.decode("utf-8").rstrip("\n")
-

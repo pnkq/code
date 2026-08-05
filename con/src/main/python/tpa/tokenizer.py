@@ -30,10 +30,13 @@ class TransitionTokenizer:
     def vocab_size(self):
         return len(self.vocab)
 
-    def encode(self, text):
-        transitions = text.split()
-        return self.vocab.encode(transitions)
-    
+    def encode(self, input):
+        if isinstance(input, list): # input is a list of transitions ["SH", "RA",... ]
+            return self.vocab.encode(input)
+        else:
+            transitions = input.split() # input is a space-separated text "SH RA..."
+            return self.vocab.encode(transitions)
+        
     def encode_with_special_tokens(self, transitions):
         token_ids = self.encode(transitions)
         return [ self.bos_token_id, *token_ids, self.eos_token_id ]
