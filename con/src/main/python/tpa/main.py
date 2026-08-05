@@ -34,7 +34,7 @@ def dataset_builder(tokenizer, corpus_dir, sequence_length=32):
 def memmap_writer(tokenizer, corpus_dir, sequence_length):
     """Save the corpus into a *.bin file for training, then load the binary dataset into a mem-map dataset."""
     builder = DatasetBuilder(tokenizer, f"{corpus_dir}", sequence_length=sequence_length)
-    writer = MemMapWriter(f"{corpus_dir}.bin", sequence_length=sequence_length+2)
+    writer = MemMapWriter(f"{corpus_dir}/{corpus_dir}.bin", sequence_length=sequence_length+2)
 
     # trigger the generator...
     for seq in builder.build():
@@ -43,7 +43,7 @@ def memmap_writer(tokenizer, corpus_dir, sequence_length):
     writer.close()
     
 def memmap_dataset(corpus_dir, sequence_length):
-    dataset = MemMapDataset(f"{corpus_dir}.bin",  sequence_length=sequence_length+2)
+    dataset = MemMapDataset(f"{corpus_dir}/{corpus_dir}.bin",  sequence_length=sequence_length+2)
     print(f"Number of sequences = {len(dataset)}")
     sample = dataset[0]
     print(f'Shape of a sequence is {sample["input_ids"].shape}')
@@ -53,7 +53,7 @@ def evaluate(corpus_dir, tokenizer, model):
     from collator import MaskedLanguageModelDataCollator
 
     collator = MaskedLanguageModelDataCollator(tokenizer, mlm_probability=0.15, debug=True)
-    dataset = MemMapDataset(f"{corpus_dir}.bin",  sequence_length=512)
+    dataset = MemMapDataset(f"{corpus_dir}/{corpus_dir}.bin", sequence_length=32+2)
     print(f"Number of sequences = {len(dataset)}")
     sample = dataset[0]
     print(f'Shape of a sequence is {sample["input_ids"].shape}')
@@ -104,8 +104,9 @@ def main():
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
             dataset_builder(tokenizer, "0", 16)
         case 'memmap':
-            tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            memmap_writer(tokenizer, "0", 32)
+            # tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
+            # memmap_writer(tokenizer, "0", 32)
+            memmap_dataset("0", 32)
         case 'evaluate':
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
             evaluate("0", tokenizer, None)
