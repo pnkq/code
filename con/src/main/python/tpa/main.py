@@ -104,8 +104,8 @@ def main():
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
             dataset_builder(tokenizer, "0", 16)
         case 'memmap':
-            # tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            # memmap_writer(tokenizer, "0", 32)
+            tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
+            memmap_writer(tokenizer, "0", 32)
             memmap_dataset("0", 32)
         case 'evaluate':
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))

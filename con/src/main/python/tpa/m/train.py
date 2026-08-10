@@ -20,22 +20,22 @@ def main():
 
     tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
 
-    dataset = MemMapDataset("0.bin", sequence_length=512)
+    dataset = MemMapDataset("0/0.bin", sequence_length=32+2)
     print(f"Vocab size: {len(tokenizer)}")
     print(f"Number of sequences: {dataset.num_sequences}")
     print(f"Shape of a sequence: {dataset[0]['input_ids'].shape}")
 
     cfg = TrainingConfig(
         vocab_size=len(tokenizer),
-        batch_size=16,
+        batch_size=32,
         hidden_size=64,
         num_hidden_layers=4,
-        num_attention_heads=4,
+        num_attention_heads=8,
         intermediate_size=256,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
-        epochs=1
+        epochs=10
     )
 
     model = RobertaForMaskedLM(cfg.create_model_config())
@@ -70,7 +70,7 @@ def main():
 
     # Pass the path to your checkpoint folder directly when starting training
     trainer.train()
-    trainer.save_model(f"v-model_{cfg.hidden_size}_{cfg.num_hidden_layers}_{cfg.num_attention_heads}_{cfg.intermediate_size}")
+    trainer.save_model(f"t-model_{cfg.hidden_size}_{cfg.num_hidden_layers}_{cfg.num_attention_heads}_{cfg.intermediate_size}")
 
 
 if __name__ == "__main__":
