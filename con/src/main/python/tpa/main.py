@@ -3,6 +3,7 @@ from dataset import CorpusReader, DatasetBuilder
 from tokenizer import TransitionTokenizer
 from memmap import MemMapWriter, MemMapDataset
 from e.intrinsic import MLMAccuracyEvaluator
+from transformers import RobertaForMaskedLM
 
 import argparse
 import sys
@@ -52,13 +53,13 @@ def evaluate(corpus_dir, tokenizer, model):
     from torch.utils.data import DataLoader
     from collator import MaskedLanguageModelDataCollator
 
-    collator = MaskedLanguageModelDataCollator(tokenizer, mlm_probability=0.15, debug=True)
+    collator = MaskedLanguageModelDataCollator(tokenizer, mlm_probability=0.15, debug=False)
     dataset = MemMapDataset(f"{corpus_dir}/{corpus_dir}.bin", sequence_length=32+2)
     print(f"Number of sequences = {len(dataset)}")
     sample = dataset[0]
     print(f'Shape of a sequence is {sample["input_ids"].shape}')
     print(sample)
-    loader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=collator)
+    loader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collator)
     batch = next(iter(loader))
     print(batch.keys())
     print(batch["input_ids"].shape)
@@ -75,9 +76,9 @@ def evaluate(corpus_dir, tokenizer, model):
             tokenizer.convert_ids_to_tokens([batch["input_ids"][0][pos].item()]),
             tokenizer.decode([labels[pos].item()])
         )
-    # evaluator = MLMAccuracyEvaluator(model, device="cpu", top_k=5)
-    # result = evaluator.evaluate(loader)
-    # print(result)
+    evaluator = MLMAccuracyEvaluator(model, device="cpu", top_k=5)
+    result = evaluator.evaluate(loader)
+    print(result)
 
 def main():
     # Set up the argument parser
@@ -109,7 +110,9 @@ def main():
             memmap_dataset("0", 32)
         case 'evaluate':
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            evaluate("0", tokenizer, None)
+            model = RobertaForMaskedLM.from_pretrained("./t-model_64_4_8_256/")
+            print(model)
+            evaluate("0", tokenizer, model)
         case _:
             print("Invalid action selection.", file=sys.stderr)
 

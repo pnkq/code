@@ -1,0 +1,7 @@
+"./t-model_64_4_4_256/"
+    MLMEvaluationResult(loss=1.0148547560427275, top1_accuracy=0.7193606208635361, topk_accuracy=0.9157983375354554, masked_tokens=203072)
+
+"./t-model_64_4_8_256/"
+    MLMEvaluationResult(loss=1.0087534165703507, top1_accuracy=0.7214392404501694, topk_accuracy=0.9168133216995223, masked_tokens=202857)
+    MLMEvaluationResult(loss=1.007614707583403, top1_accuracy=0.7216960942996158, topk_accuracy=0.9167449709003429, masked_tokens=203267)
+    MLMEvaluationResult(loss=1.0134500039646328, top1_accuracy=0.7195443975879873, topk_accuracy=0.9165845583888386, masked_tokens=202984)
