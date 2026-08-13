@@ -1,7 +1,25 @@
+#A. hidden_size=64
+
 "./t-model_64_4_4_256/"
     MLMEvaluationResult(loss=1.0148547560427275, top1_accuracy=0.7193606208635361, topk_accuracy=0.9157983375354554, masked_tokens=203072)
+    MLMEvaluationResult(loss=1.0144705611022298, top1_accuracy=0.7192041267501842, topk_accuracy=0.916099238516335, masked_tokens=203550)
+    MLMEvaluationResult(loss=1.0125994843689616, top1_accuracy=0.7194080146616875, topk_accuracy=0.9168136448285036, masked_tokens=202978)
 
 "./t-model_64_4_8_256/"
     MLMEvaluationResult(loss=1.0087534165703507, top1_accuracy=0.7214392404501694, topk_accuracy=0.9168133216995223, masked_tokens=202857)
     MLMEvaluationResult(loss=1.007614707583403, top1_accuracy=0.7216960942996158, topk_accuracy=0.9167449709003429, masked_tokens=203267)
     MLMEvaluationResult(loss=1.0134500039646328, top1_accuracy=0.7195443975879873, topk_accuracy=0.9165845583888386, masked_tokens=202984)
+
+"./t-model_64_6_8_256/"
+    MLMEvaluationResult(loss=0.9399830858541797, top1_accuracy=0.7394152081420716, topk_accuracy=0.9239000602165822, masked_tokens=202602)
+    MLMEvaluationResult(loss=0.9431009854058011, top1_accuracy=0.7390456588853382, topk_accuracy=0.924625664104622, masked_tokens=203093)
+    MLMEvaluationResult(loss=0.9439533262712518, top1_accuracy=0.7388258461538462, topk_accuracy=0.9240467692307692, masked_tokens=203125)
+
+"./t-model_64_8_8_256"
+    MLMEvaluationResult(loss=0.9037424272253743, top1_accuracy=0.7498332979348701, topk_accuracy=0.9282662491294448, masked_tokens=202457)
+    MLMEvaluationResult(loss=0.9079178834936118, top1_accuracy=0.7474074403131309, topk_accuracy=0.9284547307735971, masked_tokens=202599)
+    MLMEvaluationResult(loss=0.9043483768975351, top1_accuracy=0.7482078325084452, topk_accuracy=0.927640623772488, masked_tokens=203664)
+
+#B. hidden_size=128
+
+"./t-model_128_4_4_256"

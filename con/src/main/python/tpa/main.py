@@ -59,7 +59,7 @@ def evaluate(corpus_dir, tokenizer, model):
     sample = dataset[0]
     print(f'Shape of a sequence is {sample["input_ids"].shape}')
     print(sample)
-    loader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collator)
+    loader = DataLoader(dataset, batch_size=16, shuffle=False, collate_fn=collator)
     batch = next(iter(loader))
     print(batch.keys())
     print(batch["input_ids"].shape)
@@ -110,7 +110,7 @@ def main():
             memmap_dataset("0", 32)
         case 'evaluate':
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            model = RobertaForMaskedLM.from_pretrained("./t-model_64_4_8_256/")
+            model = RobertaForMaskedLM.from_pretrained("./t-model_64_6_8_256/")
             print(model)
             evaluate("0", tokenizer, model)
         case _:
