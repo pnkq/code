@@ -29,8 +29,8 @@ def main():
         vocab_size=len(tokenizer),
         batch_size=32,
         hidden_size=256,
-        num_hidden_layers=8,
-        num_attention_heads=8,
+        num_hidden_layers=4,
+        num_attention_heads=4,
         intermediate_size=256,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,
@@ -46,6 +46,7 @@ def main():
 
     args = TrainingArguments(
         output_dir="checkpoints",
+        report_to="tensorboard",
         per_device_train_batch_size=cfg.batch_size,
         per_device_eval_batch_size=cfg.batch_size,
         num_train_epochs=cfg.epochs,
@@ -58,7 +59,6 @@ def main():
         fp16=cfg.fp16,
         bf16=cfg.bf16,
         remove_unused_columns=False,
-        report_to="none"
     )
 
     trainer = Trainer(
