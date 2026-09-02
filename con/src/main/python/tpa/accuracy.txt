@@ -14,6 +14,7 @@
     MLMEvaluationResult(loss=0.9399830858541797, top1_accuracy=0.7394152081420716, topk_accuracy=0.9239000602165822, masked_tokens=202602)
     MLMEvaluationResult(loss=0.9431009854058011, top1_accuracy=0.7390456588853382, topk_accuracy=0.924625664104622, masked_tokens=203093)
     MLMEvaluationResult(loss=0.9439533262712518, top1_accuracy=0.7388258461538462, topk_accuracy=0.9240467692307692, masked_tokens=203125)
+    MLMEvaluationResult(loss=0.9456103796544282, top1_accuracy=0.738360700709331, topk_accuracy=0.9236489399224047, masked_tokens=204136)
 
 "./t-model_64_8_8_256"
     MLMEvaluationResult(loss=0.9037424272253743, top1_accuracy=0.7498332979348701, topk_accuracy=0.9282662491294448, masked_tokens=202457)
@@ -23,3 +24,62 @@
 #B. hidden_size=128
 
 "./t-model_128_4_4_256"
+    MLMEvaluationResult(loss=0.804602489168342, top1_accuracy=0.7699580812722063, topk_accuracy=0.9416430372157709, masked_tokens=203489)
+    MLMEvaluationResult(loss=0.7944846759221054, top1_accuracy=0.7724553843732168, topk_accuracy=0.9432048481986502, masked_tokens=203292)
+    MLMEvaluationResult(loss=0.803371879678142, top1_accuracy=0.770670911136329, topk_accuracy=0.9417613566582661, masked_tokens=203559)
+    MLMEvaluationResult(loss=0.8030426144036543, top1_accuracy=0.7712132778448128, topk_accuracy=0.9415055775813244, masked_tokens=203045)
+
+"./t-model_128_4_8_256"
+    MLMEvaluationResult(loss=0.7947673117618705, top1_accuracy=0.7732304744122055, topk_accuracy=0.9427560622067169, masked_tokens=203515)
+    MLMEvaluationResult(loss=0.7949105675650905, top1_accuracy=0.7732220698738457, topk_accuracy=0.9425351752743499, masked_tokens=203481)
+    MLMEvaluationResult(loss=0.7861155565328093, top1_accuracy=0.7739867751127177, topk_accuracy=0.9442855943544842, masked_tokens=202497)
+
+"./t-model_128_6_8_256"
+    MLMEvaluationResult(loss=0.748939852171449, top1_accuracy=0.7844242289771467, topk_accuracy=0.9472672139634642, masked_tokens=202815)
+    MLMEvaluationResult(loss=0.7488265013537019, top1_accuracy=0.7858630320855087, topk_accuracy=0.9469024801871243, masked_tokens=202646)
+    MLMEvaluationResult(loss=0.75571257707809, top1_accuracy=0.7851621733393725, topk_accuracy=0.946592095157447, masked_tokens=203116)
+
+"./t-model_128_8_8_256/"
+    MLMEvaluationResult(loss=0.7268245782597529, top1_accuracy=0.7914724701793191, topk_accuracy=0.9502429101824789, masked_tokens=202544)
+    MLMEvaluationResult(loss=0.732112826809766, top1_accuracy=0.7898138394746945, topk_accuracy=0.9494383681666486, masked_tokens=203158)
+    MLMEvaluationResult(loss=0.7304795920567161, top1_accuracy=0.7904228548872552, topk_accuracy=0.9492228746237726, masked_tokens=202670)
+
+"./t-model_256_4_4_256/"
+    MLMEvaluationResult(loss=0.6447411143543139, top1_accuracy=0.8095478231635569, topk_accuracy=0.9593604461451751, masked_tokens=202266)
+    MLMEvaluationResult(loss=0.6400614624438079, top1_accuracy=0.8101433383714153, topk_accuracy=0.9600707307194578, masked_tokens=202458)
+    MLMEvaluationResult(loss=0.6446643610673275, top1_accuracy=0.8097290761457248, topk_accuracy=0.9586831291901775, masked_tokens=203452)
+
+"./t-model_256_4_8_256/"
+    MLMEvaluationResult(loss=0.6457710799822736, top1_accuracy=0.8100879263543019, topk_accuracy=0.95884476179236, masked_tokens=203352)
+    MLMEvaluationResult(loss=0.6479739993500799, top1_accuracy=0.8081379269473143, topk_accuracy=0.9588016830959484, masked_tokens=202484)
+    MLMEvaluationResult(loss=0.6487368687621137, top1_accuracy=0.8089101112533228, topk_accuracy=0.9588854976863247, masked_tokens=203140)
+
+"./t-model_256_6_8_256/"
+    MLMEvaluationResult(loss=0.6256206329242944, top1_accuracy=0.8148748521876231, topk_accuracy=0.9609430429641309, masked_tokens=202960)
+    MLMEvaluationResult(loss=0.6296219898081457, top1_accuracy=0.8132776198242856, topk_accuracy=0.9609348437738675, masked_tokens=202943)
+    MLMEvaluationResult(loss=0.6231101980112451, top1_accuracy=0.814639951807465, topk_accuracy=0.9614508695716056, masked_tokens=204181)
+
+"./t-model_256_8_8_256/"
+    MLMEvaluationResult(loss=0.5995472804359768, top1_accuracy=0.8215720192596754, topk_accuracy=0.9634076023478274, masked_tokens=202911)
+    MLMEvaluationResult(loss=0.6008178027089692, top1_accuracy=0.8220770075490839, topk_accuracy=0.9634709042650108, masked_tokens=203071)
+    MLMEvaluationResult(loss=0.5991710451972057, top1_accuracy=0.8218496720369379, topk_accuracy=0.9629728712125716, masked_tokens=201852)
+
+"./t-model_512_4_4_512"
+    MLMEvaluationResult(loss=0.6541933838778047, top1_accuracy=0.8068636647137111, topk_accuracy=0.9579173276103388, masked_tokens=203623)
+    MLMEvaluationResult(loss=0.6544433221474487, top1_accuracy=0.8063357411380322, topk_accuracy=0.9582390221819828, masked_tokens=203228)
+    MLMEvaluationResult(loss=0.6579662373757768, top1_accuracy=0.805165587637171, topk_accuracy=0.9578589042037942, masked_tokens=203578)
+
+"./t-model_512_4_8_512"
+    MLMEvaluationResult(loss=0.6347216459466514, top1_accuracy=0.8115138466983218, topk_accuracy=0.9602392819575112, masked_tokens=203442)
+    MLMEvaluationResult(loss=0.63654824951646, top1_accuracy=0.8107110289587184, topk_accuracy=0.9604041897720271, masked_tokens=202875)
+    MLMEvaluationResult(loss=0.6335530296503258, top1_accuracy=0.8126500726277408, topk_accuracy=0.9603165976620784, masked_tokens=202402)
+
+"./t-model_512_6_8_512"
+    MLMEvaluationResult(loss=0.6414117197458595, top1_accuracy=0.8095182034905966, topk_accuracy=0.9600612178826854, masked_tokens=203862)
+    MLMEvaluationResult(loss=0.641905273995688, top1_accuracy=0.810035119475077, topk_accuracy=0.9589043117271502, masked_tokens=203306)
+    MLMEvaluationResult(loss=0.6403475750202493, top1_accuracy=0.809694811248625, topk_accuracy=0.9598474796154435, masked_tokens=202727)
+
+"./t-model_512_8_8_512"
+    MLMEvaluationResult(loss=0.6449844262381357, top1_accuracy=0.8088470806210795, topk_accuracy=0.9590611864765912, masked_tokens=202937)
+    MLMEvaluationResult(loss=0.644811330958215, top1_accuracy=0.809124831395406, topk_accuracy=0.9586044954661364, masked_tokens=203138)
+    MLMEvaluationResult(loss=0.6452354975425003, top1_accuracy=0.8095402117860095, topk_accuracy=0.9590697949061134, masked_tokens=203224)
