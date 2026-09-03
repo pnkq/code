@@ -110,9 +110,10 @@ def main():
             memmap_dataset("0", 32)
         case 'evaluate':
             tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            model = RobertaForMaskedLM.from_pretrained("./t-model_64_6_8_256/")
+            model = RobertaForMaskedLM.from_pretrained("./t-model_512_8_8_512/")
             print(model)
-            evaluate("0", tokenizer, model)
+            for _ in range(3):
+                evaluate("0", tokenizer, model)
         case _:
             print("Invalid action selection.", file=sys.stderr)
 

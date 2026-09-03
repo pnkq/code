@@ -28,10 +28,10 @@ def main():
     cfg = TrainingConfig(
         vocab_size=len(tokenizer),
         batch_size=32,
-        hidden_size=256,
+        hidden_size=512,
         num_hidden_layers=4,
-        num_attention_heads=4,
-        intermediate_size=256,
+        num_attention_heads=8,
+        intermediate_size=512,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,

@@ -1,0 +1,82 @@
+
+Model: ./t-model_064_4_4_256/ (3 samples)
+  Loss:          1.013975
+  Top-1 Acc:     0.719324
+  Top-K Acc:     0.916237
+
+Model: ./t-model_064_4_8_256/ (3 samples)
+  Loss:          1.009939
+  Top-1 Acc:     0.720893
+  Top-K Acc:     0.916714
+
+Model: ./t-model_064_6_8_256/ (4 samples)
+  Loss:          0.943162
+  Top-1 Acc:     0.738912
+  Top-K Acc:     0.924055
+
+Model: ./t-model_064_8_8_256 (3 samples)
+  Loss:          0.905336
+  Top-1 Acc:     0.748483
+  Top-K Acc:     0.928121
+
+Model: ./t-model_128_4_4_256 (4 samples)
+  Loss:          0.801375
+  Top-1 Acc:     0.771074
+  Top-K Acc:     0.942029
+
+Model: ./t-model_128_4_8_256 (3 samples)
+  Loss:          0.791931
+  Top-1 Acc:     0.773480
+  Top-K Acc:     0.943192
+
+Model: ./t-model_128_6_8_256 (3 samples)
+  Loss:          0.751160
+  Top-1 Acc:     0.785150
+  Top-K Acc:     0.946921
+
+Model: ./t-model_128_8_8_256/ (3 samples)
+  Loss:          0.729806
+  Top-1 Acc:     0.790570
+  Top-K Acc:     0.949635
+
+Model: ./t-model_256_4_4_256/ (3 samples)
+  Loss:          0.643156
+  Top-1 Acc:     0.809807
+  Top-K Acc:     0.959371
+
+Model: ./t-model_256_4_8_256/ (3 samples)
+  Loss:          0.647494
+  Top-1 Acc:     0.809045
+  Top-K Acc:     0.958844
+
+Model: ./t-model_256_6_8_256/ (3 samples)
+  Loss:          0.626118
+  Top-1 Acc:     0.814264
+  Top-K Acc:     0.961110
+
+Model: ./t-model_256_8_8_256/ (3 samples)
+  Loss:          0.599845
+  Top-1 Acc:     0.821833
+  Top-K Acc:     0.963284
+
+Model: ./t-model_512_4_4_512 (3 samples)
+  Loss:          0.655534
+  Top-1 Acc:     0.806122
+  Top-K Acc:     0.958005
+
+Model: ./t-model_512_4_8_512 (3 samples)
+  Loss:          0.634941
+  Top-1 Acc:     0.811625
+  Top-K Acc:     0.960320
+
+Model: ./t-model_512_6_8_512 (3 samples)
+  Loss:          0.641222
+  Top-1 Acc:     0.809749
+  Top-K Acc:     0.959604
+
+Model: ./t-model_512_8_8_512 (5 samples)
+  Loss:          0.643857
+  Top-1 Acc:     0.809485
+  Top-K Acc:     0.959149
+
+ *  Terminal will be reused by tasks, press any key to close it. 
