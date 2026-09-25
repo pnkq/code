@@ -4,9 +4,9 @@ import scala.io.Source
 import scala.util.matching.Regex
 
 case class MLMResult(loss: Double, top1Accuracy: Double, topkAccuracy: Double)
-case class ModelAverages(loss: Double, top1Accuracy: Double, topkAccuracy: Double, sampleCount: Int)
+case class ModelAverages(loss: Double, top1Accuracy: Double, top1Std: Double, topkAccuracy: Double, topkStd: Double, sampleCount: Int)
 
-object ParseAllModels {
+object Scores {
 
   val ModelHeaderPattern: Regex = """"(\./[^"]+)"""".r
   val ResultPattern: Regex      = """MLMEvaluationResult\(loss=([\d\.]+),\s*top1_accuracy=([\d\.]+),\s*topk_accuracy=([\d\.]+).*""".r
@@ -18,9 +18,11 @@ object ParseAllModels {
     // Output formatted results
     results.toList.sortBy(_._1).foreach { case (model, avg) =>
       println(s"Model: $model (${avg.sampleCount} samples)")
-      println(f"  Loss:          ${avg.loss}%.6f")
-      println(f"  Top-1 Acc:     ${avg.top1Accuracy}%.6f")
-      println(f"  Top-K Acc:     ${avg.topkAccuracy}%.6f\n")
+      println(f"  Loss:          ${avg.loss}%.4f")
+      println(f"  Top-1 Acc:     ${avg.top1Accuracy}%.4f")
+      println(f"  Top-1 Std:     ${avg.top1Std}%.6f")
+      println(f"  Top-K Acc:     ${avg.topkAccuracy}%.4f")
+      println(f"  Top-K Std:     ${avg.topkStd}%.6f\n")
     }
   }
 
@@ -56,14 +58,17 @@ object ParseAllModels {
       .map { case (modelName, entries) =>
         val scores = entries.map(_._2)
         val count  = scores.size
+        val top1Avg = scores.map(_.top1Accuracy).sum / count
+        val topkAvg = scores.map(_.topkAccuracy).sum / count
         
         val avgResult = ModelAverages(
           loss         = scores.map(_.loss).sum / count,
-          top1Accuracy = scores.map(_.top1Accuracy).sum / count,
-          topkAccuracy = scores.map(_.topkAccuracy).sum / count,
+          top1Accuracy = top1Avg,
+          top1Std = Math.sqrt(scores.map(_.top1Accuracy).map(x => (x - top1Avg)*(x - top1Avg)).sum / count),
+          topkAccuracy = topkAvg,
+          topkStd = Math.sqrt(scores.map(_.topkAccuracy).map(x => (x - topkAvg)*(x - topkAvg)).sum / count),
           sampleCount  = count
         )
-        
         modelName -> avgResult
       }
   }

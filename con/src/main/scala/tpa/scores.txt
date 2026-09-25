@@ -1,82 +1,111 @@
-
 Model: ./t-model_064_4_4_256/ (3 samples)
-  Loss:          1.013975
-  Top-1 Acc:     0.719324
-  Top-K Acc:     0.916237
+  Loss:          1.0140
+  Top-1 Acc:     0.7193
+  Top-1 Std:     0.000087
+  Top-K Acc:     0.9162
+  Top-K Std:     0.000426
 
 Model: ./t-model_064_4_8_256/ (3 samples)
-  Loss:          1.009939
-  Top-1 Acc:     0.720893
-  Top-K Acc:     0.916714
+  Loss:          1.0099
+  Top-1 Acc:     0.7209
+  Top-1 Std:     0.000960
+  Top-K Acc:     0.9167
+  Top-K Std:     0.000096
 
 Model: ./t-model_064_6_8_256/ (4 samples)
-  Loss:          0.943162
-  Top-1 Acc:     0.738912
-  Top-K Acc:     0.924055
+  Loss:          0.9432
+  Top-1 Acc:     0.7389
+  Top-1 Std:     0.000382
+  Top-K Acc:     0.9241
+  Top-K Std:     0.000359
 
 Model: ./t-model_064_8_8_256 (3 samples)
-  Loss:          0.905336
-  Top-1 Acc:     0.748483
-  Top-K Acc:     0.928121
+  Loss:          0.9053
+  Top-1 Acc:     0.7485
+  Top-1 Std:     0.001009
+  Top-K Acc:     0.9281
+  Top-K Std:     0.000348
 
 Model: ./t-model_128_4_4_256 (4 samples)
-  Loss:          0.801375
-  Top-1 Acc:     0.771074
-  Top-K Acc:     0.942029
+  Loss:          0.8014
+  Top-1 Acc:     0.7711
+  Top-1 Std:     0.000913
+  Top-K Acc:     0.9420
+  Top-K Std:     0.000685
 
 Model: ./t-model_128_4_8_256 (3 samples)
-  Loss:          0.791931
-  Top-1 Acc:     0.773480
-  Top-K Acc:     0.943192
+  Loss:          0.7919
+  Top-1 Acc:     0.7735
+  Top-1 Std:     0.000359
+  Top-K Acc:     0.9432
+  Top-K Std:     0.000778
 
 Model: ./t-model_128_6_8_256 (3 samples)
-  Loss:          0.751160
-  Top-1 Acc:     0.785150
-  Top-K Acc:     0.946921
+  Loss:          0.7512
+  Top-1 Acc:     0.7851
+  Top-1 Std:     0.000587
+  Top-K Acc:     0.9469
+  Top-K Std:     0.000276
 
 Model: ./t-model_128_8_8_256/ (3 samples)
-  Loss:          0.729806
-  Top-1 Acc:     0.790570
-  Top-K Acc:     0.949635
+  Loss:          0.7298
+  Top-1 Acc:     0.7906
+  Top-1 Std:     0.000685
+  Top-K Acc:     0.9496
+  Top-K Std:     0.000439
 
 Model: ./t-model_256_4_4_256/ (3 samples)
-  Loss:          0.643156
-  Top-1 Acc:     0.809807
-  Top-K Acc:     0.959371
+  Loss:          0.6432
+  Top-1 Acc:     0.8098
+  Top-1 Std:     0.000249
+  Top-K Acc:     0.9594
+  Top-K Std:     0.000567
 
 Model: ./t-model_256_4_8_256/ (3 samples)
-  Loss:          0.647494
-  Top-1 Acc:     0.809045
-  Top-K Acc:     0.958844
+  Loss:          0.6475
+  Top-1 Acc:     0.8090
+  Top-1 Std:     0.000802
+  Top-K Acc:     0.9588
+  Top-K Std:     0.000034
 
 Model: ./t-model_256_6_8_256/ (3 samples)
-  Loss:          0.626118
-  Top-1 Acc:     0.814264
-  Top-K Acc:     0.961110
+  Loss:          0.6261
+  Top-1 Acc:     0.8143
+  Top-1 Std:     0.000704
+  Top-K Acc:     0.9611
+  Top-K Std:     0.000241
 
 Model: ./t-model_256_8_8_256/ (3 samples)
-  Loss:          0.599845
-  Top-1 Acc:     0.821833
-  Top-K Acc:     0.963284
+  Loss:          0.5998
+  Top-1 Acc:     0.8218
+  Top-1 Std:     0.000207
+  Top-K Acc:     0.9633
+  Top-K Std:     0.000221
 
 Model: ./t-model_512_4_4_512 (3 samples)
-  Loss:          0.655534
-  Top-1 Acc:     0.806122
-  Top-K Acc:     0.958005
+  Loss:          0.6555
+  Top-1 Acc:     0.8061
+  Top-1 Std:     0.000710
+  Top-K Acc:     0.9580
+  Top-K Std:     0.000167
 
 Model: ./t-model_512_4_8_512 (3 samples)
-  Loss:          0.634941
-  Top-1 Acc:     0.811625
-  Top-K Acc:     0.960320
+  Loss:          0.6349
+  Top-1 Acc:     0.8116
+  Top-1 Std:     0.000796
+  Top-K Acc:     0.9603
+  Top-K Std:     0.000067
 
 Model: ./t-model_512_6_8_512 (3 samples)
-  Loss:          0.641222
-  Top-1 Acc:     0.809749
-  Top-K Acc:     0.959604
+  Loss:          0.6412
+  Top-1 Acc:     0.8097
+  Top-1 Std:     0.000215
+  Top-K Acc:     0.9596
+  Top-K Std:     0.000503
 
 Model: ./t-model_512_8_8_512 (5 samples)
-  Loss:          0.643857
-  Top-1 Acc:     0.809485
-  Top-K Acc:     0.959149
-
- *  Terminal will be reused by tasks, press any key to close it. 
+  Loss:          0.6439
+  Top-1 Acc:     0.8095
+  Top-1 Std:     0.000447
+  Top-K Acc:     0.9591
+  Top-K Std:     0.000336
