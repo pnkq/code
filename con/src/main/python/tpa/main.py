@@ -8,16 +8,16 @@ from transformers import RobertaForMaskedLM
 import argparse
 import sys
 
-def build_vocabulary(corpus_dir):
+def build_vocabulary(corpus_dir, vocab_file="vocab_as.json"):
     """Build and save a vocabulary."""
     reader = CorpusReader(corpus_dir)
     builder = VocabularyBuilder()
     vocab = builder.build(reader)
-    vocab.save("vocab.json")
+    vocab.save(vocab_file)
 
-def tokenize():
+def tokenize(vocab_file):
     """Test a tokenizer using a pre-built vocabulary."""
-    vocab = Vocabulary.load("vocab.json")
+    vocab = Vocabulary.load(vocab_file)
     tokenizer = TransitionTokenizer(vocab)
     result = tokenizer(["SH RA-cop SH SH LA-det SH SH LA-det", "LA-case SH RA-compound"])
     print(result)
@@ -90,30 +90,32 @@ def main():
     parser.add_argument(
         'action',
         choices=['tokenize', 'vocab', 'prune', 'dataset', "memmap", "evaluate"],
-        help="The specific function/action you want to execute."
+        help="The specific action you want to execute."
     )
 
     # Parse the arguments from command line.
     args = parser.parse_args()
+    corpus_dir = "0"
+    vocab_file = "vocab_as.json"
 
     match args.action:
         case 'vocab': 
-            build_vocabulary("0")
-        case 'tokenize': 
-            tokenize()
+            build_vocabulary(corpus_dir, vocab_file)
+        case 'tokenize':
+            tokenize(vocab_file)
         case 'dataset': 
-            tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            dataset_builder(tokenizer, "0", 16)
+            tokenizer = TransitionTokenizer(Vocabulary.load(vocab_file))
+            dataset_builder(tokenizer, corpus_dir, 16)
         case 'memmap':
-            tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            memmap_writer(tokenizer, "0", 32)
-            memmap_dataset("0", 32)
+            tokenizer = TransitionTokenizer(Vocabulary.load(vocab_file))
+            memmap_writer(tokenizer, corpus_dir, 32)
+            memmap_dataset(corpus_dir, 32)
         case 'evaluate':
-            tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
-            model = RobertaForMaskedLM.from_pretrained("./t-model_512_8_8_512/")
+            tokenizer = TransitionTokenizer(Vocabulary.load(vocab_file))
+            model = RobertaForMaskedLM.from_pretrained("./b/as/t-model_512_8_8_512/")
             print(model)
             for _ in range(3):
-                evaluate("0", tokenizer, model)
+                evaluate(corpus_dir, tokenizer, model)
         case _:
             print("Invalid action selection.", file=sys.stderr)
 

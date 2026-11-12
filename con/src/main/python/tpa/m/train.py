@@ -18,7 +18,7 @@ from vocabulary import Vocabulary
 
 def main():
 
-    tokenizer = TransitionTokenizer(Vocabulary.load("vocab.json"))
+    tokenizer = TransitionTokenizer(Vocabulary.load("vocab_as.json"))
 
     dataset = MemMapDataset("0/0.bin", sequence_length=32+2)
     print(f"Vocab size: {len(tokenizer)}")
@@ -70,7 +70,7 @@ def main():
 
     # Pass the path to your checkpoint folder directly when starting training
     trainer.train()
-    trainer.save_model(f"t-model_{cfg.hidden_size}_{cfg.num_hidden_layers}_{cfg.num_attention_heads}_{cfg.intermediate_size}")
+    trainer.save_model(f"b/as/t-model_{cfg.hidden_size}_{cfg.num_hidden_layers}_{cfg.num_attention_heads}_{cfg.intermediate_size}")
 
 
 if __name__ == "__main__":
